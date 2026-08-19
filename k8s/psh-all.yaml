@@ -1,0 +1,332 @@
+# =============================================================================
+# Pure Storage Horizon — Kubernetes Manifests
+# Deploy everything:  kubectl apply -f k8s/psh-all.yaml
+# Tear down:         kubectl delete -f k8s/psh-all.yaml
+#
+# Image: aravindh146/psh:latest  (Docker Hub)
+# Change SESSION_SECRET and POSTGRES_PASSWORD to strong values before production deploy.
+# =============================================================================
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. Namespace
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: psh
+  labels:
+    app: psh-ticketing
+
+---
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. Secrets  (base64 is handled by stringData — K8s encodes automatically)
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Secret
+metadata:
+  name: psh-secrets
+  namespace: psh
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: "postgres"
+  DATABASE_URL: "postgresql://postgres:postgres@postgres-svc:5432/psh_ticketing"
+  SESSION_SECRET: "psh-super-secret-change-in-production-2024"
+
+---
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. ConfigMap  (non-sensitive env vars)
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: psh-config
+  namespace: psh
+data:
+  NODE_ENV: "production"
+  PORT: "5000"
+  NODE_PATH: "/app/server/node_modules"
+  # CLIENT_URL is the public URL where users access the app.
+  # Update this to your LoadBalancer IP or domain after first deploy.
+  CLIENT_URL: "http://localhost:5000"
+
+---
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. PostgreSQL — PersistentVolumeClaim
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: psh
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. PostgreSQL — Deployment
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: psh
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  strategy:
+    type: Recreate          # Required with ReadWriteOnce PVC
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: psh_ticketing
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: psh-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "psh_ticketing"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "psh_ticketing"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+
+---
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. PostgreSQL — Service (ClusterIP — internal only)
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-svc
+  namespace: psh
+  labels:
+    app: postgres
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+
+---
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. App — Deployment
+#    initContainer: waits for postgres, then runs database/init.js
+#    main container: runs the Express server
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: psh-app
+  namespace: psh
+  labels:
+    app: psh-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: psh-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: psh-app
+    spec:
+      # ── Init container: runs DB schema + seed once per pod start ─────────
+      initContainers:
+        - name: db-init
+          image: aravindh146/psh:latest
+          imagePullPolicy: Always
+          workingDir: /app
+          # Wait for postgres to accept connections, then run init.js
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for PostgreSQL to be ready..."
+              until node -e "
+                const {Pool} = require('pg');
+                const p = new Pool({ connectionString: process.env.DATABASE_URL });
+                p.query('SELECT 1').then(() => { p.end(); process.exit(0); }).catch(() => process.exit(1));
+              " 2>/dev/null; do
+                echo "  postgres not ready yet, retrying in 3s...";
+                sleep 3;
+              done
+              echo "PostgreSQL is ready. Running database init..."
+              node database/init.js
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: psh-secrets
+                  key: DATABASE_URL
+            - name: NODE_PATH
+              valueFrom:
+                configMapKeyRef:
+                  name: psh-config
+                  key: NODE_PATH
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: psh-config
+                  key: NODE_ENV
+
+      # ── Main container: Express server ────────────────────────────────────
+      containers:
+        - name: psh-app
+          image: aravindh146/psh:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: psh-secrets
+                  key: DATABASE_URL
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: psh-secrets
+                  key: SESSION_SECRET
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: psh-config
+                  key: NODE_ENV
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: psh-config
+                  key: PORT
+            - name: CLIENT_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: psh-config
+                  key: CLIENT_URL
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 5000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+
+---
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. App — Service (LoadBalancer — external access)
+#    For local clusters (minikube/kind): change type to NodePort
+#    and use:  minikube service psh-app-svc -n psh
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: psh-app-svc
+  namespace: psh
+  labels:
+    app: psh-app
+spec:
+  type: LoadBalancer
+  selector:
+    app: psh-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: 5000
+      protocol: TCP
+
+---
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. Ingress (optional — enable if you have an ingress controller installed)
+#    Install nginx ingress:
+#      kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/cloud/deploy.yaml
+#    Then uncomment this block and set your hostname.
+# ─────────────────────────────────────────────────────────────────────────────
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: psh-ingress
+#   namespace: psh
+#   annotations:
+#     nginx.ingress.kubernetes.io/rewrite-target: /
+# spec:
+#   ingressClassName: nginx
+#   rules:
+#     - host: psh.yourdomain.com
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: psh-app-svc
+#                 port:
+#                   number: 80

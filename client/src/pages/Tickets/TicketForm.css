@@ -1,0 +1,186 @@
+.ticket-form-page { max-width: 900px; }
+.tf-header { margin-bottom: 20px; }
+.tf-header h1 { font-size: 22px; font-weight: 700; }
+.tf-header p { font-size: 13.5px; color: var(--text-muted); margin-top: 4px; }
+.tf-form { display: flex; flex-direction: column; gap: 20px; }
+.tf-card { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 24px; box-shadow: var(--shadow); }
+.tf-section-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.tf-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+@media (max-width: 700px) { .tf-grid { grid-template-columns: 1fr 1fr; } }
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+.form-group.full { grid-column: 1 / -1; }
+.form-group label { font-size: 12.5px; font-weight: 500; color: #374151; }
+.form-group input, .form-group select, .form-group textarea {
+  padding: 9px 12px; border: 1.5px solid var(--border); border-radius: 7px;
+  font-size: 13.5px; font-family: inherit; outline: none; background: white;
+  transition: border-color 0.15s;
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(232,93,4,0.08); }
+.form-group textarea { resize: vertical; min-height: 120px; }
+.req { color: var(--orange); }
+.tf-actions { display: flex; gap: 12px; justify-content: flex-end; }
+.btn-cancel { padding: 9px 20px; border-radius: 7px; border: 1px solid var(--border); background: white; font-size: 13.5px; cursor: pointer; }
+.btn-submit { padding: 9px 24px; border-radius: 7px; border: none; background: var(--orange); color: white; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.btn-submit:hover:not(:disabled) { background: var(--orange-hover); }
+.btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Owner info block (CreateTicket) */
+.tf-owner-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  background: #F8FAFC;
+  border: 1.5px solid #E5EAF0;
+  border-radius: 10px;
+}
+.tf-owner-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #E85D04, #FF8C42);
+  color: white;
+  font-size: 18px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.tf-owner-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+.tf-owner-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0D1B2A;
+}
+.tf-owner-note {
+  font-size: 12px;
+  color: #94A3B8;
+  margin-top: 2px;
+}
+
+/* Read-only field (EditTicket for employees) */
+.tf-readonly-field {
+  padding: 9px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 7px;
+  font-size: 13.5px;
+  color: #374151;
+  background: #F8FAFC;
+}
+
+/* ── Attachment panel shared styles ─────────────────── */
+.tf-attach-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.tf-optional {
+  font-size: 12px;
+  font-weight: 400;
+  color: #94A3B8;
+  margin-left: 6px;
+}
+.tf-attach-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--orange);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.tf-attach-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: white;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.tf-attach-btn:hover { background: var(--bg); }
+
+.tf-attach-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 0;
+  color: #94A3B8;
+}
+.tf-attach-empty p { font-size: 13px; text-align: center; }
+
+.tf-attach-list { display: flex; flex-direction: column; gap: 2px; }
+.tf-attach-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #F8FAFC;
+  border: 1px solid #E5EAF0;
+  border-radius: 7px;
+}
+.tf-attach-info { flex: 1; min-width: 0; }
+.tf-attach-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tf-attach-size { font-size: 11.5px; color: #94A3B8; }
+.tf-attach-remove {
+  background: none; border: none; cursor: pointer;
+  color: #94A3B8; padding: 4px; border-radius: 4px; display: flex;
+  transition: color 0.15s;
+}
+.tf-attach-remove:hover { color: var(--danger); background: #FEE2E2; }
+
+/* att-row reused from TicketDetail — mirror it here */
+.att-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.att-row:last-child { border-bottom: none; }
+.att-icon { font-size: 18px; flex-shrink: 0; }
+.att-info { flex: 1; min-width: 0; }
+.att-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-meta { font-size: 11.5px; color: var(--text-muted); }
+.att-btn {
+  padding: 5px; border-radius: 5px; background: none; border: none;
+  color: var(--text-muted); cursor: pointer; display: flex; align-items: center; text-decoration: none;
+}
+.att-btn:hover { background: var(--bg); color: var(--text); }
+.att-btn.danger:hover { background: #FEE2E2; color: var(--danger); }
+
+/* upload-queue in create form (mirrors TicketDetail.css) */
+.upload-queue {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px; background: #F8FAFC; border-radius: 8px; border: 1px solid var(--border);
+}
+.upload-item { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; font-size: 12.5px; }
+.upload-item-name { display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upload-icon { font-size: 13px; flex-shrink: 0; }
+.upload-uploading .upload-icon { color: #3B82F6; }
+.upload-done .upload-icon { color: #22C55E; }
+.upload-error .upload-icon { color: var(--danger); }
+.upload-bar-wrap { width: 120px; height: 5px; background: #E5EAF0; border-radius: 99px; overflow: hidden; flex-shrink: 0; }
+.upload-bar { height: 100%; background: linear-gradient(90deg, #E85D04, #FF8C42); border-radius: 99px; transition: width 0.2s ease; }
+.upload-done .upload-bar { background: #22C55E; }
+.upload-error .upload-bar { background: var(--danger); }
+.upload-pct { font-size: 11.5px; font-weight: 600; width: 44px; text-align: right; flex-shrink: 0; color: var(--text-muted); }
+.upload-done .upload-pct { color: #22C55E; }
+.upload-error .upload-pct { color: var(--danger); }
