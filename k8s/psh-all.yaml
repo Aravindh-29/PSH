@@ -281,9 +281,9 @@ spec:
 ---
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 8. App — Service (LoadBalancer — external access)
-#    For local clusters (minikube/kind): change type to NodePort
-#    and use:  minikube service psh-app-svc -n psh
+# 8. App — Service (NodePort — access via any node IP on port 30080)
+#    Access: http://<node-ip>:30080
+#    Minikube: minikube ip  →  http://<that-ip>:30080
 # ─────────────────────────────────────────────────────────────────────────────
 apiVersion: v1
 kind: Service
@@ -293,13 +293,14 @@ metadata:
   labels:
     app: psh-app
 spec:
-  type: LoadBalancer
+  type: NodePort
   selector:
     app: psh-app
   ports:
     - name: http
-      port: 80
+      port: 5000
       targetPort: 5000
+      nodePort: 30080
       protocol: TCP
 
 ---
