@@ -49,9 +49,7 @@ async function init() {
 
     // Run seed data (modules/categories)
     const seed = fs.readFileSync(path.join(__dirname, 'seed.sql'), 'utf8');
-    // Only run the INSERT parts (not the admin with placeholder hash)
-    const seedLines = seed.split('\n').filter(l => !l.includes('placeholder'));
-    await appClient.query(seedLines.join('\n'));
+    await appClient.query(seed);
     console.log('Seed data inserted');
 
     // Create admin user with real argon2 hash

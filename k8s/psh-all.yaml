@@ -3,7 +3,7 @@
 # Deploy everything:  kubectl apply -f k8s/psh-all.yaml
 # Tear down:         kubectl delete -f k8s/psh-all.yaml
 #
-# Image: aravindh146/psh:v1.1  (Docker Hub)
+# Image: aravindh146/psh:v1.2  (Docker Hub)
 # Change SESSION_SECRET and POSTGRES_PASSWORD to strong values before production deploy.
 # =============================================================================
 
@@ -184,7 +184,7 @@ spec:
       # ── Init container: runs DB schema + seed once per pod start ─────────
       initContainers:
         - name: db-init
-          image: aravindh146/psh:v1.1
+          image: aravindh146/psh:v1.2
           imagePullPolicy: Always
           workingDir: /app
           command:
@@ -212,7 +212,7 @@ spec:
       # ── Main container: Express server ────────────────────────────────────
       containers:
         - name: psh-app
-          image: aravindh146/psh:v1.1
+          image: aravindh146/psh:v1.2
           imagePullPolicy: Always
           ports:
             - containerPort: 5000

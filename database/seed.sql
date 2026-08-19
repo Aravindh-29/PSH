@@ -24,13 +24,3 @@ INSERT INTO categories (name, description) VALUES
   ('Other', 'Other category')
 ON CONFLICT (name) DO NOTHING;
 
--- Admin user (password: Admin@123)
-INSERT INTO users (username, email, full_name, password_hash, role)
-VALUES (
-  'admin',
-  'admin@purestoragehorizon.com',
-  'Administrator',
-  '$argon2id$v=19$m=65536,t=3,p=4$YWRtaW5zYWx0MTIz$placeholder',
-  'admin'
-)
-ON CONFLICT (username) DO NOTHING;

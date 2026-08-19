@@ -35,7 +35,6 @@ services:
     container_name: psh-db-init
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/psh_ticketing
-      NODE_PATH: /app/server/node_modules
       NODE_ENV: production
     command: node database/init.js
     working_dir: /app
