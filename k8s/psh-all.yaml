@@ -3,7 +3,7 @@
 # Deploy everything:  kubectl apply -f k8s/psh-all.yaml
 # Tear down:         kubectl delete -f k8s/psh-all.yaml
 #
-# Image: aravindh146/psh:latest  (Docker Hub)
+# Image: aravindh146/psh:v1.1  (Docker Hub)
 # Change SESSION_SECRET and POSTGRES_PASSWORD to strong values before production deploy.
 # =============================================================================
 
@@ -47,9 +47,6 @@ metadata:
 data:
   NODE_ENV: "production"
   PORT: "5000"
-  NODE_PATH: "/app/server/node_modules"
-  # CLIENT_URL is the public URL where users access the app.
-  # Update this to your LoadBalancer IP or domain after first deploy.
   CLIENT_URL: "http://localhost:5000"
 
 ---
@@ -187,24 +184,18 @@ spec:
       # ── Init container: runs DB schema + seed once per pod start ─────────
       initContainers:
         - name: db-init
-          image: aravindh146/psh:latest
+          image: aravindh146/psh:v1.1
           imagePullPolicy: Always
           workingDir: /app
-          # Wait for postgres to accept connections, then run init.js
           command:
             - /bin/sh
             - -c
             - |
-              echo "Waiting for PostgreSQL to be ready..."
-              until node -e "
-                const {Pool} = require('pg');
-                const p = new Pool({ connectionString: process.env.DATABASE_URL });
-                p.query('SELECT 1').then(() => { p.end(); process.exit(0); }).catch(() => process.exit(1));
-              " 2>/dev/null; do
-                echo "  postgres not ready yet, retrying in 3s...";
-                sleep 3;
+              echo "Waiting for PostgreSQL..."
+              until node -e "const {Pool}=require('pg');const p=new Pool({connectionString:process.env.DATABASE_URL});p.query('SELECT 1').then(()=>{p.end();process.exit(0)}).catch(()=>process.exit(1))" 2>/dev/null; do
+                echo "  retrying in 3s..."; sleep 3
               done
-              echo "PostgreSQL is ready. Running database init..."
+              echo "PostgreSQL ready. Running init..."
               node database/init.js
           env:
             - name: DATABASE_URL
@@ -212,11 +203,6 @@ spec:
                 secretKeyRef:
                   name: psh-secrets
                   key: DATABASE_URL
-            - name: NODE_PATH
-              valueFrom:
-                configMapKeyRef:
-                  name: psh-config
-                  key: NODE_PATH
             - name: NODE_ENV
               valueFrom:
                 configMapKeyRef:
@@ -226,7 +212,7 @@ spec:
       # ── Main container: Express server ────────────────────────────────────
       containers:
         - name: psh-app
-          image: aravindh146/psh:latest
+          image: aravindh146/psh:v1.1
           imagePullPolicy: Always
           ports:
             - containerPort: 5000

@@ -34,9 +34,11 @@ COPY database/ ./database/
 # Copy built React app — server.js serves it as static files in production
 COPY --from=client-builder /build/client/dist ./client/dist
 
-# NODE_PATH lets database/init.js resolve argon2/pg from server/node_modules
-# without requiring a separate npm install in the database directory
-ENV NODE_PATH=/app/server/node_modules
+# Symlink /app/node_modules → /app/server/node_modules so that
+# database/init.js can resolve argon2/pg/dotenv via normal Node.js
+# module traversal (no NODE_PATH needed, works in all environments)
+RUN ln -s /app/server/node_modules /app/node_modules
+
 ENV NODE_ENV=production
 ENV PORT=5000
 
