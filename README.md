@@ -116,7 +116,82 @@ Open **http://localhost:5173** in your browser and log in.
 
 ---
 
-## Option 2 — Docker Compose (one command)
+## Option 2 — Run on KillerCoda (free, no install needed)
+
+> Try the full app in a live Kubernetes cluster in your browser — zero setup required.
+
+### Steps
+
+**1. Open a free Kubernetes playground**
+
+Go to → **https://killercoda.com/playgrounds/scenario/kubernetes**
+
+Click **Start** and wait ~30 seconds for the cluster to be ready.
+
+---
+
+**2. Deploy everything with one command**
+
+Paste this into the terminal:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/Aravindh-29/PSH/main/k8s/psh-all.yaml
+```
+
+---
+
+**3. Wait for all pods to be Running**
+
+```bash
+kubectl get pods -n psh -w
+```
+
+Wait until you see all three pods with `Running` status and `1/1` ready:
+
+```
+NAME                        READY   STATUS    RESTARTS
+postgres-xxxx               1/1     Running   0
+psh-app-xxxx                1/1     Running   0
+psh-app-yyyy                1/1     Running   0
+```
+
+> The `psh-app` pods have an init container that auto-creates the database schema and seeds all user accounts before the server starts. First startup takes ~60 seconds.
+
+---
+
+**4. Open the app**
+
+Click the **"Traffic / Ports"** tab at the top of the KillerCoda terminal panel, enter port **`30080`**, and click **Access**.
+
+Or get the node IP and open it manually:
+
+```bash
+kubectl get nodes -o wide
+# copy the INTERNAL-IP of the node
+```
+
+Then open: `http://<node-ip>:30080`
+
+---
+
+**5. Log in**
+
+| Role | Username | Password |
+|---|---|---|
+| Admin | `admin` | `Admin@123` |
+| Employee | `john.smith` | `Employee@123` |
+
+---
+
+**Tear down when done**
+
+```bash
+kubectl delete -f https://raw.githubusercontent.com/Aravindh-29/PSH/main/k8s/psh-all.yaml
+```
+
+---
+
+## Option 3 — Docker Compose (one command, local)
 
 ### Prerequisites
 
@@ -151,7 +226,7 @@ docker compose down -v       # also wipe the database
 
 ---
 
-## Option 3 — Kubernetes
+## Option 4 — Kubernetes (your own cluster)
 
 ### Prerequisites
 
