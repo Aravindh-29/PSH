@@ -32,6 +32,13 @@ SERVICE_NAME="servit"
 NODE_MAJOR="20"
 CRED_FILE="/root/servit-credentials.txt"
 
+# ── Auto-detect: if script is run from inside the cloned repo ────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "${SCRIPT_DIR}/package.json" && -d "${SCRIPT_DIR}/server" && -d "${SCRIPT_DIR}/client" ]]; then
+  warn "Repo detected at ${SCRIPT_DIR} — using it instead of cloning"
+  APP_DIR="${SCRIPT_DIR}"
+fi
+
 # ── Generate secrets (preserved if .env already exists) ──────────
 NEW_DB_PASS="$(openssl rand -hex 16)"
 NEW_SESSION_SECRET="$(openssl rand -hex 32)"
@@ -127,8 +134,10 @@ fi
 # STEP 5 — Clone repository
 # ════════════════════════════════════════════════════════════════
 step "5 / 9  Repository"
-if [[ -d "${APP_DIR}/.git" ]]; then
-  warn "Repo already cloned — pulling latest changes"
+if [[ "${APP_DIR}" == "${SCRIPT_DIR}" ]]; then
+  ok "Already inside cloned repo at ${APP_DIR} — skipping clone"
+elif [[ -d "${APP_DIR}/.git" ]]; then
+  warn "Repo already exists at ${APP_DIR} — pulling latest changes"
   git -C "${APP_DIR}" pull origin main 2>&1 | tail -3
 else
   info "Cloning ${REPO_URL} → ${APP_DIR}"
