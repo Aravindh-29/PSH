@@ -110,7 +110,7 @@ export default function Topbar({ onMenuClick }) {
         <input
           ref={inputRef}
           type="text"
-          placeholder="Search tickets, users, modules..."
+          placeholder="Search tickets..."
           value={query}
           onChange={e => setQuery(e.target.value)}
           onFocus={() => { if (results.length) setOpen(true); }}
