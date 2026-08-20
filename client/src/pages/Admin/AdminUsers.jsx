@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { KeyRound, X } from 'lucide-react';
+import { KeyRound, X, Eye, EyeOff } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import './Admin.css';
@@ -11,9 +11,10 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(false);
 
   // password reset modal
-  const [resetTarget, setResetTarget] = useState(null); // { id, full_name }
+  const [resetTarget, setResetTarget] = useState(null);
   const [newPassword, setNewPassword] = useState('');
   const [resetting, setResetting] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
 
   const load = () => api.get('/users').then(r => setUsers(r.data.users)).catch(() => {});
   useEffect(() => { load(); }, []);
@@ -55,6 +56,7 @@ export default function AdminUsers() {
       toast.success(`Password reset for ${resetTarget.full_name}`);
       setResetTarget(null);
       setNewPassword('');
+      setShowNewPw(false);
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Failed to reset password');
     } finally {
@@ -167,16 +169,25 @@ export default function AdminUsers() {
             <form onSubmit={handleResetPassword}>
               <div className="form-group" style={{ marginBottom: 16 }}>
                 <label>New Password *</label>
-                <input
-                  type="password"
-                  required
-                  autoFocus
-                  minLength={6}
-                  placeholder="Minimum 6 characters"
-                  value={newPassword}
-                  onChange={e => setNewPassword(e.target.value)}
-                  style={{ padding: '9px 10px', border: '1.5px solid #E2E8F0', borderRadius: 7, fontSize: 13.5, outline: 'none', width: '100%', boxSizing: 'border-box', marginTop: 4 }}
-                />
+                <div style={{ position: 'relative', marginTop: 4 }}>
+                  <input
+                    type={showNewPw ? 'text' : 'password'}
+                    required
+                    autoFocus
+                    minLength={6}
+                    placeholder="Minimum 6 characters"
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    style={{ padding: '9px 38px 9px 10px', border: '1.5px solid #E2E8F0', borderRadius: 7, fontSize: 13.5, outline: 'none', width: '100%', boxSizing: 'border-box' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPw(v => !v)}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center' }}
+                  >
+                    {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
               <div className="modal-actions">
                 <button type="button" className="btn-cancel" onClick={() => setResetTarget(null)}>Cancel</button>
