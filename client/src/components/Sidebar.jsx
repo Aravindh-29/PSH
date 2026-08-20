@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, ClipboardList, PlusCircle, BookOpen,
-  BarChart2, Users, Settings, ShieldCheck, LogOut, ChevronLeft, LayoutList
+  BarChart2, Users, Settings, ShieldCheck, LogOut, ChevronLeft, LayoutList, KeyRound
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -23,9 +23,10 @@ const NAV_COMMON = [
 ];
 
 const ADMIN_NAV = [
-  { to: '/admin/users', icon: Users, label: 'Users' },
-  { to: '/admin/modules', icon: Settings, label: 'Configuration' },
-  { to: '/audit-logs', icon: ShieldCheck, label: 'Audit Logs' },
+  { to: '/admin/users',   icon: Users,      label: 'Users'         },
+  { to: '/admin/modules', icon: Settings,   label: 'Configuration' },
+  { to: '/admin/sso',     icon: KeyRound,   label: 'SSO'           },
+  { to: '/audit-logs',    icon: ShieldCheck, label: 'Audit Logs'   },
 ];
 
 function NavItem({ to, icon: Icon, label, exact, disabled, collapsed }) {

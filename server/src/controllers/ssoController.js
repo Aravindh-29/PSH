@@ -4,21 +4,46 @@ const logger = require('../utils/logger');
 
 let _client = null;
 
+// Called by ssoConfigController after config is saved/cleared
+function invalidateClient() {
+  _client = null;
+  logger.info('SSO: OIDC client cache invalidated');
+}
+
 async function getClient() {
   if (_client) return _client;
 
-  const { SSO_ISSUER_URL, SSO_CLIENT_ID, SSO_CLIENT_SECRET, SSO_REDIRECT_URI } = process.env;
-  if (!SSO_ISSUER_URL || !SSO_CLIENT_ID || !SSO_CLIENT_SECRET || !SSO_REDIRECT_URI) return null;
+  // 1. Try DB config (set via Admin UI)
+  let cfg = null;
+  try {
+    const r = await pool.query(
+      'SELECT issuer_url, client_id, client_secret, redirect_uri FROM sso_config WHERE id = 1 AND is_enabled = true'
+    );
+    if (r.rows[0]) {
+      const row = r.rows[0];
+      cfg = { issuerUrl: row.issuer_url, clientId: row.client_id, clientSecret: row.client_secret, redirectUri: row.redirect_uri };
+    }
+  } catch { /* table may not exist yet */ }
+
+  // 2. Fall back to environment variables
+  if (!cfg) {
+    const { SSO_ISSUER_URL, SSO_CLIENT_ID, SSO_CLIENT_SECRET, SSO_REDIRECT_URI } = process.env;
+    if (SSO_ISSUER_URL && SSO_CLIENT_ID && SSO_CLIENT_SECRET && SSO_REDIRECT_URI) {
+      cfg = { issuerUrl: SSO_ISSUER_URL, clientId: SSO_CLIENT_ID, clientSecret: SSO_CLIENT_SECRET, redirectUri: SSO_REDIRECT_URI };
+    }
+  }
+
+  if (!cfg) return null;
 
   try {
-    const issuer = await Issuer.discover(SSO_ISSUER_URL);
+    const issuer = await Issuer.discover(cfg.issuerUrl);
     _client = new issuer.Client({
-      client_id: SSO_CLIENT_ID,
-      client_secret: SSO_CLIENT_SECRET,
-      redirect_uris: [SSO_REDIRECT_URI],
+      client_id:      cfg.clientId,
+      client_secret:  cfg.clientSecret,
+      redirect_uris:  [cfg.redirectUri],
       response_types: ['code'],
     });
-    logger.info(`SSO: OIDC client initialized — issuer ${SSO_ISSUER_URL}`);
+    logger.info(`SSO: OIDC client initialized — issuer ${cfg.issuerUrl}`);
   } catch (err) {
     logger.error('SSO: OIDC discovery failed —', err.message);
     _client = null;
@@ -152,11 +177,20 @@ async function handleCallback(req, res, next) {
 
 // GET /api/auth/sso-status — lets the frontend know if SSO is available
 async function ssoStatus(req, res) {
+  // Check DB config first
+  try {
+    const r = await pool.query(
+      'SELECT provider_name FROM sso_config WHERE id = 1 AND is_enabled = true'
+    );
+    if (r.rows[0]) {
+      return res.json({ enabled: true, providerName: r.rows[0].provider_name || 'SSO' });
+    }
+  } catch { /* table may not exist */ }
+
+  // Fall back to env vars
   const configured = !!(
-    process.env.SSO_ISSUER_URL &&
-    process.env.SSO_CLIENT_ID &&
-    process.env.SSO_CLIENT_SECRET &&
-    process.env.SSO_REDIRECT_URI
+    process.env.SSO_ISSUER_URL && process.env.SSO_CLIENT_ID &&
+    process.env.SSO_CLIENT_SECRET && process.env.SSO_REDIRECT_URI
   );
   res.json({
     enabled: configured,
@@ -164,4 +198,4 @@ async function ssoStatus(req, res) {
   });
 }
 
-module.exports = { redirectToProvider, handleCallback, ssoStatus };
+module.exports = { redirectToProvider, handleCallback, ssoStatus, invalidateClient };

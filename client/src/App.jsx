@@ -13,6 +13,7 @@ import AdminUsers from './pages/Admin/AdminUsers';
 import UserWiseTickets from './pages/Admin/UserWiseTickets';
 import AdminUserDetail from './pages/Admin/AdminUserDetail';
 import AdminModules from './pages/Admin/AdminModules';
+import SSOConfig from './pages/Admin/SSOConfig';
 import AuditLogs from './pages/Audit/AuditLogs';
 import Reports from './pages/Reports/Reports';
 import KnowledgeBase from './pages/KnowledgeBase/KnowledgeBase';
@@ -49,6 +50,7 @@ function AppRoutes() {
         <Route path="admin/user-tickets/:userId" element={<RequireAdmin><AdminUserDetail /></RequireAdmin>} />
         <Route path="admin/modules" element={<RequireAdmin><AdminModules /></RequireAdmin>} />
         <Route path="audit-logs" element={<RequireAdmin><AuditLogs /></RequireAdmin>} />
+        <Route path="admin/sso" element={<RequireAdmin><SSOConfig /></RequireAdmin>} />
         <Route path="reports" element={<Reports />} />
         <Route path="knowledge-base" element={<KnowledgeBase />} />
         <Route path="knowledge-base/:id" element={<KBArticle />} />

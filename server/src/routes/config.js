@@ -1,6 +1,7 @@
 const express = require('express');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const configCtrl = require('../controllers/configController');
+const configCtrl    = require('../controllers/configController');
+const ssoConfigCtrl = require('../controllers/ssoConfigController');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -21,5 +22,11 @@ router.post('/admin/categories', requireAdmin, configCtrl.createCategory);
 router.put('/admin/categories/:id', requireAdmin, configCtrl.updateCategory);
 router.delete('/admin/categories/:id', requireAdmin, configCtrl.deleteCategory);
 router.post('/admin/reset-fields', requireAdmin, configCtrl.resetFields);
+
+// SSO configuration (admin only)
+router.get   ('/admin/sso',      requireAdmin, ssoConfigCtrl.getSSOConfig);
+router.post  ('/admin/sso',      requireAdmin, ssoConfigCtrl.saveSSOConfig);
+router.post  ('/admin/sso/test', requireAdmin, ssoConfigCtrl.testSSOConnection);
+router.delete('/admin/sso',      requireAdmin, ssoConfigCtrl.clearSSOConfig);
 
 module.exports = router;

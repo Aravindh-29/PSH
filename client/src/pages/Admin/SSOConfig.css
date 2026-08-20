@@ -1,0 +1,246 @@
+/* ── Page shell ─────────────────────────────────────────────────────────────── */
+.sso-page { max-width: 860px; display: flex; flex-direction: column; gap: 20px; }
+
+.sso-loading {
+  display: flex; align-items: center; gap: 10px;
+  color: #64748b; font-size: 14px; padding: 40px;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+.sso-header {
+  display: flex; align-items: flex-start;
+  justify-content: space-between; gap: 16px; flex-wrap: wrap;
+}
+.sso-title { font-size: 22px; font-weight: 700; color: #0d1b2a; }
+.sso-sub   { font-size: 13px; color: #64748b; margin-top: 3px; }
+
+/* Status pill */
+.sso-status-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 14px; border-radius: 20px;
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+  flex-shrink: 0; margin-top: 4px;
+}
+.sso-status-active   { background: #dcfce7; color: #16a34a; }
+.sso-status-disabled { background: #fef9c3; color: #a16207; }
+.sso-status-none     { background: #f1f5f9; color: #64748b; }
+
+/* ── Cards ──────────────────────────────────────────────────────────────────── */
+.sso-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 22px 24px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+}
+.sso-card-title {
+  font-size: 13.5px; font-weight: 600; color: #0f172a;
+  margin-bottom: 16px;
+}
+
+/* ── Provider preset buttons ────────────────────────────────────────────────── */
+.sso-presets { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.sso-preset-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px; font-weight: 500; color: #334155;
+  cursor: pointer; transition: all 0.15s;
+}
+.sso-preset-btn:hover  { border-color: #e85d04; color: #e85d04; background: #fff7f0; }
+.sso-preset-btn.active { border-color: #e85d04; background: #fff7f0; color: #e85d04; }
+
+.sso-preset-icon {
+  width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+}
+.sso-preset-letter {
+  width: 18px; height: 18px; border-radius: 4px;
+  background: #e85d04; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.sso-preset-hint {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 10px; font-size: 12px; color: #64748b;
+}
+
+/* ── Form ───────────────────────────────────────────────────────────────────── */
+.sso-form { display: flex; flex-direction: column; gap: 18px; }
+
+.sso-field-group { display: flex; flex-direction: column; gap: 6px; }
+
+.sso-label {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 13px; font-weight: 600; color: #334155;
+}
+.sso-req          { color: #e85d04; }
+.sso-hint-inline  { font-size: 11.5px; font-weight: 400; color: #94a3b8; }
+
+.sso-input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px; color: #0f172a;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.sso-input:focus { border-color: #e85d04; }
+
+/* Issuer URL row with test button */
+.sso-input-row { display: flex; gap: 10px; }
+.sso-input-row .sso-input { flex: 1; }
+
+.sso-test-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 16px; border-radius: 8px;
+  border: 1.5px solid #e2e8f0;
+  font-size: 12.5px; font-weight: 600; cursor: pointer;
+  white-space: nowrap; transition: all 0.15s;
+  background: #f8fafc; color: #475569;
+  flex-shrink: 0;
+}
+.sso-test-btn:hover   { border-color: #e85d04; color: #e85d04; background: #fff7f0; }
+.sso-test-btn.loading { opacity: 0.7; cursor: not-allowed; }
+.sso-test-btn.ok      { border-color: #16a34a; color: #16a34a; background: #f0fdf4; }
+.sso-test-btn.fail    { border-color: #dc2626; color: #dc2626; background: #fef2f2; }
+
+.sso-test-result {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; padding: 7px 12px;
+  border-radius: 7px; margin-top: 2px;
+}
+.sso-test-result code { font-size: 11.5px; background: transparent; }
+.sso-test-result.ok   { background: #f0fdf4; color: #15803d; }
+.sso-test-result.fail { background: #fef2f2; color: #dc2626; }
+
+/* Secret saved state */
+.sso-secret-saved {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px;
+  background: #f0fdf4; border: 1.5px solid #bbf7d0;
+  border-radius: 8px; font-size: 13px; color: #16a34a;
+}
+.sso-change-link {
+  margin-left: auto; background: none; border: none;
+  color: #e85d04; font-size: 12px; font-weight: 600;
+  cursor: pointer; text-decoration: underline;
+}
+
+/* Secret input with eye toggle */
+.sso-input-wrap { position: relative; }
+.sso-input-wrap .sso-input { padding-right: 38px; }
+.sso-eye {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer; color: #94a3b8;
+  display: flex; align-items: center;
+}
+.sso-eye:hover { color: #475569; }
+
+/* Redirect URI box */
+.sso-redirect-box {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  background: #f8fafc; border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+}
+.sso-redirect-box code { flex: 1; font-size: 12.5px; color: #334155; word-break: break-all; }
+.sso-copy-btn {
+  padding: 4px 12px; border-radius: 6px;
+  background: #e85d04; color: #fff;
+  border: none; font-size: 12px; font-weight: 600; cursor: pointer;
+  flex-shrink: 0; transition: opacity 0.12s;
+}
+.sso-copy-btn:hover { opacity: 0.85; }
+
+/* Toggles */
+.sso-toggles { display: flex; flex-direction: column; gap: 14px; margin-top: 4px; }
+
+.sso-toggle-row {
+  display: flex; align-items: flex-start;
+  justify-content: space-between; gap: 16px;
+}
+.sso-toggle-label { font-size: 13px; font-weight: 600; color: #0f172a; }
+.sso-toggle-sub   { font-size: 12px; color: #64748b; margin-top: 2px; max-width: 560px; }
+
+.sso-toggle {
+  position: relative; width: 44px; height: 24px; flex-shrink: 0;
+  background: #cbd5e1; border: none; border-radius: 12px;
+  cursor: pointer; transition: background 0.2s; margin-top: 2px;
+}
+.sso-toggle.on { background: #e85d04; }
+.sso-toggle-knob {
+  position: absolute; top: 3px; left: 3px;
+  width: 18px; height: 18px;
+  background: #fff; border-radius: 50%;
+  transition: transform 0.2s;
+  display: block;
+}
+.sso-toggle.on .sso-toggle-knob { transform: translateX(20px); }
+
+/* ── Action buttons ─────────────────────────────────────────────────────────── */
+.sso-actions {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 22px; padding-top: 18px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.sso-save-btn {
+  display: flex; align-items: center; gap: 7px;
+  padding: 9px 22px; border-radius: 8px;
+  background: #e85d04; color: #fff; border: none;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: opacity 0.12s;
+}
+.sso-save-btn:hover    { opacity: 0.88; }
+.sso-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.sso-clear-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 9px 18px; border-radius: 8px;
+  background: none; border: 1.5px solid #fecaca;
+  color: #dc2626; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.12s; margin-left: auto;
+}
+.sso-clear-btn:hover { background: #fef2f2; }
+
+/* ── Guide card ─────────────────────────────────────────────────────────────── */
+.sso-guide-card { background: #fafafa; }
+
+.sso-guide-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 12px; margin-bottom: 20px;
+}
+.sso-guide-item {
+  padding: 12px 14px;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+}
+.sso-guide-name { font-size: 13px; font-weight: 600; color: #0f172a; margin-bottom: 4px; }
+.sso-guide-url  { font-size: 11.5px; color: #64748b; word-break: break-all; display: block; }
+.sso-guide-note { font-size: 11.5px; color: #94a3b8; margin-top: 4px; }
+
+.sso-guide-steps { display: flex; flex-direction: column; gap: 10px; }
+.sso-guide-step  {
+  display: flex; align-items: flex-start; gap: 10px;
+  font-size: 13px; color: #475569;
+}
+.sso-guide-step span {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #e85d04; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 1px;
+}
+
+/* ── Spinner ────────────────────────────────────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 0.8s linear infinite; }
+
+@media (max-width: 640px) {
+  .sso-guide-grid { grid-template-columns: 1fr; }
+  .sso-input-row  { flex-direction: column; }
+}

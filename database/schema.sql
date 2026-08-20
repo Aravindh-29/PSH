@@ -130,6 +130,20 @@ CREATE TABLE IF NOT EXISTS ticket_fields (
 -- Custom field values for non-system fields (key → value map)
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS custom_data JSONB NOT NULL DEFAULT '{}';
 
+-- SSO configuration (single row, managed via Admin UI)
+CREATE TABLE IF NOT EXISTS sso_config (
+  id             INTEGER      PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  provider_name  VARCHAR(100) NOT NULL DEFAULT '',
+  issuer_url     TEXT         NOT NULL DEFAULT '',
+  client_id      TEXT         NOT NULL DEFAULT '',
+  client_secret  TEXT         NOT NULL DEFAULT '',
+  redirect_uri   TEXT         NOT NULL DEFAULT '',
+  auto_provision BOOLEAN      NOT NULL DEFAULT false,
+  is_enabled     BOOLEAN      NOT NULL DEFAULT false,
+  updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_by     UUID         REFERENCES users(id)
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_tickets_priority ON tickets(priority) WHERE deleted_at IS NULL;
