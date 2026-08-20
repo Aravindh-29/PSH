@@ -4,7 +4,7 @@
   "description": "Pure Storage Horizon Internal Ticketing System",
   "scripts": {
     "setup": "npm run install:all && npm run build:client",
-    "start": "cd server && node ../database/init.js && node src/server.js",
+    "start": "node server/src/server.js",
     "dev": "concurrently --names \"API,UI\" --prefix-colors \"cyan,magenta\" \"cd server && npm run dev\" \"cd client && npm run dev\"",
     "install:all": "cd server && npm install && cd ../client && npm install",
     "build:client": "cd client && npm run build",

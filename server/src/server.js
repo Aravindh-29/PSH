@@ -69,6 +69,8 @@ async function start() {
   try {
     await pool.query('SELECT 1');
     logger.info('Database connected');
+    await require('./dbInit')();
+    logger.info('Database ready');
     app.listen(PORT, () => logger.info(`Server running on port ${PORT}`));
   } catch (err) {
     logger.error('Failed to connect to database', err);
