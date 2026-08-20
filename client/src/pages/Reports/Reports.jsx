@@ -8,7 +8,7 @@ import {
   CheckCircle, Clock, AlertTriangle, Activity, User, Globe,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
-import XLSX from 'xlsx-js-style';
+import XLSX from '../../utils/xlsxShim';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
 import { format } from 'date-fns';
@@ -75,7 +75,7 @@ export default function Reports() {
       .finally(() => setLoading(false));
   }, [mode]);
 
-  const exportToExcel = useCallback(() => {
+  const exportToExcel = useCallback(async () => {
     if (!data) return;
     setExporting(true);
 
@@ -346,7 +346,7 @@ export default function Reports() {
     XLSX.utils.book_append_sheet(wb, ws7, 'All Tickets');
 
     const filename = `PSH_Report_${(user?.fullName || 'User').replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
-    XLSX.writeFile(wb, filename);
+    await XLSX.writeFile(wb, filename);
     setExporting(false);
   }, [data, user]);
 

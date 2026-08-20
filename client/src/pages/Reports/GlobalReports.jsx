@@ -6,7 +6,7 @@ import {
 import {
   Download, Users, Ticket, CheckCircle, AlertTriangle, Activity, Clock, TrendingUp,
 } from 'lucide-react';
-import XLSX from 'xlsx-js-style';
+import XLSX from '../../utils/xlsxShim';
 import api from '../../api/axios';
 import { format } from 'date-fns';
 import './Reports.css';
@@ -49,7 +49,7 @@ export default function GlobalReports() {
       .finally(() => setLoading(false));
   }, []);
 
-  const exportToExcel = useCallback(() => {
+  const exportToExcel = useCallback(async () => {
     if (!data) return;
     setExporting(true);
 
@@ -319,7 +319,7 @@ export default function GlobalReports() {
     ws8['!freeze'] = { xSplit: 0, ySplit: 2 };
     XLSX.utils.book_append_sheet(wb, ws8, 'All Tickets');
 
-    XLSX.writeFile(wb, `PSH_Global_Report_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+    await XLSX.writeFile(wb, `PSH_Global_Report_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
     setExporting(false);
   }, [data]);
 
