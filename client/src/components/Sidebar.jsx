@@ -56,19 +56,11 @@ export default function Sidebar({ collapsed, onToggle }) {
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-logo">
-        <div className="sidebar-logo-icon">
-          <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
-            <path d="M16 2L29 9V23L16 30L3 23V9L16 2Z" fill="#E85D04" />
-            <path d="M16 8L23 12V20L16 24L9 20V12L16 8Z" fill="white" opacity="0.9" />
-          </svg>
-        </div>
-        {!collapsed && (
-          <div className="sidebar-logo-text">
-            <span className="logo-pure">PURE</span><span className="logo-storage">STORAGE</span>
-            <div className="logo-horizon">HORIZON</div>
-            <div className="logo-sub">TICKETING SYSTEM</div>
-          </div>
-        )}
+        <img
+          src="/psh.png"
+          alt="SERV-IT"
+          className={collapsed ? 'sidebar-logo-sm' : 'sidebar-logo-img'}
+        />
       </div>
 
       <nav className="sidebar-nav">

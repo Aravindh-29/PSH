@@ -155,6 +155,10 @@
 .dash-chart-card, .dash-donut-card {
   background: white; border: 1px solid var(--border); border-radius: 10px;
   padding: 20px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+}
+.dash-chart-body {
+  flex: 1; min-height: 200px;
 }
 .dash-card-header {
   display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;
@@ -166,7 +170,7 @@
   border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer;
 }
 
-.donut-wrap { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.donut-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
 .donut-center {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   text-align: center; pointer-events: none;

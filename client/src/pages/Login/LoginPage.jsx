@@ -189,25 +189,14 @@ export default function LoginPage() {
       <ParticleCanvas />
       <div className="login-gradient-overlay" />
 
-      {/* Top logo bar */}
-      <div className="login-topbar">
-        <div className="login-brand">
-          <svg width="34" height="34" viewBox="0 0 32 32" fill="none">
-            <path d="M16 2L29 9V23L16 30L3 23V9L16 2Z" fill="#E85D04" />
-            <path d="M16 8L23 12V20L16 24L9 20V12L16 8Z" fill="white" opacity="0.9" />
-          </svg>
-          <span className="login-brand-name"><strong>PURE</strong>STORAGE<sup>®</sup></span>
-        </div>
-      </div>
-
       {/* Center layout */}
       <div className="login-inner">
         {/* Left branding */}
         <div className="login-left">
+          <img src="/psh.png" alt="SERV-IT" className="login-left-logo" />
           <p className="login-welcome">Welcome to</p>
           <h1 className="login-title">
-            Pure Storage<br />
-            <span className="login-title-orange">Horizon</span>
+            <span className="login-title-orange">SERV-IT</span>
           </h1>
           <p className="login-subtitle">Enterprise Ticketing Platform</p>
           <div className="login-rule" />
@@ -297,7 +286,7 @@ export default function LoginPage() {
             )}
           </form>
 
-          <p className="login-footer">© 2024 Pure Storage Horizon. All rights reserved.</p>
+          <p className="login-footer">© 2025 SERV-IT. All rights reserved.</p>
         </div>
         </div>
       </div>
