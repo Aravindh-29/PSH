@@ -3,7 +3,7 @@ import api from '../../api/axios';
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval,
          getDay, isToday, subMonths, addMonths } from 'date-fns';
 import { ChevronLeft, ChevronRight, Users, FileText, Activity,
-         Clock, X, ArrowRight, History } from 'lucide-react';
+         Clock, X, ArrowRight, History, Search } from 'lucide-react';
 import './AuditLogs.css';
 
 // ── Action badge config ────────────────────────────────────────────────────────
@@ -186,7 +186,8 @@ export default function AuditLogs() {
   const [loading,       setLoading]       = useState(true);
   const [page,          setPage]          = useState(1);
   const [totalPages,    setTotalPages]    = useState(1);
-  const [historyTicket, setHistoryTicket] = useState(null); // ticket number for modal
+  const [historyTicket, setHistoryTicket] = useState(null);
+  const [search, setSearch] = useState('');
 
   const LIMIT = 50;
 
@@ -207,8 +208,17 @@ export default function AuditLogs() {
   }, []);
 
   useEffect(() => { load(selectedDate, viewMonth, 1); }, [selectedDate, viewMonth]);
+  useEffect(() => { setSearch(''); }, [selectedDate]);
 
   const displayDate = selectedDate ? format(parseISO(selectedDate), 'EEEE, MMMM d, yyyy') : '—';
+
+  const filteredLogs = search.trim()
+    ? logs.filter(l => {
+        const q = search.toLowerCase();
+        return (l.employee_name || '').toLowerCase().includes(q)
+            || (l.ticket_number || '').toLowerCase().includes(q);
+      })
+    : logs;
 
   return (
     <div className="al-page">
@@ -253,7 +263,28 @@ export default function AuditLogs() {
         <div className="al-main">
           <div className="al-table-header">
             <span className="al-table-title">Activity on {displayDate}</span>
-            {!loading && <span className="al-count-chip">{summary.total} entries</span>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, padding: '6px 10px', minWidth: 220 }}>
+                <Search size={13} style={{ color: '#94a3b8', flexShrink: 0 }} />
+                <input
+                  type="text"
+                  placeholder="Search by name or ticket..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  style={{ border: 'none', outline: 'none', fontSize: 12.5, background: 'transparent', width: '100%', color: '#374151' }}
+                />
+                {search && (
+                  <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center', padding: 0 }}>
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+              {!loading && (
+                <span className="al-count-chip">
+                  {search ? `${filteredLogs.length} / ${summary.total}` : `${summary.total}`} entries
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="al-table-scroll">
@@ -274,7 +305,10 @@ export default function AuditLogs() {
                 {!loading && logs.length === 0 && (
                   <tr><td colSpan={7} className="al-empty">No activity on this date</td></tr>
                 )}
-                {logs.map((l, i) => (
+                {!loading && logs.length > 0 && filteredLogs.length === 0 && (
+                  <tr><td colSpan={7} className="al-empty">No results for "{search}"</td></tr>
+                )}
+                {filteredLogs.map((l, i) => (
                   <tr key={l.id || i} className={i % 2 === 0 ? '' : 'al-row-alt'}>
                     <td className="al-td-time">
                       <Clock size={11} style={{ marginRight: 4, opacity: 0.5, flexShrink: 0 }} />
