@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Plus, Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { StatusBadge, PriorityBadge } from '../../components/Badge';
 import api from '../../api/axios';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import toast from 'react-hot-toast';
 import './TicketList.css';
 
@@ -27,42 +27,71 @@ function getPageWindow(current, total) {
   return result;
 }
 
-export default function TicketList({ myTickets }) {
-  const [tickets, setTickets] = useState([]);
-  const [pagination, setPagination] = useState({ total: 0, page: 1, pages: 1 });
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState({ status: '', priority: '' });
-  const [page, setPage] = useState(1);
-  const [deleteId, setDeleteId] = useState(null);
+function SortIcon({ field, sort }) {
+  if (sort.field !== field) return <ChevronsUpDown size={12} className="sort-icon sort-icon-idle" />;
+  return sort.dir === 'asc'
+    ? <ChevronUp size={12} className="sort-icon sort-icon-active" />
+    : <ChevronDown size={12} className="sort-icon sort-icon-active" />;
+}
 
-  const fetchTickets = async (p = page) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ page: p, limit: LIMIT });
-      if (search) params.set('search', search);
-      if (filters.status) params.set('status', filters.status);
-      if (filters.priority) params.set('priority', filters.priority);
-      if (myTickets) params.set('myTickets', 'true');
-      const res = await api.get(`/tickets?${params}`);
-      setTickets(res.data.tickets);
-      setPagination(res.data.pagination);
-    } catch {
-      toast.error('Failed to load tickets');
-    } finally {
-      setLoading(false);
-    }
+export default function TicketList({ myTickets }) {
+  const [tickets, setTickets]       = useState([]);
+  const [pagination, setPagination] = useState({ total: 0, page: 1, pages: 1 });
+  const [loading, setLoading]       = useState(true);
+  const [search, setSearch]         = useState('');
+  const [filters, setFilters]       = useState({ status: '', priority: '' });
+  const [sort, setSort]             = useState({ field: 'updated_at', dir: 'desc' });
+  const [page, setPage]             = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [deleteId, setDeleteId]     = useState(null);
+
+  // Single unified effect — all fetch triggers go through here.
+  // Listing every dependency explicitly prevents stale-closure bugs.
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({
+          page, limit: LIMIT, sortBy: sort.field, sortDir: sort.dir,
+        });
+        if (search)          params.set('search', search);
+        if (filters.status)  params.set('status', filters.status);
+        if (filters.priority) params.set('priority', filters.priority);
+        if (myTickets)       params.set('myTickets', 'true');
+        const res = await api.get(`/tickets?${params}`);
+        if (!cancelled) {
+          setTickets(res.data.tickets);
+          setPagination(res.data.pagination);
+        }
+      } catch {
+        if (!cancelled) toast.error('Failed to load tickets');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, sort.field, sort.dir, search, filters.status, filters.priority, myTickets, refreshKey]);
+
+  const toggleSort = (field) => {
+    const next = sort.field === field
+      ? { field, dir: sort.dir === 'asc' ? 'desc' : 'asc' }
+      : { field, dir: field === 'updated_at' ? 'desc' : 'asc' };
+    setSort(next);
+    setPage(1); // React 18 batches both → single re-render → effect fires once with new values
   };
 
-  useEffect(() => { fetchTickets(1); setPage(1); }, [search, filters]);
-  useEffect(() => { fetchTickets(page); }, [page]);
+  const handleSearch = (val) => { setSearch(val); setPage(1); };
+  const handleFilter = (key, val) => { setFilters(f => ({ ...f, [key]: val })); setPage(1); };
 
   const confirmDelete = async () => {
     try {
       await api.delete(`/tickets/${deleteId}`);
       toast.success('Ticket deleted');
       setDeleteId(null);
-      fetchTickets(page);
+      setRefreshKey(k => k + 1);
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Delete failed');
     }
@@ -87,14 +116,14 @@ export default function TicketList({ myTickets }) {
             type="text"
             placeholder="Search by ticket ID, subject, customer..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => handleSearch(e.target.value)}
           />
         </div>
-        <select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}>
+        <select value={filters.status} onChange={e => handleFilter('status', e.target.value)}>
           <option value="">All Statuses</option>
           {STATUSES.map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
         </select>
-        <select value={filters.priority} onChange={e => setFilters(f => ({ ...f, priority: e.target.value }))}>
+        <select value={filters.priority} onChange={e => handleFilter('priority', e.target.value)}>
           <option value="">All Priorities</option>
           {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
@@ -104,10 +133,23 @@ export default function TicketList({ myTickets }) {
         <table className="tl-table">
           <thead>
             <tr>
-              <th>TICKET ID</th><th>SUBJECT</th><th>CUSTOMER</th>
-              <th>PRIORITY</th><th>STATUS</th>
-              <th>OWNER</th><th>CREATED BY</th>
-              <th>UPDATED</th><th>ACTIONS</th>
+              <th className="th-sortable" onClick={() => toggleSort('ticket_number')}>
+                TICKET ID <SortIcon field="ticket_number" sort={sort} />
+              </th>
+              <th>SUBJECT</th>
+              <th>CUSTOMER</th>
+              <th className="th-sortable" onClick={() => toggleSort('priority')}>
+                PRIORITY <SortIcon field="priority" sort={sort} />
+              </th>
+              <th className="th-sortable" onClick={() => toggleSort('status')}>
+                STATUS <SortIcon field="status" sort={sort} />
+              </th>
+              <th>OWNER</th>
+              <th>CREATED BY</th>
+              <th className="th-sortable" onClick={() => toggleSort('updated_at')}>
+                UPDATED <SortIcon field="updated_at" sort={sort} />
+              </th>
+              <th>ACTIONS</th>
             </tr>
           </thead>
           <tbody>
@@ -134,7 +176,14 @@ export default function TicketList({ myTickets }) {
                     ? <div className="assigned-cell"><div className="mini-av">{t.created_by_name[0]}</div>{t.created_by_name}</div>
                     : <span style={{ color: '#94A3B8' }}>—</span>}
                 </td>
-                <td className="td-updated">{t.updated_at ? formatDistanceToNow(new Date(t.updated_at), { addSuffix: true }) : '—'}</td>
+                <td className="td-updated">
+                  {t.updated_at ? (
+                    <>
+                      <span className="td-updated-rel">{formatDistanceToNow(new Date(t.updated_at), { addSuffix: true })}</span>
+                      <span className="td-updated-abs">{format(new Date(t.updated_at), 'MMM d, yyyy HH:mm')}</span>
+                    </>
+                  ) : '—'}
+                </td>
                 <td>
                   <div className="tl-actions">
                     <Link to={`/tickets/${t.id}`} className="tl-action-btn" title="View"><Eye size={14} /></Link>

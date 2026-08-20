@@ -16,7 +16,7 @@ async function list(req, res, next) {
   try {
     const isAdmin = req.session.role === 'admin';
     const userId = req.session.userId;
-    const { page = 1, limit = 25, status, priority, module: mod, category, search, assignedTo, myTickets, createdBy } = req.query;
+    const { page = 1, limit = 25, status, priority, module: mod, category, search, assignedTo, myTickets, createdBy, sortBy, sortDir } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     const conditions = ['t.deleted_at IS NULL'];
@@ -65,7 +65,7 @@ async function list(req, res, next) {
       LEFT JOIN users u2 ON t.created_by = u2.id
       LEFT JOIN users u3 ON t.ticket_owner = u3.id
       ${where}
-      ORDER BY t.updated_at DESC
+      ORDER BY ${({ ticket_number: 't.ticket_number', status: 't.status', priority: 't.priority', created_at: 't.created_at', updated_at: 't.updated_at' })[sortBy] || 't.updated_at'} ${sortDir === 'asc' ? 'ASC' : 'DESC'}
       LIMIT $${params.length - 1} OFFSET $${params.length}
     `, params);
 
@@ -86,6 +86,7 @@ async function create(req, res, next) {
     const {
       customerName, moduleText, categoryId, shortDescription, description,
       status = 'NEW', priority = 'MEDIUM', impact = 'MEDIUM', urgency = 'MEDIUM',
+      customData = {},
     } = req.body;
 
     if (!customerName || !shortDescription || !description || !moduleText || !categoryId) {
@@ -105,11 +106,11 @@ async function create(req, res, next) {
     const result = await client.query(`
       INSERT INTO tickets (ticket_number, customer_name, module_text, category_id, short_description,
         description, status, priority, impact, urgency, assigned_to, assignment_group,
-        ticket_owner, created_by, updated_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULL,NULL,$11,$11,$11)
+        ticket_owner, created_by, updated_by, custom_data)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULL,NULL,$11,$11,$11,$12)
       RETURNING *
     `, [ticketNumber, customerName, moduleText, categoryId, shortDescription, description,
-        status, priority, impact, urgency, req.session.userId]);
+        status, priority, impact, urgency, req.session.userId, JSON.stringify(customData)]);
 
     const ticket = result.rows[0];
     await logAudit(client, ticket.id, req.session.userId, 'CREATED', null, null, null, req.ip);
@@ -215,6 +216,16 @@ async function update(req, res, next) {
           sets.push(`${dbCol} = $${params.length}`);
           auditChanges.push({ field: dbCol, old: oldVal, new: newVal });
         }
+      }
+    }
+
+    // Merge custom_data if provided
+    if (req.body.customData !== undefined) {
+      const merged = { ...(ticket.custom_data || {}), ...req.body.customData };
+      params.push(JSON.stringify(merged));
+      sets.push(`custom_data = $${params.length}`);
+      if (JSON.stringify(ticket.custom_data || {}) !== JSON.stringify(merged)) {
+        auditChanges.push({ field: 'custom_data', old: JSON.stringify(ticket.custom_data), new: JSON.stringify(merged) });
       }
     }
 

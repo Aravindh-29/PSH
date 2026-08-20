@@ -17,6 +17,13 @@ import './Reports.css';
 
 const RPT_LIMIT = 20;
 
+const SYSTEM_KEYS = ['customer_name','module_text','category_id','status','priority','impact','urgency','short_description','description'];
+const parseOpts = (opts) => {
+  if (Array.isArray(opts)) return opts;
+  if (typeof opts === 'string') { try { return JSON.parse(opts); } catch { return []; } }
+  return [];
+};
+
 function getPageWindow(current, total) {
   if (total <= 1) return [1];
   const delta = 2;
@@ -66,11 +73,16 @@ export default function Reports() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [rptPage, setRptPage] = useState(1);
+  const [customFieldDefs, setCustomFieldDefs] = useState([]);
 
   useEffect(() => {
     if (mode !== 'personal') return;
-    api.get('/reports')
-      .then(res => { setData(res.data); setRptPage(1); })
+    Promise.all([api.get('/reports'), api.get('/config/fields')])
+      .then(([res, fRes]) => {
+        setData(res.data);
+        setRptPage(1);
+        setCustomFieldDefs((fRes.data.fields || []).filter(f => !SYSTEM_KEYS.includes(f.field_key)));
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [mode]);
@@ -315,7 +327,20 @@ export default function Reports() {
     XLSX.utils.book_append_sheet(wb, ws6, 'By Priority');
 
     // ── Sheet 7: All Tickets ─────────────────────────────────────────────────
-    const ticketHeaders = ['Ticket ID', 'Subject', 'Customer', 'Module', 'Status', 'Priority', 'Owner', 'Created By', 'Created At', 'Last Updated'];
+    const cfResolve = (ticket, f) => {
+      const raw = (ticket.custom_data || {})[f.field_key];
+      if (raw === null || raw === undefined || raw === '') return '—';
+      if (f.field_type === 'dropdown') {
+        const opts = parseOpts(f.options);
+        return opts.find(o => o.value === raw)?.label || String(raw);
+      }
+      return String(raw);
+    };
+    const ticketHeaders = [
+      'Ticket ID', 'Subject', 'Customer', 'Module', 'Status', 'Priority',
+      'Owner', 'Created By', 'Created At', 'Last Updated',
+      ...customFieldDefs.map(f => f.label),
+    ];
     const s7 = [
       [cs('ALL TICKETS', hdr(ORANGE)), ...Array(ticketHeaders.length - 1).fill(cs('', { fill: fill(ORANGE), border: borders }))],
       ticketHeaders.map(h => cs(h, hdr(NAVY))),
@@ -335,12 +360,17 @@ export default function Reports() {
           cs(t.created_by_name || '—', dat(rowBg, '334155')),
           cs(t.created_at ? format(new Date(t.created_at), 'yyyy-MM-dd HH:mm') : '—', dat(rowBg, '64748B')),
           cs(t.updated_at ? format(new Date(t.updated_at), 'yyyy-MM-dd HH:mm') : '—', dat(rowBg, '64748B')),
+          ...customFieldDefs.map(f => cs(cfResolve(t, f), dat(rowBg, '334155'))),
         ];
       }),
     ];
     const ws7 = XLSX.utils.aoa_to_sheet(s7);
     ws7['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: ticketHeaders.length - 1 } }];
-    ws7['!cols'] = [{ wch: 14 }, { wch: 32 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 11 }, { wch: 22 }, { wch: 22 }, { wch: 18 }, { wch: 18 }];
+    ws7['!cols'] = [
+      { wch: 14 }, { wch: 32 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 11 },
+      { wch: 22 }, { wch: 22 }, { wch: 18 }, { wch: 18 },
+      ...customFieldDefs.map(() => ({ wch: 20 })),
+    ];
     ws7['!rows'] = [{ hpt: 28 }, { hpt: 22 }, ...data.allTickets.map(() => ({ hpt: 18 }))];
     ws7['!freeze'] = { xSplit: 0, ySplit: 2 };
     XLSX.utils.book_append_sheet(wb, ws7, 'All Tickets');
@@ -348,7 +378,7 @@ export default function Reports() {
     const filename = `PSH_Report_${(user?.fullName || 'User').replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
     await XLSX.writeFile(wb, filename);
     setExporting(false);
-  }, [data, user]);
+  }, [data, user, customFieldDefs]);
 
   const summary = data?.summary || {};
   const todayLabel = format(new Date(), 'MMMM d, yyyy');

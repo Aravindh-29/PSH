@@ -7,10 +7,94 @@ import { fmt } from '../../utils/dateUtils';
 import toast from 'react-hot-toast';
 import './TicketForm.css';
 
-const STATUSES   = ['NEW','OPEN','ASSIGNED','IN_PROGRESS','WORK_IN_PROGRESS','PENDING','ON_HOLD','RESOLVED','CLOSED','REOPENED','CANCELLED'];
-const PRIORITIES = ['LOW','MEDIUM','HIGH','CRITICAL'];
-const IMPACTS    = ['LOW','MEDIUM','HIGH'];
-const URGENCIES  = ['LOW','MEDIUM','HIGH'];
+const SYSTEM_KEYS = ['customer_name','module_text','category_id','status','priority','impact','urgency','short_description','description'];
+
+const parseOpts = (opts) => {
+  if (Array.isArray(opts)) return opts;
+  if (typeof opts === 'string') { try { return JSON.parse(opts); } catch { return []; } }
+  return [];
+};
+
+function renderSystemField(f, form, set, categories, users, isAdmin) {
+  const key = f.field_key;
+  const opts = parseOpts(f.options);
+  const label = <label>{f.label}{f.is_required && <span className="req"> *</span>}</label>;
+
+  if (key === 'customer_name') return (
+    <div className="form-group">{label}<input type="text" value={form.customerName} onChange={e => set('customerName', e.target.value)} placeholder={f.placeholder} /></div>
+  );
+  if (key === 'module_text') return (
+    <div className="form-group">{label}<input type="text" value={form.moduleText} onChange={e => set('moduleText', e.target.value)} placeholder={f.placeholder || 'e.g. Cloud, Storage, Network'} /></div>
+  );
+  if (key === 'category_id') return (
+    <div className="form-group">{label}
+      <select value={form.categoryId} onChange={e => set('categoryId', e.target.value)}>
+        <option value="">Select</option>
+        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+    </div>
+  );
+  if (key === 'status') return (
+    <div className="form-group">{label}
+      <select value={form.status} onChange={e => set('status', e.target.value)}>
+        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+  if (key === 'priority') return (
+    <div className="form-group">{label}
+      <select value={form.priority} onChange={e => set('priority', e.target.value)}>
+        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+  if (key === 'impact') return (
+    <div className="form-group">{label}
+      <select value={form.impact} onChange={e => set('impact', e.target.value)}>
+        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+  if (key === 'urgency') return (
+    <div className="form-group">{label}
+      <select value={form.urgency} onChange={e => set('urgency', e.target.value)}>
+        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+  if (key === 'short_description') return (
+    <div className="form-group full">{label}<input type="text" value={form.shortDescription} onChange={e => set('shortDescription', e.target.value)} maxLength={500} /></div>
+  );
+  if (key === 'description') return (
+    <div className="form-group full">{label}<textarea value={form.description} onChange={e => set('description', e.target.value)} rows={6} /></div>
+  );
+  return null;
+}
+
+function renderCustomField(f, customData, setCustomData) {
+  const opts = parseOpts(f.options);
+  const val = customData[f.field_key] || '';
+  const setVal = v => setCustomData(p => ({ ...p, [f.field_key]: v }));
+  const label = <label>{f.label}{f.is_required && <span className="req"> *</span>}</label>;
+
+  if (f.field_type === 'textarea') return (
+    <div key={f.field_key} className="form-group full">{label}<textarea value={val} onChange={e => setVal(e.target.value)} rows={4} placeholder={f.placeholder} /></div>
+  );
+  if (f.field_type === 'dropdown') return (
+    <div key={f.field_key} className="form-group">{label}
+      <select value={val} onChange={e => setVal(e.target.value)}>
+        <option value="">Select…</option>
+        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+  if (f.field_type === 'number') return (
+    <div key={f.field_key} className="form-group">{label}<input type="number" value={val} onChange={e => setVal(e.target.value)} placeholder={f.placeholder} /></div>
+  );
+  return (
+    <div key={f.field_key} className="form-group">{label}<input type="text" value={val} onChange={e => setVal(e.target.value)} placeholder={f.placeholder} /></div>
+  );
+}
 
 export default function EditTicket() {
   const { id } = useParams();
@@ -18,10 +102,12 @@ export default function EditTicket() {
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
 
+  const [fields, setFields]           = useState([]);
   const [categories, setCategories]   = useState([]);
   const [users, setUsers]             = useState([]);
   const [loading, setLoading]         = useState(false);
   const [form, setForm]               = useState(null);
+  const [customData, setCustomData]   = useState({});
   const [attachments, setAttachments] = useState([]);
   const [uploadQueue, setUploadQueue] = useState([]);
   const fileInputRef = useRef(null);
@@ -29,26 +115,29 @@ export default function EditTicket() {
   useEffect(() => {
     Promise.all([
       api.get(`/tickets/${id}`),
+      api.get('/config/fields'),
       api.get('/config/categories'),
       api.get('/config/users'),
-    ]).then(([t, c, u]) => {
+    ]).then(([t, f, c, u]) => {
       const ticket = t.data.ticket;
       setForm({
-        customerName:  ticket.customer_name  || '',
-        moduleText:    ticket.module_name    || '',
-        categoryId:    ticket.category_id    || '',
+        customerName:     ticket.customer_name  || '',
+        moduleText:       ticket.module_name    || '',
+        categoryId:       ticket.category_id    || '',
         shortDescription: ticket.short_description || '',
-        description:   ticket.description   || '',
-        status:        ticket.status        || 'NEW',
-        priority:      ticket.priority      || 'MEDIUM',
-        impact:        ticket.impact        || 'MEDIUM',
-        urgency:       ticket.urgency       || 'MEDIUM',
-        ticketOwner:   ticket.ticket_owner  || null,
-        ticketOwnerName: ticket.ticket_owner_name || '',
+        description:      ticket.description   || '',
+        status:           ticket.status        || 'NEW',
+        priority:         ticket.priority      || 'MEDIUM',
+        impact:           ticket.impact        || 'MEDIUM',
+        urgency:          ticket.urgency       || 'MEDIUM',
+        ticketOwner:      ticket.ticket_owner  || null,
+        ticketOwnerName:  ticket.ticket_owner_name || '',
       });
+      setCustomData(ticket.custom_data || {});
       setAttachments(t.data.attachments || []);
-      setCategories(c.data.categories);
-      setUsers(u.data.users);
+      setFields(f.data.fields || []);
+      setCategories(c.data.categories || []);
+      setUsers(u.data.users || []);
     }).catch(() => toast.error('Failed to load ticket'));
   }, [id]);
 
@@ -58,7 +147,7 @@ export default function EditTicket() {
     e.preventDefault();
     setLoading(true);
     try {
-      await api.put(`/tickets/${id}`, form);
+      await api.put(`/tickets/${id}`, { ...form, customData });
       toast.success('Ticket updated');
       navigate(`/tickets/${id}`);
     } catch (err) {
@@ -97,7 +186,6 @@ export default function EditTicket() {
       if (errors.length) errors.forEach(e => toast.error(e));
       if (uploaded.length) {
         toast.success(`${uploaded.length} file${uploaded.length > 1 ? 's' : ''} uploaded`);
-        // Refresh attachments list without full reload
         const fresh = await api.get(`/tickets/${id}`);
         setAttachments(fresh.data.attachments || []);
       }
@@ -123,6 +211,11 @@ export default function EditTicket() {
 
   if (!form) return <div style={{ padding: 32, color: '#64748b' }}>Loading...</div>;
 
+  const fieldByKey  = Object.fromEntries(fields.map(f => [f.field_key, f]));
+  const customFields = fields.filter(f => !SYSTEM_KEYS.includes(f.field_key));
+  const gridKeys = ['customer_name','module_text','category_id','status','priority','impact','urgency'];
+  const fullKeys  = ['short_description','description'];
+
   return (
     <div className="ticket-form-page">
       <div className="tf-header">
@@ -135,45 +228,12 @@ export default function EditTicket() {
         <div className="tf-card">
           <h2 className="tf-section-title">Basic Information</h2>
           <div className="tf-grid">
-            <div className="form-group">
-              <label>Customer / Client <span className="req">*</span></label>
-              <input type="text" value={form.customerName} onChange={e => set('customerName', e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label>Module</label>
-              <input type="text" value={form.moduleText} onChange={e => set('moduleText', e.target.value)} placeholder="e.g. Cloud, Storage, Network" />
-            </div>
-            <div className="form-group">
-              <label>Category</label>
-              <select value={form.categoryId} onChange={e => set('categoryId', e.target.value)}>
-                <option value="">Select</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Status</label>
-              <select value={form.status} onChange={e => set('status', e.target.value)}>
-                {STATUSES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Priority</label>
-              <select value={form.priority} onChange={e => set('priority', e.target.value)}>
-                {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Impact</label>
-              <select value={form.impact} onChange={e => set('impact', e.target.value)}>
-                {IMPACTS.map(i => <option key={i} value={i}>{i}</option>)}
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Urgency</label>
-              <select value={form.urgency} onChange={e => set('urgency', e.target.value)}>
-                {URGENCIES.map(u => <option key={u} value={u}>{u}</option>)}
-              </select>
-            </div>
+            {gridKeys.map(key => {
+              const f = fieldByKey[key];
+              if (!f) return null;
+              return <React.Fragment key={key}>{renderSystemField(f, form, set, categories, users, isAdmin)}</React.Fragment>;
+            })}
+            {/* Ticket owner row (always shown, not a ticket_field) */}
             {isAdmin ? (
               <div className="form-group">
                 <label>Ticket Owner</label>
@@ -189,15 +249,22 @@ export default function EditTicket() {
               </div>
             )}
           </div>
-          <div className="form-group full">
-            <label>Short Description <span className="req">*</span></label>
-            <input type="text" value={form.shortDescription} onChange={e => set('shortDescription', e.target.value)} maxLength={500} />
-          </div>
-          <div className="form-group full">
-            <label>Detailed Description <span className="req">*</span></label>
-            <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={6} />
-          </div>
+          {fullKeys.map(key => {
+            const f = fieldByKey[key];
+            if (!f) return null;
+            return <React.Fragment key={key}>{renderSystemField(f, form, set, categories, users, isAdmin)}</React.Fragment>;
+          })}
         </div>
+
+        {/* ── Custom Fields ── */}
+        {customFields.length > 0 && (
+          <div className="tf-card">
+            <h2 className="tf-section-title">Additional Information</h2>
+            <div className="tf-grid">
+              {customFields.map(f => renderCustomField(f, customData, setCustomData))}
+            </div>
+          </div>
+        )}
 
         {/* ── Attachments ── */}
         <div className="tf-card">
@@ -212,7 +279,6 @@ export default function EditTicket() {
             </label>
           </div>
 
-          {/* Upload progress */}
           {uploadQueue.length > 0 && (
             <div className="upload-queue" style={{ marginBottom: 12 }}>
               {uploadQueue.map(item => (

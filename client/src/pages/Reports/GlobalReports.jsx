@@ -11,6 +11,13 @@ import api from '../../api/axios';
 import { format } from 'date-fns';
 import './Reports.css';
 
+const SYSTEM_KEYS = ['customer_name','module_text','category_id','status','priority','impact','urgency','short_description','description'];
+const parseOpts = (opts) => {
+  if (Array.isArray(opts)) return opts;
+  if (typeof opts === 'string') { try { return JSON.parse(opts); } catch { return []; } }
+  return [];
+};
+
 const STATUS_COLORS = {
   'NEW': '#6366F1', 'OPEN': '#10B981', 'ASSIGNED': '#3B82F6',
   'IN PROGRESS': '#F59E0B', 'WORK IN PROGRESS': '#F97316',
@@ -41,10 +48,14 @@ export default function GlobalReports() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [customFieldDefs, setCustomFieldDefs] = useState([]);
 
   useEffect(() => {
-    api.get('/reports/global')
-      .then(r => setData(r.data))
+    Promise.all([api.get('/reports/global'), api.get('/config/fields')])
+      .then(([r, fRes]) => {
+        setData(r.data);
+        setCustomFieldDefs((fRes.data.fields || []).filter(f => !SYSTEM_KEYS.includes(f.field_key)));
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -289,7 +300,20 @@ export default function GlobalReports() {
     XLSX.utils.book_append_sheet(wb, ws7, 'Visual Charts');
 
     // ── Sheet 8: All Tickets ──────────────────────────────────────────────────
-    const tHdrs = ['Ticket ID', 'Subject', 'Customer', 'Module', 'Status', 'Priority', 'Owner', 'Created By', 'Created At', 'Last Updated'];
+    const cfResolve = (ticket, f) => {
+      const raw = (ticket.custom_data || {})[f.field_key];
+      if (raw === null || raw === undefined || raw === '') return '—';
+      if (f.field_type === 'dropdown') {
+        const opts = parseOpts(f.options);
+        return opts.find(o => o.value === raw)?.label || String(raw);
+      }
+      return String(raw);
+    };
+    const tHdrs = [
+      'Ticket ID', 'Subject', 'Customer', 'Module', 'Status', 'Priority',
+      'Owner', 'Created By', 'Created At', 'Last Updated',
+      ...customFieldDefs.map(f => f.label),
+    ];
     const s8 = [
       [cs('ALL SYSTEM TICKETS', hdr(ORANGE)), ...Array(tHdrs.length - 1).fill(cs('', { fill: fl(ORANGE), border: borders }))],
       tHdrs.map(h => cs(h, hdr(NAVY))),
@@ -309,19 +333,24 @@ export default function GlobalReports() {
           cs(t.created_by_name || '—', dat(bg, '334155')),
           cs(t.created_at ? format(new Date(t.created_at), 'yyyy-MM-dd HH:mm') : '—', dat(bg, '64748B')),
           cs(t.updated_at ? format(new Date(t.updated_at), 'yyyy-MM-dd HH:mm') : '—', dat(bg, '64748B')),
+          ...customFieldDefs.map(f => cs(cfResolve(t, f), dat(bg, '334155'))),
         ];
       }),
     ];
     const ws8 = XLSX.utils.aoa_to_sheet(s8);
     ws8['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: tHdrs.length - 1 } }];
-    ws8['!cols'] = [{ wch: 14 }, { wch: 30 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 11 }, { wch: 22 }, { wch: 22 }, { wch: 18 }, { wch: 18 }];
+    ws8['!cols'] = [
+      { wch: 14 }, { wch: 30 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 11 },
+      { wch: 22 }, { wch: 22 }, { wch: 18 }, { wch: 18 },
+      ...customFieldDefs.map(() => ({ wch: 20 })),
+    ];
     ws8['!rows'] = [{ hpt: 28 }, { hpt: 22 }, ...data.allTickets.map(() => ({ hpt: 18 }))];
     ws8['!freeze'] = { xSplit: 0, ySplit: 2 };
     XLSX.utils.book_append_sheet(wb, ws8, 'All Tickets');
 
     await XLSX.writeFile(wb, `PSH_Global_Report_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
     setExporting(false);
-  }, [data]);
+  }, [data, customFieldDefs]);
 
   const summary = data?.summary || {};
 

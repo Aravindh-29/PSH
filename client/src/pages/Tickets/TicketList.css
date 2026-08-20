@@ -44,10 +44,21 @@
 .tl-table tr:hover td { background: #FAFBFC; }
 .tl-empty { text-align: center; padding: 40px !important; color: #94A3B8; }
 
+.th-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.th-sortable:hover { color: var(--orange); }
+.sort-icon { vertical-align: middle; margin-left: 4px; }
+.sort-icon-idle { color: #CBD5E1; }
+.sort-icon-active { color: var(--orange); }
+
 .ticket-id-link { color: var(--orange); font-weight: 600; font-size: 12.5px; }
 .ticket-id-link:hover { text-decoration: underline; }
 .td-subj { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.td-updated { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.td-updated { white-space: nowrap; }
+.td-updated-rel { display: block; color: var(--text-muted); font-size: 12px; }
+.td-updated-abs { display: block; color: #94A3B8; font-size: 10.5px; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .assigned-cell { display: flex; align-items: center; gap: 7px; }
 .mini-av {
   width: 26px; height: 26px; border-radius: 50%;

@@ -30,10 +30,18 @@ export default function TicketDetail() {
   const [uploadQueue, setUploadQueue] = useState([]); // [{name, progress, status}]
   const fileInputRef = useRef(null);
 
+  const [customFieldDefs, setCustomFieldDefs] = useState([]);
+
   const load = () => {
     setLoading(true);
-    api.get(`/tickets/${id}`)
-      .then(res => setData(res.data))
+    Promise.all([
+      api.get(`/tickets/${id}`),
+      api.get('/config/fields'),
+    ])
+      .then(([res, f]) => {
+        setData(res.data);
+        setCustomFieldDefs((f.data.fields || []).filter(fd => !['customer_name','module_text','category_id','status','priority','impact','urgency','short_description','description'].includes(fd.field_key)));
+      })
       .catch(() => toast.error('Ticket not found'))
       .finally(() => setLoading(false));
   };
@@ -164,6 +172,16 @@ export default function TicketDetail() {
               <Field label="Created At" value={fmt(ticket.created_at)} />
               <Field label="Updated By" value={ticket.updated_by_name} />
               <Field label="Updated At" value={fmt(ticket.updated_at)} />
+              {/* Custom fields */}
+              {customFieldDefs.map(f => {
+                const raw = (ticket.custom_data || {})[f.field_key];
+                if (!raw && raw !== 0) return null;
+                const opts = Array.isArray(f.options) ? f.options : (JSON.parse(f.options || '[]'));
+                const display = f.field_type === 'dropdown'
+                  ? (opts.find(o => o.value === raw)?.label || raw)
+                  : String(raw);
+                return <Field key={f.field_key} label={f.label} value={display} />;
+              })}
             </div>
           </div>
 

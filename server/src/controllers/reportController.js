@@ -80,7 +80,8 @@ async function getReport(req, res, next) {
         t.status, t.priority, t.impact, t.urgency,
         u2.full_name AS created_by_name,
         u3.full_name AS ticket_owner_name,
-        t.created_at, t.updated_at
+        t.created_at, t.updated_at,
+        t.custom_data
       FROM tickets t
       LEFT JOIN modules m    ON t.module_id = m.id
       LEFT JOIN categories c ON t.category_id = c.id
@@ -194,7 +195,7 @@ async function getGlobalReport(req, res, next) {
                  COALESCE(c.name, '')                AS category_name,
                  t.status, t.priority, t.impact, t.urgency,
                  u2.full_name AS created_by_name, u3.full_name AS ticket_owner_name,
-                 t.created_at, t.updated_at
+                 t.created_at, t.updated_at, t.custom_data
           FROM tickets t
           LEFT JOIN modules m    ON t.module_id = m.id
           LEFT JOIN categories c ON t.category_id = c.id

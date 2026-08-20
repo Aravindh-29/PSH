@@ -103,6 +103,26 @@ CREATE TABLE IF NOT EXISTS ticket_audit_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Dynamic ticket field definitions (system + custom)
+CREATE TABLE IF NOT EXISTS ticket_fields (
+  id SERIAL PRIMARY KEY,
+  field_key VARCHAR(100) UNIQUE NOT NULL,
+  label VARCHAR(200) NOT NULL,
+  field_type VARCHAR(50) NOT NULL DEFAULT 'text'
+    CHECK (field_type IN ('text','textarea','dropdown','number','category')),
+  is_required BOOLEAN NOT NULL DEFAULT false,
+  is_system BOOLEAN NOT NULL DEFAULT false,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  field_order INTEGER NOT NULL DEFAULT 100,
+  placeholder VARCHAR(300) NOT NULL DEFAULT '',
+  options JSONB NOT NULL DEFAULT '[]',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Custom field values for non-system fields (key → value map)
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS custom_data JSONB NOT NULL DEFAULT '{}';
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_tickets_priority ON tickets(priority) WHERE deleted_at IS NULL;
