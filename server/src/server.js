@@ -31,7 +31,7 @@ app.use(session({
   saveUninitialized: false,
   name: 'psh.sid',
   cookie: {
-    secure: (process.env.CLIENT_URL || '').startsWith('https'),
+    secure: isProd,   // true in production (requires HTTPS); false in dev
     httpOnly: true,
     sameSite: 'lax',
     maxAge: 8 * 60 * 60 * 1000,

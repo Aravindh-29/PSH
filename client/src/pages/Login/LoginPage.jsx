@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Shield, Lock, User, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
+import api from '../../api/axios';
 import './LoginPage.css';
 
 function ParticleCanvas() {
@@ -126,12 +127,45 @@ function ParticleCanvas() {
   return <canvas ref={canvasRef} className="login-canvas" />;
 }
 
+const SSO_ERRORS = {
+  sso_not_configured: 'SSO is not configured on this server.',
+  sso_failed:         'SSO sign-in failed. Please try again or use your password.',
+  sso_no_email:       'Your SSO account did not provide an email address.',
+  sso_user_not_found: 'No account found for your SSO identity. Contact your administrator.',
+  account_disabled:   'Your account has been disabled. Contact your administrator.',
+};
+
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [form, setForm] = useState({ username: '', password: '', remember: false });
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [ssoEnabled, setSsoEnabled] = useState(false);
+  const [ssoLabel,   setSsoLabel]   = useState('SSO');
+  const [ssoLoading, setSsoLoading] = useState(false);
+
+  // Show error from SSO callback redirect (e.g. /login?error=sso_failed)
+  useEffect(() => {
+    const err = searchParams.get('error');
+    if (err && SSO_ERRORS[err]) toast.error(SSO_ERRORS[err]);
+  }, []);
+
+  // Check if SSO is configured on this server
+  useEffect(() => {
+    api.get('/auth/sso-status')
+      .then(r => {
+        setSsoEnabled(r.data.enabled);
+        if (r.data.providerName) setSsoLabel(r.data.providerName);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSso = () => {
+    setSsoLoading(true);
+    window.location.href = '/api/auth/sso';
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -247,12 +281,20 @@ export default function LoginPage() {
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
 
-            <div className="login-or"><span>OR</span></div>
-
-            <button type="button" className="sso-btn">
-              <Shield size={15} />
-              Sign in with SSO
-            </button>
+            {ssoEnabled && (
+              <>
+                <div className="login-or"><span>OR</span></div>
+                <button
+                  type="button"
+                  className="sso-btn"
+                  onClick={handleSso}
+                  disabled={ssoLoading}
+                >
+                  {ssoLoading ? <span className="login-spinner" /> : <Shield size={15} />}
+                  {ssoLoading ? 'Redirecting...' : `Sign in with ${ssoLabel}`}
+                </button>
+              </>
+            )}
           </form>
 
           <p className="login-footer">© 2024 Pure Storage Horizon. All rights reserved.</p>

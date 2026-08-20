@@ -9,13 +9,20 @@ CREATE TABLE IF NOT EXISTS users (
   username VARCHAR(50) UNIQUE NOT NULL,
   email VARCHAR(255) UNIQUE NOT NULL,
   full_name VARCHAR(255) NOT NULL,
-  password_hash TEXT NOT NULL,
+  password_hash TEXT NOT NULL DEFAULT '',
+  sso_sub       TEXT,
+  sso_provider  VARCHAR(50),
   role VARCHAR(20) NOT NULL DEFAULT 'employee' CHECK (role IN ('admin','employee')),
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   avatar_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- SSO columns (safe to re-run on existing installs)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS sso_sub      TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS sso_provider VARCHAR(50);
+ALTER TABLE users ALTER COLUMN password_hash SET DEFAULT '';
 
 -- Modules
 CREATE TABLE IF NOT EXISTS modules (
