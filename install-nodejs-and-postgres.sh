@@ -61,7 +61,11 @@ else
   SESSION_SECRET="${NEW_SESSION_SECRET}"
 fi
 
-SERVER_IP="$(hostname -I | awk '{print $1}')"
+# Try public IP first, fall back to private IP
+SERVER_IP="$(curl -s --max-time 5 ifconfig.me 2>/dev/null \
+  || curl -s --max-time 5 checkip.amazonaws.com 2>/dev/null \
+  || curl -s --max-time 5 api.ipify.org 2>/dev/null \
+  || hostname -I | awk '{print $1}')"
 CLIENT_URL="http://${SERVER_IP}:${PORT}"
 
 # ── Banner ───────────────────────────────────────────────────────
