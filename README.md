@@ -5,13 +5,15 @@ Internal IT ticketing platform built with React 18 + Node.js/Express + PostgreSQ
 - **Frontend** — React 18, Vite, Recharts, ExcelJS
 - **Backend** — Node.js, Express, Argon2id passwords, HTTP-only session cookies
 - **Database** — PostgreSQL 14+, JSONB custom fields, full audit logging
-- **Auth** — Role-based (Admin / Employee), session-based
+- **Auth** — Role-based (Admin / Employee), session-based + optional SSO (OIDC)
 
 Default credentials after first boot:
 | Role | Username | Password |
 |---|---|---|
 | Admin | `admin` | `Admin@123` |
 | Employee | `john.smith` | `Employee@123` |
+
+> **Change all passwords immediately after first login in production.**
 
 ---
 
@@ -20,15 +22,25 @@ Default credentials after first boot:
 Create a `.env` file at the project root (copy from `.env.example`):
 
 ```env
-# Required
+# ── Required ──────────────────────────────────────────────────────────────────
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/psh_ticketing
 SESSION_SECRET=replace-with-64-char-random-hex-string
 
-# Optional (defaults shown)
+# ── Server ────────────────────────────────────────────────────────────────────
 PORT=5000
 NODE_ENV=production
-CLIENT_URL=https://your-domain.com   # must be https:// for secure cookies
-DATABASE_SSL=false                   # set true for cloud-managed Postgres (RDS, Azure, Supabase)
+CLIENT_URL=https://your-domain.com
+
+# ── Database SSL (set true for cloud-managed Postgres: RDS, Azure, Supabase) ──
+DATABASE_SSL=false
+
+# ── SSO / OIDC (optional — leave blank to disable SSO on login page) ──────────
+SSO_ISSUER_URL=
+SSO_CLIENT_ID=
+SSO_CLIENT_SECRET=
+SSO_REDIRECT_URI=https://your-domain.com/api/auth/sso/callback
+SSO_PROVIDER_NAME=
+SSO_AUTO_PROVISION=false
 ```
 
 Generate a strong session secret:
@@ -529,6 +541,271 @@ Default users created automatically on first startup:
 
 ---
 
+## SSO / Single Sign-On
+
+The app supports **any OIDC-compliant identity provider** — Microsoft Azure AD, Okta, Google Workspace, Auth0, Keycloak, and others. SSO and password login coexist; disabling one does not affect the other.
+
+---
+
+### How SSO Works
+
+```
+1. User clicks "Sign in with <Provider>" on the login page
+2. Browser redirects to  GET /api/auth/sso
+3. Server generates a PKCE code_verifier + state, stores them in the session,
+   then redirects the browser to the identity provider's login page
+4. User authenticates with their org credentials (MFA if configured by the org)
+5. Provider redirects back to  GET /api/auth/sso/callback?code=...&state=...
+6. Server validates state, exchanges the authorization code for tokens (PKCE)
+7. Server calls the provider's /userinfo endpoint to get email + name
+8. Server looks up the user in the database by email
+9. Server creates the same HTTP-only session cookie used by password login
+10. Browser is redirected to the dashboard  /
+```
+
+**Security properties of the implementation:**
+- PKCE (`code_challenge_method: S256`) — prevents authorization code interception attacks
+- `state` parameter validated on callback — prevents CSRF on the OAuth flow
+- Session stored in PostgreSQL (`connect-pg-simple`) — not in memory, survives restarts
+- Cookie is `httpOnly`, `sameSite: lax`, and `secure: true` in production
+- Provider discovery via RFC 8414 (`/.well-known/openid-configuration`) — metadata is fetched once and cached
+
+---
+
+### SSO Login Page Behaviour
+
+- The **"Sign in with SSO"** button is **hidden** when SSO is not configured (all 4 required env vars must be set)
+- When configured, the button label changes to **"Sign in with \<SSO_PROVIDER_NAME\>"** (e.g. "Sign in with Microsoft")
+- If SSO login fails, the user is redirected back to `/login?error=<code>` and a toast message explains the reason:
+
+| Error code | Message shown |
+|---|---|
+| `sso_failed` | SSO sign-in failed. Please try again or use your password. |
+| `sso_no_email` | Your SSO account did not provide an email address. |
+| `sso_user_not_found` | No account found for your SSO identity. Contact your administrator. |
+| `account_disabled` | Your account has been disabled. Contact your administrator. |
+| `sso_not_configured` | SSO is not configured on this server. |
+
+---
+
+### SSO API Endpoints
+
+| Method | Path | Auth required | Purpose |
+|---|---|---|---|
+| `GET` | `/api/auth/sso-status` | No | Returns `{ enabled: true/false, providerName }` — used by login page to show/hide button |
+| `GET` | `/api/auth/sso` | No | Redirects browser to identity provider's login page |
+| `GET` | `/api/auth/sso/callback` | No | Handles provider redirect; creates session; redirects to `/` |
+
+---
+
+### SSO Environment Variables Reference
+
+| Variable | Required | Description |
+|---|---|---|
+| `SSO_ISSUER_URL` | Yes | OIDC discovery URL of your identity provider (see provider-specific values below) |
+| `SSO_CLIENT_ID` | Yes | Client / Application ID from your provider's app registration |
+| `SSO_CLIENT_SECRET` | Yes | Client secret from your provider's app registration |
+| `SSO_REDIRECT_URI` | Yes | Must exactly match the redirect URI registered in your provider. Format: `https://your-domain.com/api/auth/sso/callback` |
+| `SSO_PROVIDER_NAME` | No | Display name shown on the login button, e.g. `Microsoft`, `Google`, `Okta` |
+| `SSO_AUTO_PROVISION` | No | `true` = automatically create a new Employee account on first SSO login. `false` (default) = admin must pre-create the user account before they can SSO in |
+
+---
+
+### User Account Matching
+
+When a user completes SSO authentication, the server resolves their account in this order:
+
+1. **Match by `sso_sub`** — the provider's unique subject identifier (strongest, fastest). Used after the first SSO login.
+2. **Match by email** — used on the very first SSO login to link an existing password-based account. The `sso_sub` is then stored so future logins use match #1.
+3. **Auto-provision** — if no match is found and `SSO_AUTO_PROVISION=true`, a new Employee account is created with the provider's email and display name.
+4. **Block** — if no match and `SSO_AUTO_PROVISION=false`, the user sees "No account found" and is redirected back to the login page.
+
+> An SSO user that was linked to an existing password account can still log in with their password. Both methods are always available simultaneously.
+
+---
+
+### Database Columns Added for SSO
+
+The following columns are added to the `users` table (safe to apply on existing installs via `ALTER TABLE IF NOT EXISTS`):
+
+| Column | Type | Purpose |
+|---|---|---|
+| `sso_sub` | `TEXT` | Provider's unique subject ID — stored after first SSO login |
+| `sso_provider` | `VARCHAR(50)` | Provider name stored at link time, e.g. `azure`, `okta`, `google` |
+
+The `password_hash` column defaults to `''` (empty string) for SSO-only users who never set a password. These users cannot log in with a password since argon2 will never verify an empty hash.
+
+---
+
+### Provider Setup — Step by Step
+
+---
+
+#### Microsoft Azure AD / Entra ID
+
+**In Azure Portal:**
+
+```
+Azure Active Directory → App registrations → New registration
+
+  Name:                PSH Ticketing
+  Supported account types: Accounts in this organizational directory only (Single tenant)
+  Redirect URI:        Web  →  https://your-domain.com/api/auth/sso/callback
+
+→ Register
+```
+
+After registration:
+
+```
+Overview page:
+  Copy → Application (client) ID     → this is SSO_CLIENT_ID
+  Copy → Directory (tenant) ID       → used in SSO_ISSUER_URL
+
+Certificates & secrets → New client secret:
+  Description: psh-prod
+  Expires: 24 months
+  → Add → Copy the Value immediately  → this is SSO_CLIENT_SECRET
+
+API permissions → Add permission → Microsoft Graph → Delegated:
+  openid, email, profile  (usually pre-added)
+  → Grant admin consent
+```
+
+**`.env` values:**
+```env
+SSO_ISSUER_URL=https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0
+SSO_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+SSO_CLIENT_SECRET=your-client-secret-value
+SSO_REDIRECT_URI=https://your-domain.com/api/auth/sso/callback
+SSO_PROVIDER_NAME=Microsoft
+```
+
+---
+
+#### Google Workspace
+
+**In Google Cloud Console:**
+
+```
+APIs & Services → Credentials → Create Credentials → OAuth client ID
+
+  Application type: Web application
+  Name:             PSH Ticketing
+  Authorized redirect URIs: https://your-domain.com/api/auth/sso/callback
+
+→ Create → Copy Client ID and Client Secret
+```
+
+Enable the People API:
+```
+APIs & Services → Library → search "People API" → Enable
+```
+
+**`.env` values:**
+```env
+SSO_ISSUER_URL=https://accounts.google.com
+SSO_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com
+SSO_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxx
+SSO_REDIRECT_URI=https://your-domain.com/api/auth/sso/callback
+SSO_PROVIDER_NAME=Google
+```
+
+---
+
+#### Okta
+
+**In Okta Admin Console:**
+
+```
+Applications → Create App Integration
+
+  Sign-in method: OIDC - OpenID Connect
+  Application type: Web Application
+
+  App name:         PSH Ticketing
+  Sign-in redirect URIs:  https://your-domain.com/api/auth/sso/callback
+  Sign-out redirect URIs: https://your-domain.com/login
+  Assignments: assign to the groups/people who should access PSH
+
+→ Save → Copy Client ID and Client Secret
+```
+
+**`.env` values:**
+```env
+SSO_ISSUER_URL=https://your-org.okta.com/oauth2/default
+SSO_CLIENT_ID=0oaxxxxxxxxxxxxxxx
+SSO_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+SSO_REDIRECT_URI=https://your-domain.com/api/auth/sso/callback
+SSO_PROVIDER_NAME=Okta
+```
+
+---
+
+#### Auth0
+
+**In Auth0 Dashboard:**
+
+```
+Applications → Create Application
+
+  Name:  PSH Ticketing
+  Type:  Regular Web Application
+
+Settings tab:
+  Allowed Callback URLs:  https://your-domain.com/api/auth/sso/callback
+  Allowed Logout URLs:    https://your-domain.com/login
+  → Save Changes
+
+→ Copy Domain, Client ID, Client Secret
+```
+
+**`.env` values:**
+```env
+SSO_ISSUER_URL=https://your-tenant.auth0.com
+SSO_CLIENT_ID=your-client-id
+SSO_CLIENT_SECRET=your-client-secret
+SSO_REDIRECT_URI=https://your-domain.com/api/auth/sso/callback
+SSO_PROVIDER_NAME=Auth0
+```
+
+---
+
+### SSO + Auto-Provision Workflow
+
+When `SSO_AUTO_PROVISION=true`, the first time a user from your org signs in via SSO, an Employee account is created automatically:
+
+```
+Email from provider:  john.doe@company.com
+Name from provider:   John Doe
+
+→ Created in DB:
+    username:     john.doe
+    email:        john.doe@company.com
+    full_name:    John Doe
+    role:         employee          ← always Employee, never Admin
+    sso_sub:      <provider sub>
+    sso_provider: azure / google / okta
+    password_hash: ''               ← cannot log in with password
+```
+
+Admin must manually upgrade a user to `admin` role in the Users management page if needed.
+
+When `SSO_AUTO_PROVISION=false` (default), the admin must create the user account first via the admin panel, and the email must exactly match what the identity provider sends.
+
+---
+
+### Checklist Before Enabling SSO in Production
+
+- [ ] App is accessible via **HTTPS** — OIDC providers will not redirect to `http://`
+- [ ] `SSO_REDIRECT_URI` registered in the provider **exactly matches** the value in `.env` (trailing slash, path case — must be identical)
+- [ ] `NODE_ENV=production` is set — required for `secure` cookies
+- [ ] `SESSION_SECRET` is a strong random string (64+ hex chars)
+- [ ] Test with one user before rolling out to everyone
+- [ ] If `SSO_AUTO_PROVISION=false` — pre-create user accounts in Admin → Users with the exact email address they use in your identity provider
+
+---
+
 ## Troubleshooting
 
 | Error | Cause | Fix |
@@ -539,3 +816,10 @@ Default users created automatically on first startup:
 | `EADDRINUSE :::5000` | Server already running | `npx kill-port 5000` or change `PORT` in `.env` |
 | Blank page after deploy | React build not committed or `NODE_ENV` not set | Run `npm run build:client`, confirm `NODE_ENV=production` |
 | Session lost on restart | `SESSION_SECRET` changed between restarts | Use a fixed secret stored in env; never rotate without invalidating all sessions |
+| SSO button not showing | SSO env vars not set | All 4 required vars must be present: `SSO_ISSUER_URL`, `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`, `SSO_REDIRECT_URI` |
+| `redirect_uri_mismatch` from provider | Redirect URI mismatch | The value in `SSO_REDIRECT_URI` must exactly match what is registered in the provider app (character-for-character) |
+| SSO works in dev but not prod | Cookie `secure` flag | Ensure `NODE_ENV=production` and app is served over HTTPS |
+| `RPError: state mismatch` | Session lost between SSO start and callback | Ensure only one instance is running or sessions are stored in shared Postgres (already the case in this app) |
+| `sso_user_not_found` after login | Email not found + auto-provision off | Admin must pre-create the user in Admin → Users with the exact email from the identity provider; or set `SSO_AUTO_PROVISION=true` |
+| SSO user can't log in with password | SSO-provisioned users have no password | Use SSO login; or admin can set a password via the Users management page |
+| OIDC discovery fails at startup | Provider URL unreachable | Check `SSO_ISSUER_URL` is correct and the server has outbound internet access to the provider |
