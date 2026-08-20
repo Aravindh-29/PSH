@@ -241,8 +241,9 @@ sudo -u "${APP_DIR_OWNER}" bash -c "
   export CLIENT_URL='${CLIENT_URL}'
   export PORT='${PORT}'
   export DATABASE_SSL=false
-  cd '${APP_DIR}'
-  ${NPM_BIN} run db:init 2>&1
+  export NODE_PATH='${APP_DIR}/server/node_modules'
+  cd '${APP_DIR}/server'
+  ${NODE_BIN} ../database/init.js 2>&1
 "
 ok "Database schema ready"
 
