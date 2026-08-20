@@ -27,13 +27,15 @@ An internal IT ticketing platform built for ~1000 users.
 
 ---
 
-## Option 1 — Local development (Node + PostgreSQL)
+## Option 1 — Local (Node + PostgreSQL)
 
 ### Prerequisites
 
 - Node.js 20+
-- PostgreSQL 17 running locally
+- PostgreSQL running with the `psh_ticketing` database and schema already created
 - PowerShell or any terminal
+
+> If you need to initialise the database schema first, run: `npm run db:init`
 
 ### 1. Clone the repo
 
@@ -45,74 +47,46 @@ cd PSH
 ### 2. Create the environment file
 
 ```powershell
-# Copy the example and edit if needed
 Copy-Item .env.example .env
 ```
 
-Default `.env` content (edit DB credentials if yours differ):
+Open `.env` and set your database connection:
 
 ```env
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/psh_ticketing
-SESSION_SECRET=psh-super-secret-change-in-production-2024
+DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/psh_ticketing
+SESSION_SECRET=any-long-random-string
 PORT=5000
-NODE_ENV=development
-CLIENT_URL=http://localhost:5173
+NODE_ENV=production
 ```
 
-### 3. Install all dependencies
+### 3. Install dependencies and build
+
+One command installs everything and builds the React app:
 
 ```powershell
-# Root (workspace scripts)
-npm install
-
-# Server
-cd server
-npm install
-cd ..
-
-# Client
-cd client
-npm install
-cd ..
+npm install        # installs root devDependencies (concurrently etc.)
+npm run setup      # installs server + client deps, then builds React
 ```
 
-Or run everything in one shot with the helper script:
+### 4. Start the app
 
 ```powershell
-# PowerShell — install all at once
-@(".", "server", "client") | ForEach-Object { Push-Location $_; npm install; Pop-Location }
+npm start
 ```
 
-### 4. Initialise the database
+Open **http://localhost:5000** — the Express server serves both the API and the React app from a single process.
+
+---
+
+### Development mode (hot-reload)
+
+If you are actively developing, run both servers with live reload in one command:
 
 ```powershell
-cd database
-npm install   # installs argon2, pg, dotenv for this script
-node init.js
-cd ..
-```
-
-This creates the `psh_ticketing` database, applies the schema, seeds modules / categories, and creates all default user accounts.
-
-### 5. Start the app
-
-Open **two terminals**:
-
-**Terminal 1 — API server**
-```powershell
-cd server
 npm run dev
-# Listening on http://localhost:5000
+# API  → http://localhost:5000
+# UI   → http://localhost:5173  (Vite hot-reload)
 ```
-
-**Terminal 2 — React client**
-```powershell
-cd client
-npm run dev
-# Vite dev server at http://localhost:5173
-```
-
-Open **http://localhost:5173** in your browser and log in.
 
 ---
 
