@@ -2,7 +2,10 @@ const pool = require('../db/pool');
 
 async function getLogs(req, res, next) {
   try {
-    const { date, year, month, page = 1, limit = 100 } = req.query;
+    const { date, year, month, page = 1, limit = 100, tz = 'UTC' } = req.query;
+
+    // Validate timezone to prevent injection (IANA names + POSIX offsets only)
+    const timezone = /^[A-Za-z0-9/_+\-]{1,64}$/.test(tz) ? tz : 'UTC';
 
     // Resolve target date (default = today)
     const targetDate = date || new Date().toISOString().slice(0, 10);
@@ -14,7 +17,7 @@ async function getLogs(req, res, next) {
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    // 1. Logs for the selected date
+    // 1. Logs for the selected date (compare using caller's local timezone)
     const logsRes = await pool.query(
       `SELECT
          tal.id, tal.action, tal.field_name, tal.old_value, tal.new_value,
@@ -27,39 +30,35 @@ async function getLogs(req, res, next) {
        FROM ticket_audit_logs tal
        LEFT JOIN users u   ON tal.user_id   = u.id
        LEFT JOIN tickets t ON tal.ticket_id = t.id
-       WHERE tal.created_at AT TIME ZONE 'UTC' >= ($1::date)
-         AND tal.created_at AT TIME ZONE 'UTC' <  ($1::date + INTERVAL '1 day')
+       WHERE (tal.created_at AT TIME ZONE $4)::date = $1::date
        ORDER BY tal.created_at DESC
        LIMIT $2 OFFSET $3`,
-      [targetDate, parseInt(limit), offset]
+      [targetDate, parseInt(limit), offset, timezone]
     );
 
     // 2. Count for the date
     const countRes = await pool.query(
       `SELECT COUNT(*) FROM ticket_audit_logs
-       WHERE created_at AT TIME ZONE 'UTC' >= ($1::date)
-         AND created_at AT TIME ZONE 'UTC' <  ($1::date + INTERVAL '1 day')`,
-      [targetDate]
+       WHERE (created_at AT TIME ZONE $2)::date = $1::date`,
+      [targetDate, timezone]
     );
 
     // 3. Active days in the calendar month (for dot indicators)
     const activeDaysRes = await pool.query(
-      `SELECT DISTINCT (created_at AT TIME ZONE 'UTC')::date AS day
+      `SELECT DISTINCT (created_at AT TIME ZONE $2)::date AS day
        FROM ticket_audit_logs
-       WHERE DATE_TRUNC('month', created_at AT TIME ZONE 'UTC') =
-             DATE_TRUNC('month', $1::date)
+       WHERE to_char(created_at AT TIME ZONE $2, 'YYYY-MM') = to_char($1::date, 'YYYY-MM')
        ORDER BY day`,
-      [calMonth]
+      [calMonth, timezone]
     );
 
     // 4. Per-day summary for sparkline (count per day in the month)
     const sparkRes = await pool.query(
-      `SELECT (created_at AT TIME ZONE 'UTC')::date AS day, COUNT(*) AS cnt
+      `SELECT (created_at AT TIME ZONE $2)::date AS day, COUNT(*) AS cnt
        FROM ticket_audit_logs
-       WHERE DATE_TRUNC('month', created_at AT TIME ZONE 'UTC') =
-             DATE_TRUNC('month', $1::date)
+       WHERE to_char(created_at AT TIME ZONE $2, 'YYYY-MM') = to_char($1::date, 'YYYY-MM')
        GROUP BY 1 ORDER BY 1`,
-      [calMonth]
+      [calMonth, timezone]
     );
 
     const total = parseInt(countRes.rows[0].count);

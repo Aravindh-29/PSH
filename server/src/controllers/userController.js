@@ -3,14 +3,26 @@ const argon2 = require('argon2');
 
 async function list(req, res, next) {
   try {
+    const { scope } = req.query;
+
+    // scope=with_tickets: include soft-deleted users who still have tickets (for User Wise Tickets page)
+    // default: only active non-deleted users (for User Management)
+    const whereClause = scope === 'with_tickets'
+      ? `WHERE (u.deleted_at IS NULL OR EXISTS (
+           SELECT 1 FROM tickets WHERE created_by = u.id AND deleted_at IS NULL
+         ))`
+      : `WHERE u.deleted_at IS NULL`;
+
     const result = await pool.query(`
       SELECT u.id, u.username, u.email, u.full_name, u.role, u.is_active, u.created_at,
+             u.deleted_at,
              COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL) AS ticket_count,
              COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL AND t.status NOT IN ('RESOLVED','CLOSED','CANCELLED')) AS open_count,
              COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL AND t.status IN ('RESOLVED','CLOSED')) AS resolved_count,
              COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL AND t.priority = 'CRITICAL') AS critical_count
       FROM users u
       LEFT JOIN tickets t ON t.created_by = u.id
+      ${whereClause}
       GROUP BY u.id
       ORDER BY u.full_name
     `);
@@ -22,7 +34,7 @@ async function getOne(req, res, next) {
   try {
     const { id } = req.params;
     const result = await pool.query(`
-      SELECT u.id, u.username, u.email, u.full_name, u.role, u.is_active, u.created_at,
+      SELECT u.id, u.username, u.email, u.full_name, u.role, u.is_active, u.created_at, u.deleted_at,
              COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL) AS ticket_count,
              COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL AND t.status NOT IN ('RESOLVED','CLOSED','CANCELLED')) AS open_count,
              COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL AND t.status IN ('RESOLVED','CLOSED')) AS resolved_count,
@@ -87,4 +99,51 @@ async function resetPassword(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { list, getOne, create, update, resetPassword };
+async function deleteUser(req, res, next) {
+  try {
+    const { id } = req.params;
+    const deleteTickets = req.body?.deleteTickets === true;
+
+    if (req.session?.userId === id) {
+      return res.status(400).json({ success: false, message: 'You cannot delete your own account' });
+    }
+
+    const user = await pool.query(
+      'SELECT id, full_name FROM users WHERE id = $1 AND deleted_at IS NULL', [id]
+    );
+    if (user.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (deleteTickets) {
+      await pool.query(
+        'UPDATE tickets SET deleted_at = NOW() WHERE created_by = $1 AND deleted_at IS NULL',
+        [id]
+      );
+    }
+
+    // Soft-delete: mark deleted and deactivate — FK refs stay intact
+    await pool.query(
+      'UPDATE users SET deleted_at = NOW(), is_active = false, updated_at = NOW() WHERE id = $1',
+      [id]
+    );
+    res.json({ success: true, message: `User "${user.rows[0].full_name}" deleted` });
+  } catch (err) { next(err); }
+}
+
+async function deleteAllTickets(req, res, next) {
+  try {
+    const { id } = req.params;
+    const user = await pool.query('SELECT id, full_name FROM users WHERE id = $1', [id]);
+    if (user.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    const result = await pool.query(
+      'UPDATE tickets SET deleted_at = NOW() WHERE created_by = $1 AND deleted_at IS NULL RETURNING id',
+      [id]
+    );
+    res.json({ success: true, deleted: result.rowCount, message: `${result.rowCount} ticket(s) deleted for "${user.rows[0].full_name}"` });
+  } catch (err) { next(err); }
+}
+
+module.exports = { list, getOne, create, update, resetPassword, deleteUser, deleteAllTickets };

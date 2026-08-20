@@ -10,7 +10,7 @@ async function login(req, res, next) {
     }
 
     const result = await pool.query(
-      'SELECT id, username, email, full_name, role, password_hash, is_active FROM users WHERE (username = $1 OR email = $1) AND is_active = true',
+      'SELECT id, username, email, full_name, role, password_hash, is_active FROM users WHERE (username = $1 OR email = $1) AND is_active = true AND deleted_at IS NULL',
       [username.toLowerCase().trim()]
     );
 

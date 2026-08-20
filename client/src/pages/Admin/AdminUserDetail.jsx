@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Eye, Pencil, Search } from 'lucide-react';
+import { ArrowLeft, Eye, Pencil, Search, Trash2, X } from 'lucide-react';
 import { StatusBadge, PriorityBadge } from '../../components/Badge';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -24,6 +24,26 @@ export default function AdminUserDetail() {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ status: '', priority: '' });
   const [page, setPage] = useState(1);
+
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+  const [deleteAllConfirm, setDeleteAllConfirm] = useState('');
+
+  const openDeleteAllModal = () => { setShowDeleteAllModal(true); setDeleteAllConfirm(''); };
+
+  const handleDeleteAllTickets = async () => {
+    setDeletingAll(true);
+    try {
+      const res = await api.delete(`/users/${userId}/tickets`);
+      toast.success(res.data.message);
+      setShowDeleteAllModal(false);
+      setUser(u => ({ ...u, ticket_count: 0, open_count: 0, resolved_count: 0, critical_count: 0 }));
+      setTickets([]);
+      setPagination({ total: 0, page: 1, pages: 1 });
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to delete tickets');
+    } finally { setDeletingAll(false); }
+  };
 
   useEffect(() => {
     setUserLoading(true);
@@ -77,10 +97,23 @@ export default function AdminUserDetail() {
             </div>
           </div>
         </div>
-        <span className={`status-pill ${user.is_active ? 'active' : 'inactive'}`}>
-          {user.is_active ? 'Active' : 'Inactive'}
-        </span>
+        {user.deleted_at
+          ? <span className="status-pill" style={{ background: '#fee2e2', color: '#dc2626' }}>Deleted</span>
+          : <span className={`status-pill ${user.is_active ? 'active' : 'inactive'}`}>{user.is_active ? 'Active' : 'Inactive'}</span>
+        }
       </div>
+
+      {/* Deleted user — quick action row */}
+      {user.deleted_at && parseInt(user.ticket_count) > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+          <button
+            onClick={openDeleteAllModal}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: '#dc2626', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+          >
+            <Trash2 size={14} /> Delete All {user.ticket_count} Ticket{user.ticket_count > 1 ? 's' : ''}
+          </button>
+        </div>
+      )}
 
       {/* Stat cards */}
       <div className="ud-stat-cards">
@@ -182,6 +215,38 @@ export default function AdminUserDetail() {
           </div>
         )}
       </div>
+
+      {/* Delete All Tickets confirmation modal */}
+      {showDeleteAllModal && (
+        <div className="modal-overlay" onClick={() => setShowDeleteAllModal(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <h3 style={{ margin: 0, color: '#dc2626' }}>Delete All Tickets</h3>
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }} onClick={() => setShowDeleteAllModal(false)}><X size={18} /></button>
+            </div>
+            <p style={{ fontSize: 13.5, color: '#374151', marginBottom: 16 }}>
+              Type <strong>{user.username}</strong> to confirm deleting all <strong>{user.ticket_count}</strong> ticket{user.ticket_count > 1 ? 's' : ''}.
+            </p>
+            <input
+              autoFocus
+              placeholder={user.username}
+              value={deleteAllConfirm}
+              onChange={e => setDeleteAllConfirm(e.target.value)}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: 7, fontSize: 13.5, outline: 'none', marginBottom: 20 }}
+            />
+            <div className="modal-actions">
+              <button className="btn-cancel" onClick={() => setShowDeleteAllModal(false)}>Cancel</button>
+              <button
+                onClick={handleDeleteAllTickets}
+                disabled={deletingAll || deleteAllConfirm !== user.username}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 20px', background: '#dc2626', color: 'white', border: 'none', borderRadius: 7, fontSize: 13.5, fontWeight: 600, cursor: deleteAllConfirm === user.username ? 'pointer' : 'not-allowed', opacity: deleteAllConfirm === user.username ? 1 : 0.5 }}
+              >
+                <Trash2 size={13} /> {deletingAll ? 'Deleting...' : 'Delete All Tickets'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

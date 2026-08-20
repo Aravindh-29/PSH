@@ -195,7 +195,8 @@ export default function AuditLogs() {
     try {
       const yr  = format(month, 'yyyy');
       const mo  = format(month, 'M');
-      const res = await api.get(`/audit?date=${date}&year=${yr}&month=${mo}&page=${p}&limit=${LIMIT}`);
+      const tz  = encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone);
+      const res = await api.get(`/audit?date=${date}&year=${yr}&month=${mo}&page=${p}&limit=${LIMIT}&tz=${tz}`);
       const d   = res.data;
       setLogs(d.logs);
       setSummary(d.summary);

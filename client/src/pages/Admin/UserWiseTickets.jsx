@@ -12,7 +12,7 @@ export default function UserWiseTickets() {
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    api.get('/users')
+    api.get('/users?scope=with_tickets')
       .then(r => setUsers(r.data.users))
       .catch(() => toast.error('Failed to load users'))
       .finally(() => setLoading(false));
@@ -66,9 +66,10 @@ export default function UserWiseTickets() {
 
               <div className="uwt-card-right">
                 <span className={`role-badge ${u.role}`}>{u.role}</span>
-                <span className={`status-pill ${u.is_active ? 'active' : 'inactive'}`}>
-                  {u.is_active ? 'Active' : 'Inactive'}
-                </span>
+                {u.deleted_at
+                  ? <span className="status-pill" style={{ background: '#fee2e2', color: '#dc2626' }}>Deleted</span>
+                  : <span className={`status-pill ${u.is_active ? 'active' : 'inactive'}`}>{u.is_active ? 'Active' : 'Inactive'}</span>
+                }
 
                 <div className="uwt-stats">
                   <div className="uwt-stat">
