@@ -39,6 +39,11 @@ if [[ -f "${SCRIPT_DIR}/package.json" && -d "${SCRIPT_DIR}/server" && -d "${SCRI
   APP_DIR="${SCRIPT_DIR}"
 fi
 
+# Owner of APP_DIR — npm and service run as this user
+APP_DIR_OWNER="$(stat -c '%U' "${APP_DIR}" 2>/dev/null || echo root)"
+# If the directory is owned by root or doesn't exist yet, use APP_USER
+[[ "${APP_DIR_OWNER}" == "root" ]] && APP_DIR_OWNER="${APP_USER}"
+
 # ── Generate secrets (preserved if .env already exists) ──────────
 NEW_DB_PASS="$(openssl rand -hex 16)"
 NEW_SESSION_SECRET="$(openssl rand -hex 32)"
@@ -144,7 +149,7 @@ else
   git clone "${REPO_URL}" "${APP_DIR}" 2>&1 | tail -5
   ok "Repository cloned"
 fi
-chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
+chown -R "${APP_DIR_OWNER}:${APP_DIR_OWNER}" "${APP_DIR}"
 
 # ════════════════════════════════════════════════════════════════
 # STEP 6 — Database
@@ -200,7 +205,7 @@ DATABASE_SSL=false
 # SSO_PROVIDER_NAME=
 # SSO_AUTO_PROVISION=false
 EOF
-chown "${APP_USER}:${APP_USER}" "${APP_DIR}/.env"
+chown "${APP_DIR_OWNER}:${APP_DIR_OWNER}" "${APP_DIR}/.env"
 chmod 600 "${APP_DIR}/.env"
 ok ".env written (permissions: 600)"
 
@@ -209,36 +214,34 @@ ok ".env written (permissions: 600)"
 # ════════════════════════════════════════════════════════════════
 step "8 / 9  npm install + build + database schema"
 
+info "Running as user: ${APP_DIR_OWNER}"
+
 info "Installing server and client dependencies..."
-sudo -u "${APP_USER}" bash -c "
-  export HOME=/home/${APP_USER}
-  cd ${APP_DIR}
+sudo -u "${APP_DIR_OWNER}" bash -c "
+  export HOME=$(eval echo ~${APP_DIR_OWNER})
+  cd '${APP_DIR}'
   ${NPM_BIN} run install:all 2>&1
 " | tail -8
 ok "Dependencies installed"
 
 info "Building React client..."
-sudo -u "${APP_USER}" bash -c "
-  export HOME=/home/${APP_USER}
-  cd ${APP_DIR}
+sudo -u "${APP_DIR_OWNER}" bash -c "
+  export HOME=$(eval echo ~${APP_DIR_OWNER})
+  cd '${APP_DIR}'
   ${NPM_BIN} run build:client 2>&1
 " | tail -5
 ok "Client built"
 
 info "Running database schema initialisation..."
-# Export env vars so the init script can connect
-export NODE_ENV=production
-export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@localhost:5432/${DB_NAME}"
-export SESSION_SECRET="${SESSION_SECRET}"
-export CLIENT_URL="${CLIENT_URL}"
-export PORT="${PORT}"
-export DATABASE_SSL=false
-
-sudo -u "${APP_USER}" bash -c "
-  export HOME=/home/${APP_USER}
+sudo -u "${APP_DIR_OWNER}" bash -c "
+  export HOME=$(eval echo ~${APP_DIR_OWNER})
   export DATABASE_URL='postgresql://${DB_USER}:${DB_PASS}@localhost:5432/${DB_NAME}'
   export NODE_ENV=production
-  cd ${APP_DIR}
+  export SESSION_SECRET='${SESSION_SECRET}'
+  export CLIENT_URL='${CLIENT_URL}'
+  export PORT='${PORT}'
+  export DATABASE_SSL=false
+  cd '${APP_DIR}'
   ${NPM_BIN} run db:init 2>&1
 "
 ok "Database schema ready"
@@ -256,8 +259,8 @@ Wants=postgresql.service
 
 [Service]
 Type=simple
-User=${APP_USER}
-Group=${APP_USER}
+User=${APP_DIR_OWNER}
+Group=${APP_DIR_OWNER}
 WorkingDirectory=${APP_DIR}
 EnvironmentFile=${APP_DIR}/.env
 ExecStart=${NODE_BIN} server/src/server.js
