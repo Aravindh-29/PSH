@@ -59,7 +59,7 @@ async function dbInit() {
   await appClient.query(`
     INSERT INTO users (username, email, full_name, password_hash, role)
     VALUES ('admin', 'admin@purestoragehorizon.com', 'Aravindh K', $1, 'admin')
-    ON CONFLICT (username) DO UPDATE SET password_hash = $1
+    ON CONFLICT (username) DO NOTHING
   `, [adminHash]);
 
   const empHash = await argon2.hash('Employee@123');
