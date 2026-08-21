@@ -355,6 +355,74 @@ else
   warn "Nginx did not start cleanly — check: journalctl -u nginx -n 20"
 fi
 
+# ── Certbot prompt ───────────────────────────────────────────────
+CERTBOT_DOMAIN=""
+echo ""
+echo -e "${BOLD}────────────────────────────────────────────────────────${NC}"
+echo -e "  ${BOLD}SSL Certificate Setup${NC}"
+echo -e "  Currently using a self-signed cert (browser will warn)."
+echo -e "  If you have a domain pointing to this server you can"
+echo -e "  get a free trusted certificate from Let's Encrypt now."
+echo -e "${BOLD}────────────────────────────────────────────────────────${NC}"
+echo ""
+read -r -p "  Want to configure a trusted SSL certificate (Let's Encrypt)? [y/N]: " CERT_CHOICE
+
+if [[ "${CERT_CHOICE,,}" == "y" ]]; then
+  echo ""
+  read -r -p "  Enter your domain name (e.g. servit.company.com): " CERTBOT_DOMAIN
+  CERTBOT_DOMAIN="${CERTBOT_DOMAIN// /}"   # strip any spaces
+
+  if [[ -z "${CERTBOT_DOMAIN}" ]]; then
+    warn "No domain entered — skipping Let's Encrypt, keeping self-signed cert"
+  else
+    echo ""
+    echo -e "  ${YELLOW}Important: DNS for '${CERTBOT_DOMAIN}' must already point to ${SERVER_IP}${NC}"
+    echo -e "  ${YELLOW}If DNS is not set up yet, certbot will fail. You can run it later:${NC}"
+    echo -e "  ${YELLOW}  sudo certbot --nginx -d ${CERTBOT_DOMAIN}${NC}"
+    echo ""
+    read -r -p "  DNS is ready — proceed with certificate? [y/N]: " DNS_READY
+
+    if [[ "${DNS_READY,,}" == "y" ]]; then
+      info "Installing certbot..."
+      apt-get install -y certbot python3-certbot-nginx 2>&1 | tail -3
+      ok "Certbot installed"
+
+      info "Requesting Let's Encrypt certificate for ${CERTBOT_DOMAIN}..."
+      if certbot --nginx -d "${CERTBOT_DOMAIN}" --non-interactive --agree-tos \
+          --register-unsafely-without-email --redirect 2>&1; then
+        ok "Let's Encrypt certificate issued for ${CERTBOT_DOMAIN}"
+
+        # Update CLIENT_URL in .env to use the real domain
+        CLIENT_URL_HTTPS="https://${CERTBOT_DOMAIN}"
+        CLIENT_URL="${CLIENT_URL_HTTPS}"
+        sed -i "s|^CLIENT_URL=.*|CLIENT_URL=${CLIENT_URL}|" "${APP_DIR}/.env"
+        ok "CLIENT_URL updated in .env → ${CLIENT_URL}"
+
+        # Enable auto-renewal via systemd timer (installed by certbot)
+        systemctl enable certbot.timer 2>/dev/null || true
+        ok "Auto-renewal enabled (certbot.timer)"
+
+        info "Reloading Nginx with new certificate..."
+        systemctl reload nginx
+        ok "Nginx reloaded"
+
+        CLIENT_URL_HTTPS="https://${CERTBOT_DOMAIN}"
+        CLIENT_URL_HTTP="http://${CERTBOT_DOMAIN}"
+      else
+        warn "Certbot failed — keeping self-signed certificate"
+        warn "Check DNS for '${CERTBOT_DOMAIN}' and retry: sudo certbot --nginx -d ${CERTBOT_DOMAIN}"
+      fi
+    else
+      warn "Skipping certbot for now — keeping self-signed cert"
+      info "Run later: sudo certbot --nginx -d ${CERTBOT_DOMAIN}"
+    fi
+  fi
+else
+  info "Keeping self-signed certificate — browser will show a security warning"
+  info "Run later: sudo certbot --nginx -d yourdomain.com"
+fi
+echo ""
+
 # ════════════════════════════════════════════════════════════════
 # STEP 10 — Systemd service (Node.js on :5000 internal)
 # ════════════════════════════════════════════════════════════════
@@ -422,11 +490,16 @@ Session secret : ${SESSION_SECRET}
 .env path      : ${APP_DIR}/.env
 
 ─── SSL Certificate ────────────────────────────────
-Type           : Self-signed (10 years)
-Certificate    : ${SSL_DIR}/servit.crt
-Private key    : ${SSL_DIR}/servit.key
-Upgrade tip    : sudo apt install certbot python3-certbot-nginx -y
-               : sudo certbot --nginx -d yourdomain.com
+$(if [[ -n "${CERTBOT_DOMAIN}" ]]; then
+  echo "Type           : Let's Encrypt (trusted, auto-renews)"
+  echo "Domain         : ${CERTBOT_DOMAIN}"
+  echo "Auto-renewal   : systemctl status certbot.timer"
+else
+  echo "Type           : Self-signed (10 years, browser will warn)"
+  echo "Certificate    : ${SSL_DIR}/servit.crt"
+  echo "Private key    : ${SSL_DIR}/servit.key"
+  echo "Upgrade tip    : sudo certbot --nginx -d yourdomain.com"
+fi)
 
 ─── Default admin login ────────────────────────────
 Username       : admin
@@ -450,11 +523,16 @@ echo -e "${GREEN}${BOLD}║      SERV-IT setup complete!                 ║${NC
 echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "  ${BOLD}HTTP  (auto-redirects):${NC}  ${BLUE}${CLIENT_URL_HTTP}${NC}"
-echo -e "  ${BOLD}HTTPS (self-signed):${NC}     ${BLUE}${CLIENT_URL_HTTPS}${NC}"
+echo -e "  ${BOLD}HTTPS:${NC}                   ${BLUE}${CLIENT_URL_HTTPS}${NC}"
 echo -e "  ${BOLD}Default login:${NC}           admin / Admin@123"
 echo ""
-echo -e "  ${YELLOW}⚠  Browser will warn about self-signed cert — click Advanced → Proceed${NC}"
-echo -e "  ${YELLOW}   To get a trusted cert:  sudo certbot --nginx -d yourdomain.com${NC}"
+if [[ -n "${CERTBOT_DOMAIN}" ]]; then
+  echo -e "  ${GREEN}✓  Trusted SSL certificate installed for ${CERTBOT_DOMAIN}${NC}"
+  echo -e "  ${GREEN}   Auto-renewal is enabled via certbot.timer${NC}"
+else
+  echo -e "  ${YELLOW}⚠  Self-signed cert — browser will warn → click Advanced → Proceed${NC}"
+  echo -e "  ${YELLOW}   To get a trusted cert:  sudo certbot --nginx -d yourdomain.com${NC}"
+fi
 echo ""
 echo -e "  ${BOLD}AWS Security Group — open these ports:${NC}"
 echo -e "    Port 80  (HTTP)  — 0.0.0.0/0"
