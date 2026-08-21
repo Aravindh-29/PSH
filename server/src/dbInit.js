@@ -55,12 +55,16 @@ async function dbInit() {
     ON CONFLICT (field_key) DO NOTHING
   `);
 
-  const adminHash = await argon2.hash('Admin@123');
-  await appClient.query(`
-    INSERT INTO users (username, email, full_name, password_hash, role)
-    VALUES ('admin', 'admin@purestoragehorizon.com', 'Aravindh K', $1, 'admin')
-    ON CONFLICT (username) DO NOTHING
-  `, [adminHash]);
+  // Use explicit existence check — ON CONFLICT (username) requires a column-level
+  // unique constraint, but users now uses a partial index (WHERE deleted_at IS NULL)
+  const adminExists = await appClient.query(`SELECT id FROM users WHERE username = 'admin'`);
+  if (adminExists.rows.length === 0) {
+    const adminHash = await argon2.hash('Admin@123');
+    await appClient.query(`
+      INSERT INTO users (username, email, full_name, password_hash, role)
+      VALUES ('admin', 'admin@purestoragehorizon.com', 'Aravindh K', $1, 'admin')
+    `, [adminHash]);
+  }
 
   const empHash = await argon2.hash('Employee@123');
   for (const [username, email, full_name] of [
@@ -68,11 +72,13 @@ async function dbInit() {
     ['sarah.johnson',  'sarah.johnson@purestoragehorizon.com',  'Sarah Johnson'],
     ['mike.davis',     'mike.davis@purestoragehorizon.com',     'Mike Davis'],
   ]) {
-    await appClient.query(`
-      INSERT INTO users (username, email, full_name, password_hash, role)
-      VALUES ($1, $2, $3, $4, 'employee')
-      ON CONFLICT (username) DO NOTHING
-    `, [username, email, full_name, empHash]);
+    const exists = await appClient.query(`SELECT id FROM users WHERE username = $1`, [username]);
+    if (exists.rows.length === 0) {
+      await appClient.query(`
+        INSERT INTO users (username, email, full_name, password_hash, role)
+        VALUES ($1, $2, $3, $4, 'employee')
+      `, [username, email, full_name, empHash]);
+    }
   }
 
   await appClient.end();
