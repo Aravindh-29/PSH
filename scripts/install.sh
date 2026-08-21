@@ -9,7 +9,7 @@
 #    443 — HTTPS (Nginx + self-signed cert → Node :5000)
 #   5000 — Node.js (internal only, not exposed externally)
 #
-#  Usage:  sudo bash install-nodejs-and-postgres.sh
+#  Usage:  sudo bash /opt/PSH/scripts/install.sh
 # ================================================================
 
 set -euo pipefail

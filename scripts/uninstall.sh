@@ -13,7 +13,7 @@
 #
 #  Node.js and PostgreSQL packages are kept (they may be shared).
 #
-#  Usage:  sudo bash uninstall.sh
+#  Usage:  sudo bash /opt/PSH/scripts/uninstall.sh
 # ================================================================
 
 set -euo pipefail

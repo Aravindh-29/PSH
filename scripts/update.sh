@@ -3,7 +3,7 @@
 #  SERV-IT — Update Script
 #  Pull latest code, rebuild client, run DB migrations, restart
 #
-#  Usage:  sudo bash update.sh
+#  Usage:  sudo bash /opt/PSH/scripts/update.sh
 #          (run from anywhere inside the app folder)
 # ================================================================
 
@@ -18,7 +18,7 @@ ok()   { echo -e "  ${GREEN}✓ $1${NC}"; }
 warn() { echo -e "  ${YELLOW}⚠ $1${NC}"; }
 die()  { echo -e "\n${RED}${BOLD}ERROR: $1${NC}" >&2; exit 1; }
 
-[[ $EUID -ne 0 ]] && die "Run as root:  sudo bash update.sh"
+[[ $EUID -ne 0 ]] && die "Run as root:  sudo bash /opt/PSH/scripts/update.sh"
 
 # ── App directory — always /opt/PSH regardless of where script is called from ──
 APP_DIR="/opt/PSH"

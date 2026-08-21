@@ -3,7 +3,7 @@
 #  SERV-IT — Demo Data Loader
 #  Cleans up previous demo data, then creates 3 users + 500 tickets
 #
-#  Usage:  sudo bash /opt/PSH/scripts/dump500tickets.sh
+#  Usage:  sudo bash /opt/PSH/scripts/dumps/dump500tickets.sh
 # ================================================================
 
 APP_DIR="/opt/PSH"
@@ -44,4 +44,4 @@ echo ""
 NODE_BIN="$(which node 2>/dev/null)" || { echo -e "${RED}node not found in PATH${NC}"; exit 1; }
 
 NODE_PATH="${APP_DIR}/node_modules:${APP_DIR}/server/node_modules" \
-  "${NODE_BIN}" "${APP_DIR}/scripts/dump500tickets.js"
+  "${NODE_BIN}" "${APP_DIR}/scripts/dumps/dump500tickets.js"

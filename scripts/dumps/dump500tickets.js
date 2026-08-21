@@ -1,7 +1,7 @@
 /**
  * SERV-IT — Demo data loader
  * Creates 3 employee users + 500 tickets with realistic data.
- * Run via:  sudo bash /opt/PSH/scripts/dump500tickets.sh
+ * Run via:  sudo bash /opt/PSH/scripts/dumps/dump500tickets.sh
  */
 require('dotenv').config({ path: '/opt/PSH/.env' });
 const { Pool } = require('pg');
