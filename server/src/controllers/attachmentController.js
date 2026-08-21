@@ -27,7 +27,7 @@ async function upload(req, res, next) {
 
     const isAdmin = req.session.role === 'admin';
     const t = ticket.rows[0];
-    if (!isAdmin && t.created_by !== req.session.userId && t.assigned_to !== req.session.userId) {
+    if (!isAdmin && t.created_by !== req.session.userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
@@ -75,7 +75,7 @@ async function download(req, res, next) {
 
     const att = result.rows[0];
     const isAdmin = req.session.role === 'admin';
-    if (!isAdmin && att.created_by !== req.session.userId && att.assigned_to !== req.session.userId && att.uploaded_by !== req.session.userId) {
+    if (!isAdmin && att.created_by !== req.session.userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 

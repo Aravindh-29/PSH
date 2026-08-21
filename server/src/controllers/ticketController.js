@@ -24,7 +24,7 @@ async function list(req, res, next) {
 
     if (!isAdmin) {
       params.push(userId);
-      conditions.push(`(t.created_by = $${params.length} OR t.assigned_to = $${params.length})`);
+      conditions.push(`t.created_by = $${params.length}`);
     } else if (myTickets === 'true') {
       params.push(userId);
       conditions.push(`t.created_by = $${params.length}`);
@@ -152,7 +152,7 @@ async function getOne(req, res, next) {
 
     const ticket = result.rows[0];
     const isAdmin = req.session.role === 'admin';
-    if (!isAdmin && ticket.created_by !== req.session.userId && ticket.assigned_to_id !== req.session.userId) {
+    if (!isAdmin && ticket.created_by !== req.session.userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
@@ -297,7 +297,7 @@ async function addComment(req, res, next) {
 
     const isAdmin = req.session.role === 'admin';
     const t = ticket.rows[0];
-    if (!isAdmin && t.created_by !== req.session.userId && t.assigned_to !== req.session.userId) {
+    if (!isAdmin && t.created_by !== req.session.userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
     if (type === 'WORK_NOTE' && !isAdmin) {
