@@ -1,7 +1,8 @@
 #!/bin/bash
 # ================================================================
 #  SERV-IT — Update Script
-#  Pull latest code, rebuild client, run DB migrations, restart
+#  Rebuild client, run DB migrations, restart service
+#  (copy the updated code folder to /opt/PSH before running)
 #
 #  Usage:  sudo bash /opt/PSH/scripts/update.sh
 #          (run from anywhere inside the app folder)
@@ -40,31 +41,10 @@ echo -e "  App dir  : ${APP_DIR}"
 echo -e "  Run as   : ${APP_DIR_OWNER}"
 echo -e "  Node     : $(${NODE_BIN} --version)"
 
-# ════════════════════════════════════════════════════════════════
-step "1 / 5  Git pull — fetch latest changes"
-# ════════════════════════════════════════════════════════════════
 cd "${APP_DIR}"
 
-if ! git rev-parse --is-inside-work-tree &>/dev/null; then
-  die "Not a git repository. Cannot pull updates."
-fi
-
-BEFORE="$(git rev-parse HEAD)"
-sudo -u "${APP_DIR_OWNER}" git pull origin main 2>&1 || {
-  warn "git pull failed — trying as current user..."
-  git pull origin main 2>&1
-}
-AFTER="$(git rev-parse HEAD)"
-
-if [[ "${BEFORE}" == "${AFTER}" ]]; then
-  ok "Already up to date ($(git log -1 --format='%h %s'))"
-else
-  ok "Updated  ${BEFORE:0:7} → ${AFTER:0:7}"
-  git log --oneline "${BEFORE}..${AFTER}" | sed 's/^/    /'
-fi
-
 # ════════════════════════════════════════════════════════════════
-step "2 / 5  npm install — sync any new dependencies"
+step "1 / 4  npm install — sync any new dependencies"
 # ════════════════════════════════════════════════════════════════
 sudo -u "${APP_DIR_OWNER}" bash -c "
   export HOME=$(eval echo ~${APP_DIR_OWNER})
@@ -74,7 +54,7 @@ sudo -u "${APP_DIR_OWNER}" bash -c "
 ok "Dependencies up to date"
 
 # ════════════════════════════════════════════════════════════════
-step "3 / 5  Build React client"
+step "2 / 4  Build React client"
 # ════════════════════════════════════════════════════════════════
 
 # Ensure swap exists (Vite needs ~1.5 GB; small instances have no swap)
@@ -101,7 +81,7 @@ sudo -u "${APP_DIR_OWNER}" bash -c "
 ok "Client built"
 
 # ════════════════════════════════════════════════════════════════
-step "4 / 5  Database migrations"
+step "3 / 4  Database migrations"
 # ════════════════════════════════════════════════════════════════
 # Read DB credentials from .env
 DB_URL="$(grep '^DATABASE_URL=' "${APP_DIR}/.env" | cut -d= -f2-)"
@@ -120,7 +100,7 @@ PGPASSWORD="${DB_PASS}" psql \
 ok "Schema migrations applied"
 
 # ════════════════════════════════════════════════════════════════
-step "5 / 5  Restart service"
+step "4 / 4  Restart service"
 # ════════════════════════════════════════════════════════════════
 if systemctl is-active --quiet "${SERVICE_NAME}"; then
   systemctl restart "${SERVICE_NAME}"
