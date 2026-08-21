@@ -226,6 +226,24 @@ ok ".env written (permissions: 600)"
 # ════════════════════════════════════════════════════════════════
 step "8 / 10  npm install + build + database schema"
 
+# ── Ensure swap exists (Vite build needs ~1.5 GB; t2/t3.micro have 1 GB RAM) ──
+SWAP_FILE="/swapfile"
+if [[ "$(swapon --show | wc -l)" -le 1 ]]; then
+  info "No swap detected — creating 2 GB swap file (required for Vite build on small instances)..."
+  if fallocate -l 2G "${SWAP_FILE}" 2>/dev/null || dd if=/dev/zero of="${SWAP_FILE}" bs=1M count=2048 status=none; then
+    chmod 600 "${SWAP_FILE}"
+    mkswap "${SWAP_FILE}" > /dev/null
+    swapon "${SWAP_FILE}"
+    # persist across reboots
+    grep -q "${SWAP_FILE}" /etc/fstab || echo "${SWAP_FILE} none swap sw 0 0" >> /etc/fstab
+    ok "Swap created and enabled (2 GB)"
+  else
+    warn "Could not create swap file — build may be killed on low-memory instances"
+  fi
+else
+  ok "Swap already present — skipping"
+fi
+
 info "Running as user: ${APP_DIR_OWNER}"
 
 info "Installing server and client dependencies..."
@@ -239,6 +257,7 @@ ok "Dependencies installed"
 info "Building React client..."
 sudo -u "${APP_DIR_OWNER}" bash -c "
   export HOME=$(eval echo ~${APP_DIR_OWNER})
+  export NODE_OPTIONS='--max-old-space-size=1536'
   cd '${APP_DIR}'
   ${NPM_BIN} run build:client 2>&1
 " | tail -5
