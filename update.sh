@@ -20,12 +20,11 @@ die()  { echo -e "\n${RED}${BOLD}ERROR: $1${NC}" >&2; exit 1; }
 
 [[ $EUID -ne 0 ]] && die "Run as root:  sudo bash update.sh"
 
-# ── Locate app directory ─────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_DIR="${SCRIPT_DIR}"
+# ── App directory — always /opt/PSH regardless of where script is called from ──
+APP_DIR="/opt/PSH"
 
-[[ -f "${APP_DIR}/package.json" ]] || die "package.json not found in ${APP_DIR} — run from the app folder"
-[[ -f "${APP_DIR}/.env" ]]         || die ".env not found — has the app been set up?"
+[[ -f "${APP_DIR}/package.json" ]] || die "package.json not found in ${APP_DIR} — run the install script first"
+[[ -f "${APP_DIR}/.env" ]]         || die ".env not found in ${APP_DIR} — run the install script first"
 
 # ── Detect owner and binaries ────────────────────────────────────
 APP_DIR_OWNER="$(stat -c '%U' "${APP_DIR}")"
