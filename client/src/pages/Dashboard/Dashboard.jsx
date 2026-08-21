@@ -249,7 +249,7 @@ export default function Dashboard() {
         {/* Line Chart */}
         <div className="dash-chart-card">
           <div className="dash-card-header">
-            <h3>{activePreset ? `Tickets Overview — ${activePreset.label}` : `Tickets Overview — ${daysDiff} Days`}</h3>
+            <h3>Tickets Overview — {activePreset ? activePreset.label : dateRange ? `${format(dateRange.start, 'MMM d')} – ${format(dateRange.end, 'MMM d, yyyy')}` : 'All Time'}</h3>
           </div>
           <div className="dash-chart-body">
             <ResponsiveContainer width="100%" height="100%">
