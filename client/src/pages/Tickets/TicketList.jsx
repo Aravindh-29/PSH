@@ -1,11 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Plus, Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, ChevronDown, ChevronsUpDown, Calendar, ChevronDown as ChevDown } from 'lucide-react';
 import { StatusBadge, PriorityBadge } from '../../components/Badge';
 import api from '../../api/axios';
-import { formatDistanceToNow, format } from 'date-fns';
+import { formatDistanceToNow, format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import toast from 'react-hot-toast';
 import './TicketList.css';
+
+const DATE_PRESETS = [
+  { label: 'All Tickets',  getRange: () => null },
+  { label: 'Last 7 days',  getRange: () => ({ start: subDays(new Date(), 6), end: new Date() }) },
+  { label: 'Last 14 days', getRange: () => ({ start: subDays(new Date(), 13), end: new Date() }) },
+  { label: 'Last 30 days', getRange: () => ({ start: subDays(new Date(), 29), end: new Date() }) },
+  { label: 'This month',   getRange: () => ({ start: startOfMonth(new Date()), end: new Date() }) },
+  { label: 'Last month',   getRange: () => ({ start: startOfMonth(subMonths(new Date(), 1)), end: endOfMonth(subMonths(new Date(), 1)) }) },
+];
 
 const STATUSES = ['NEW','OPEN','ASSIGNED','IN_PROGRESS','PENDING','ON_HOLD','RESOLVED','CLOSED','CANCELLED'];
 const PRIORITIES = ['LOW','MEDIUM','HIGH','CRITICAL'];
@@ -44,6 +53,19 @@ export default function TicketList({ myTickets }) {
   const [page, setPage]             = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
   const [deleteId, setDeleteId]     = useState(null);
+  const [dateRange, setDateRange]   = useState(null); // null = All Tickets
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd]     = useState('');
+  const datePickerRef = useRef(null);
+
+  useEffect(() => {
+    function onClickOutside(e) {
+      if (datePickerRef.current && !datePickerRef.current.contains(e.target)) setShowDatePicker(false);
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
 
   // Single unified effect — all fetch triggers go through here.
   // Listing every dependency explicitly prevents stale-closure bugs.
@@ -55,10 +77,14 @@ export default function TicketList({ myTickets }) {
         const params = new URLSearchParams({
           page, limit: LIMIT, sortBy: sort.field, sortDir: sort.dir,
         });
-        if (search)          params.set('search', search);
-        if (filters.status)  params.set('status', filters.status);
+        if (search)           params.set('search', search);
+        if (filters.status)   params.set('status', filters.status);
         if (filters.priority) params.set('priority', filters.priority);
-        if (myTickets)       params.set('myTickets', 'true');
+        if (myTickets)        params.set('myTickets', 'true');
+        if (dateRange) {
+          params.set('startDate', format(dateRange.start, 'yyyy-MM-dd'));
+          params.set('endDate',   format(dateRange.end,   'yyyy-MM-dd'));
+        }
         const res = await api.get(`/tickets?${params}`);
         if (!cancelled) {
           setTickets(res.data.tickets);
@@ -73,7 +99,7 @@ export default function TicketList({ myTickets }) {
     run();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, sort.field, sort.dir, search, filters.status, filters.priority, myTickets, refreshKey]);
+  }, [page, sort.field, sort.dir, search, filters.status, filters.priority, myTickets, refreshKey, dateRange]);
 
   const toggleSort = (field) => {
     const next = sort.field === field
@@ -85,6 +111,28 @@ export default function TicketList({ myTickets }) {
 
   const handleSearch = (val) => { setSearch(val); setPage(1); };
   const handleFilter = (key, val) => { setFilters(f => ({ ...f, [key]: val })); setPage(1); };
+
+  const applyDatePreset = (preset) => {
+    setDateRange(preset.getRange());
+    setShowDatePicker(false);
+    setPage(1);
+  };
+  const applyCustomDate = () => {
+    if (!customStart || !customEnd) return;
+    setDateRange({ start: new Date(customStart + 'T00:00:00'), end: new Date(customEnd + 'T23:59:59') });
+    setShowDatePicker(false);
+    setPage(1);
+  };
+  const dateLabel = dateRange
+    ? `${format(dateRange.start, 'MMM d')} – ${format(dateRange.end, 'MMM d, yyyy')}`
+    : 'All Tickets';
+  const activeDatePreset = DATE_PRESETS.find(p => {
+    const r = p.getRange();
+    if (r === null && dateRange === null) return true;
+    if (!r || !dateRange) return false;
+    return format(r.start, 'yyyy-MM-dd') === format(dateRange.start, 'yyyy-MM-dd')
+        && format(r.end, 'yyyy-MM-dd') === format(dateRange.end, 'yyyy-MM-dd');
+  });
 
   const confirmDelete = async () => {
     try {
@@ -127,6 +175,42 @@ export default function TicketList({ myTickets }) {
           <option value="">All Priorities</option>
           {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
+        {/* Date range picker */}
+        <div className="date-picker-wrap" ref={datePickerRef} style={{ position: 'relative' }}>
+          <button className="date-picker-btn" onClick={() => setShowDatePicker(p => !p)}>
+            <Calendar size={14} />
+            <span>{dateLabel}</span>
+            <ChevDown size={12} style={{ marginLeft: 2, opacity: 0.6 }} />
+          </button>
+          {showDatePicker && (
+            <div className="date-picker-dropdown">
+              <div className="date-picker-presets">
+                {DATE_PRESETS.map(p => (
+                  <button
+                    key={p.label}
+                    className={`date-preset-btn${activeDatePreset?.label === p.label ? ' active' : ''}`}
+                    onClick={() => applyDatePreset(p)}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <div className="date-picker-divider" />
+              <div className="date-picker-custom">
+                <p className="date-custom-label">Custom range</p>
+                <div className="date-custom-row">
+                  <label>From</label>
+                  <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} />
+                </div>
+                <div className="date-custom-row">
+                  <label>To</label>
+                  <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
+                </div>
+                <button className="date-apply-btn" onClick={applyCustomDate}>Apply</button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="tl-table-wrap">

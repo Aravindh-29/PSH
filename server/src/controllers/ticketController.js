@@ -16,7 +16,7 @@ async function list(req, res, next) {
   try {
     const isAdmin = req.session.role === 'admin';
     const userId = req.session.userId;
-    const { page = 1, limit = 25, status, priority, module: mod, category, search, assignedTo, myTickets, createdBy, sortBy, sortDir } = req.query;
+    const { page = 1, limit = 25, status, priority, module: mod, category, search, assignedTo, myTickets, createdBy, sortBy, sortDir, startDate, endDate } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     const conditions = ['t.deleted_at IS NULL'];
@@ -42,6 +42,8 @@ async function list(req, res, next) {
       const idx = params.length;
       conditions.push(`(t.ticket_number ILIKE $${idx} OR t.short_description ILIKE $${idx} OR t.customer_name ILIKE $${idx})`);
     }
+    if (startDate) { params.push(startDate); conditions.push(`t.created_at >= $${params.length}::date`); }
+    if (endDate)   { params.push(endDate);   conditions.push(`t.created_at < ($${params.length}::date + INTERVAL '1 day')`); }
 
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 

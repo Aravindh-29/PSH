@@ -15,6 +15,7 @@ import { formatDistanceToNow, format, subDays, startOfMonth, endOfMonth, subMont
 import './Dashboard.css';
 
 const DATE_PRESETS = [
+  { label: 'All Tickets',  getRange: () => null },
   { label: 'Last 7 days',  getRange: () => ({ start: subDays(new Date(), 6), end: new Date() }) },
   { label: 'Last 14 days', getRange: () => ({ start: subDays(new Date(), 13), end: new Date() }) },
   { label: 'Last 30 days', getRange: () => ({ start: subDays(new Date(), 29), end: new Date() }) },
@@ -59,7 +60,7 @@ export default function Dashboard() {
   const [recentTickets, setRecentTickets] = useState([]);
   const [loading, setLoading]       = useState(true);
 
-  const [dateRange, setDateRange]   = useState({ start: subDays(new Date(), 6), end: new Date() });
+  const [dateRange, setDateRange]   = useState(null); // null = All Tickets
   const [showPicker, setShowPicker] = useState(false);
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd]   = useState('');
@@ -75,10 +76,11 @@ export default function Dashboard() {
 
   useEffect(() => {
     setLoading(true);
-    const params = new URLSearchParams({
-      startDate: format(dateRange.start, 'yyyy-MM-dd'),
-      endDate:   format(dateRange.end,   'yyyy-MM-dd'),
-    });
+    const params = new URLSearchParams();
+    if (dateRange) {
+      params.set('startDate', format(dateRange.start, 'yyyy-MM-dd'));
+      params.set('endDate',   format(dateRange.end,   'yyyy-MM-dd'));
+    }
     api.get(`/dashboard?${params}`)
       .then(res => {
         setStats(res.data.stats);
@@ -111,10 +113,13 @@ export default function Dashboard() {
     { name: 'Low',      value: displayStats.low,      color: '#10B981' },
   ].filter(d => d.value > 0);
 
-  const dateRangeLabel = `${format(dateRange.start, 'MMM d')} – ${format(dateRange.end, 'MMM d, yyyy')}`;
-  const daysDiff = Math.max(1, Math.round((dateRange.end - dateRange.start) / (1000 * 60 * 60 * 24)) + 1);
+  const dateRangeLabel = dateRange
+    ? `${format(dateRange.start, 'MMM d')} – ${format(dateRange.end, 'MMM d, yyyy')}`
+    : 'All Tickets';
   const activePreset = DATE_PRESETS.find(p => {
     const r = p.getRange();
+    if (r === null && dateRange === null) return true;
+    if (!r || !dateRange) return false;
     return format(r.start, 'yyyy-MM-dd') === format(dateRange.start, 'yyyy-MM-dd')
         && format(r.end,   'yyyy-MM-dd') === format(dateRange.end,   'yyyy-MM-dd');
   });

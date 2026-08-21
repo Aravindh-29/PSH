@@ -14,20 +14,44 @@ function formatDuration(hours) {
   return `${Math.floor(h / 24)}d ${Math.floor(h % 24)}h`;
 }
 
+// Builds WHERE clause and params array for a query.
+// userField: the column to filter on for non-admin (e.g. 't.created_by')
+// dateField: the column to apply the date range to (e.g. 't.created_at')
+function buildWhere(isAdmin, userId, startDate, endDate, { userField = 't.created_by', dateField = 't.created_at' } = {}) {
+  const conditions = ['t.deleted_at IS NULL'];
+  const params = [];
+
+  if (!isAdmin) {
+    params.push(userId);
+    conditions.push(`${userField} = $${params.length}`);
+  }
+
+  if (startDate && endDate) {
+    params.push(startDate);
+    conditions.push(`${dateField} >= $${params.length}::date`);
+    params.push(endDate);
+    conditions.push(`${dateField} < ($${params.length}::date + INTERVAL '1 day')`);
+  }
+
+  return { where: conditions.join(' AND '), params };
+}
+
 async function getStats(req, res, next) {
   try {
     const isAdmin = req.session.role === 'admin';
-    const userId = req.session.userId;
-    const userFilter = !isAdmin ? ` AND (t.created_by = $1 OR t.assigned_to = $1)` : '';
-    const params = !isAdmin ? [userId] : [];
+    const userId  = req.session.userId;
 
-    // Date range for chart (defaults: last 7 days)
-    const today = new Date().toISOString().split('T')[0];
-    const sevenAgo = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
-    const chartStart = req.query.startDate || sevenAgo;
-    const chartEnd   = req.query.endDate   || today;
+    const startDate = req.query.startDate || null;
+    const endDate   = req.query.endDate   || null;
 
-    // ── 1. Status counts (current snapshot) ──────────────
+    // For chart: use provided range, or default to last 30 days for "All Tickets" view
+    const today     = new Date().toISOString().split('T')[0];
+    const thirtyAgo = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
+    const chartStart = startDate || thirtyAgo;
+    const chartEnd   = endDate   || today;
+
+    // ── 1. Status/priority counts for selected date range ────────
+    const { where: w1, params: p1 } = buildWhere(isAdmin, userId, startDate, endDate);
     const statsResult = await pool.query(`
       SELECT
         COUNT(*) AS total,
@@ -41,32 +65,56 @@ async function getStats(req, res, next) {
         COUNT(*) FILTER (WHERE t.priority = 'MEDIUM') AS medium_count,
         COUNT(*) FILTER (WHERE t.priority = 'LOW') AS low_count
       FROM tickets t
-      WHERE t.deleted_at IS NULL${userFilter}
-    `, params);
+      WHERE ${w1}
+    `, p1);
 
-    // ── 2. Trend: this week vs last week (by creation date) ──
+    // ── 2. Trend: selected range vs equally-sized previous period ──
+    // Determine comparison period length
+    let periodDays = 7;
+    if (startDate && endDate) {
+      const ms = new Date(endDate) - new Date(startDate);
+      periodDays = Math.max(1, Math.round(ms / 86400000) + 1);
+    }
+    const { where: w2, params: p2 } = buildWhere(isAdmin, userId, null, null); // no date — use FILTER for both periods
     const trendResult = await pool.query(`
       SELECT
-        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '7 days') AS total_this,
-        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '14 days' AND t.created_at < NOW() - INTERVAL '7 days') AS total_last,
-        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '7 days' AND t.status IN ('NEW','OPEN')) AS open_this,
-        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '14 days' AND t.created_at < NOW() - INTERVAL '7 days' AND t.status IN ('NEW','OPEN')) AS open_last,
-        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '7 days' AND t.status IN ('IN_PROGRESS','WORK_IN_PROGRESS','ASSIGNED')) AS inp_this,
-        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '14 days' AND t.created_at < NOW() - INTERVAL '7 days' AND t.status IN ('IN_PROGRESS','WORK_IN_PROGRESS','ASSIGNED')) AS inp_last,
-        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '7 days' AND t.status IN ('PENDING','ON_HOLD')) AS pend_this,
-        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '14 days' AND t.created_at < NOW() - INTERVAL '7 days' AND t.status IN ('PENDING','ON_HOLD')) AS pend_last,
-        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '7 days' AND t.status = 'RESOLVED') AS res_this,
-        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '14 days' AND t.created_at < NOW() - INTERVAL '7 days' AND t.status = 'RESOLVED') AS res_last,
-        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '7 days' AND t.status = 'CLOSED') AS clos_this,
-        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '14 days' AND t.created_at < NOW() - INTERVAL '7 days' AND t.status = 'CLOSED') AS clos_last
+        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '1 day' * $${p2.length + 1}
+                           AND t.created_at < NOW() + INTERVAL '1 day') AS total_this,
+        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '1 day' * ($${p2.length + 1} * 2)
+                           AND t.created_at < NOW() - INTERVAL '1 day' * $${p2.length + 1}) AS total_last,
+        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '1 day' * $${p2.length + 1}
+                           AND t.status IN ('NEW','OPEN')) AS open_this,
+        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '1 day' * ($${p2.length + 1} * 2)
+                           AND t.created_at < NOW() - INTERVAL '1 day' * $${p2.length + 1}
+                           AND t.status IN ('NEW','OPEN')) AS open_last,
+        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '1 day' * $${p2.length + 1}
+                           AND t.status IN ('IN_PROGRESS','WORK_IN_PROGRESS','ASSIGNED')) AS inp_this,
+        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '1 day' * ($${p2.length + 1} * 2)
+                           AND t.created_at < NOW() - INTERVAL '1 day' * $${p2.length + 1}
+                           AND t.status IN ('IN_PROGRESS','WORK_IN_PROGRESS','ASSIGNED')) AS inp_last,
+        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '1 day' * $${p2.length + 1}
+                           AND t.status IN ('PENDING','ON_HOLD')) AS pend_this,
+        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '1 day' * ($${p2.length + 1} * 2)
+                           AND t.created_at < NOW() - INTERVAL '1 day' * $${p2.length + 1}
+                           AND t.status IN ('PENDING','ON_HOLD')) AS pend_last,
+        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '1 day' * $${p2.length + 1}
+                           AND t.status = 'RESOLVED') AS res_this,
+        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '1 day' * ($${p2.length + 1} * 2)
+                           AND t.created_at < NOW() - INTERVAL '1 day' * $${p2.length + 1}
+                           AND t.status = 'RESOLVED') AS res_last,
+        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '1 day' * $${p2.length + 1}
+                           AND t.status = 'CLOSED') AS clos_this,
+        COUNT(*) FILTER (WHERE t.created_at >= NOW() - INTERVAL '1 day' * ($${p2.length + 1} * 2)
+                           AND t.created_at < NOW() - INTERVAL '1 day' * $${p2.length + 1}
+                           AND t.status = 'CLOSED') AS clos_last
       FROM tickets t
-      WHERE t.deleted_at IS NULL${userFilter}
-    `, params);
+      WHERE ${w2}
+    `, [...p2, periodDays]);
 
-    // ── 3. Chart data: date-range daily counts ──────────
-    const chartParams = !isAdmin
-      ? [chartStart, chartEnd, userId]
-      : [chartStart, chartEnd];
+    // ── 3. Chart data: daily counts for selected range ───────────
+    const { where: _, params: p3base } = buildWhere(isAdmin, userId, null, null);
+    const p3 = [chartStart, chartEnd, ...p3base];
+    const userChartCond = !isAdmin ? `AND t.created_by = $${p3.length}` : '';
     const chartResult = await pool.query(`
       SELECT
         TO_CHAR(days.day, 'Mon DD') AS date,
@@ -81,17 +129,18 @@ async function getStats(req, res, next) {
       LEFT JOIN tickets t
         ON DATE_TRUNC('day', t.created_at)::date = days.day
         AND t.deleted_at IS NULL
-        ${!isAdmin ? 'AND (t.created_by = $3 OR t.assigned_to = $3)' : ''}
+        ${!isAdmin ? `AND t.created_by = $3` : ''}
       GROUP BY days.day
       ORDER BY days.day ASC
-    `, chartParams);
+    `, !isAdmin ? [chartStart, chartEnd, userId] : [chartStart, chartEnd]);
 
-    // ── 4. SLA breaches: unresolved tickets exceeding SLA ──
+    // ── 4. SLA breaches (always current — not date-filtered) ──────
+    const { where: w4, params: p4 } = buildWhere(isAdmin, userId, null, null);
     const slaResult = await pool.query(`
       SELECT t.id, t.ticket_number, t.short_description, t.priority, t.status,
              EXTRACT(EPOCH FROM (NOW() - t.created_at))/3600 AS hours_open
       FROM tickets t
-      WHERE t.deleted_at IS NULL
+      WHERE ${w4}
         AND t.status NOT IN ('RESOLVED','CLOSED','CANCELLED')
         AND (
           (t.priority = 'CRITICAL' AND t.created_at < NOW() - INTERVAL '4 hours')  OR
@@ -99,14 +148,14 @@ async function getStats(req, res, next) {
           (t.priority = 'MEDIUM'   AND t.created_at < NOW() - INTERVAL '24 hours') OR
           (t.priority = 'LOW'      AND t.created_at < NOW() - INTERVAL '72 hours')
         )
-        ${!isAdmin ? 'AND (t.created_by = $1 OR t.assigned_to = $1)' : ''}
       ORDER BY
         CASE t.priority WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END,
         hours_open DESC
       LIMIT 5
-    `, !isAdmin ? [userId] : []);
+    `, p4);
 
-    // ── 5. Recent tickets ─────────────────────────────────
+    // ── 5. Recent tickets for selected date range ─────────────────
+    const { where: w5, params: p5 } = buildWhere(isAdmin, userId, startDate, endDate);
     const recentResult = await pool.query(`
       SELECT t.id, t.ticket_number, t.short_description, t.status, t.priority,
              t.customer_name, t.updated_at,
@@ -115,15 +164,14 @@ async function getStats(req, res, next) {
       FROM tickets t
       LEFT JOIN users u2 ON t.created_by = u2.id
       LEFT JOIN users u3 ON t.ticket_owner = u3.id
-      WHERE t.deleted_at IS NULL${userFilter}
+      WHERE ${w5}
       ORDER BY t.updated_at DESC
       LIMIT 20
-    `, params);
+    `, p5);
 
-    // ── Build response ────────────────────────────────────
-    const s = statsResult.rows[0];
+    // ── Build response ────────────────────────────────────────────
+    const s  = statsResult.rows[0];
     const tr = trendResult.rows[0];
-
     const pendPct = pctChange(tr.pend_this, tr.pend_last);
 
     res.json({
@@ -157,11 +205,11 @@ async function getStats(req, res, next) {
         Closed:     parseInt(r.Closed),
       })),
       slaBreaches: slaResult.rows.map(r => ({
-        id:       r.ticket_number,
-        ticketId: r.id,
-        title:    r.short_description,
-        priority: r.priority,
-        time:     formatDuration(r.hours_open),
+        id:        r.ticket_number,
+        ticketId:  r.id,
+        title:     r.short_description,
+        priority:  r.priority,
+        time:      formatDuration(r.hours_open),
         hoursOpen: parseFloat(r.hours_open),
       })),
       recentTickets: recentResult.rows,
