@@ -4,27 +4,6 @@ const fs = require('fs');
 const path = require('path');
 const argon2 = require('argon2');
 
-// Insert user if not present; update only if forceUpdate is true (admin reset)
-async function ensureUser(client, username, email, fullName, hash, role, forceUpdate) {
-  const existing = await client.query(`SELECT id FROM users WHERE username = $1`, [username]);
-  if (existing.rows.length > 0) {
-    if (forceUpdate) {
-      await client.query(
-        `UPDATE users SET password_hash = $1, full_name = $2, email = $3,
-         role = $4, is_active = TRUE, deleted_at = NULL, updated_at = NOW()
-         WHERE username = $5`,
-        [hash, fullName, email, role, username]
-      );
-    }
-  } else {
-    await client.query(
-      `INSERT INTO users (username, email, full_name, password_hash, role)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [username, email, fullName, hash, role]
-    );
-  }
-}
-
 async function init() {
   const dbUrl = new URL(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/psh_ticketing');
   const dbName = dbUrl.pathname.replace('/', '');
@@ -68,23 +47,30 @@ async function init() {
     await appClient.query(seed);
     console.log('Seed data inserted');
 
-    // Admin: always ensure credentials are correct (forceUpdate = true)
+    // Ensure admin user exists with correct credentials
     const adminHash = await argon2.hash('Admin@123');
-    await ensureUser(appClient, 'admin', 'admin@purestoragehorizon.com', 'Aravindh K', adminHash, 'admin', true);
-
-    // Demo employees: insert only if not present (forceUpdate = false)
-    const empHash = await argon2.hash('Employee@123');
-    await ensureUser(appClient, 'john.smith',    'john.smith@purestoragehorizon.com',    'John Smith',    empHash, 'employee', false);
-    await ensureUser(appClient, 'sarah.johnson', 'sarah.johnson@purestoragehorizon.com', 'Sarah Johnson', empHash, 'employee', false);
-    await ensureUser(appClient, 'mike.davis',    'mike.davis@purestoragehorizon.com',    'Mike Davis',    empHash, 'employee', false);
+    const adminExists = await appClient.query(`SELECT id FROM users WHERE username = 'admin'`);
+    if (adminExists.rows.length > 0) {
+      await appClient.query(
+        `UPDATE users SET password_hash = $1, full_name = 'Administrator',
+         is_active = TRUE, deleted_at = NULL, updated_at = NOW() WHERE username = 'admin'`,
+        [adminHash]
+      );
+    } else {
+      await appClient.query(
+        `INSERT INTO users (username, email, full_name, password_hash, role)
+         VALUES ('admin', 'admin@purestoragehorizon.com', 'Administrator', $1, 'admin')`,
+        [adminHash]
+      );
+    }
 
     await appClient.end();
+
     console.log('\n✅ Database initialized successfully!');
-    console.log('\nDefault accounts:');
-    console.log('  Admin:    username=admin           password=Admin@123');
-    console.log('  Employee: username=john.smith      password=Employee@123');
-    console.log('  Employee: username=sarah.johnson   password=Employee@123');
-    console.log('  Employee: username=mike.davis      password=Employee@123');
+    console.log('\n  Admin login:');
+    console.log('    Username : admin');
+    console.log('    Password : Admin@123');
+    console.log('\n  ⚠  Change the admin password after first login!\n');
   } catch (err) {
     console.error('Initialization failed:', err.message);
     process.exit(1);
