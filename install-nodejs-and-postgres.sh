@@ -27,8 +27,7 @@ die()  { echo -e "\n${RED}${BOLD}ERROR: $1${NC}" >&2; exit 1; }
 [[ $EUID -ne 0 ]] && die "Run this script as root:  sudo bash $0"
 
 # ── Fixed configuration ──────────────────────────────────────────
-APP_USER="servit"
-APP_DIR="/opt/servit"
+APP_DIR="/opt/PSH"
 REPO_URL="https://github.com/Aravindh-29/PSH.git"
 DB_NAME="psh_db"
 DB_USER="psh_user"
@@ -39,16 +38,9 @@ NODE_MAJOR="20"
 SSL_DIR="/etc/ssl/servit"
 CRED_FILE="/root/servit-credentials.txt"
 
-# ── Auto-detect: if script is run from inside the cloned repo ────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -f "${SCRIPT_DIR}/package.json" && -d "${SCRIPT_DIR}/server" && -d "${SCRIPT_DIR}/client" ]]; then
-  warn "Repo detected at ${SCRIPT_DIR} — using it instead of cloning"
-  APP_DIR="${SCRIPT_DIR}"
-fi
-
-# Owner of APP_DIR — npm and service run as this user
-APP_DIR_OWNER="$(stat -c '%U' "${APP_DIR}" 2>/dev/null || echo root)"
-[[ "${APP_DIR_OWNER}" == "root" ]] && APP_DIR_OWNER="${APP_USER}"
+# Owner of APP_DIR — the user who invoked sudo, or ubuntu as fallback
+APP_DIR_OWNER="${SUDO_USER:-ubuntu}"
+[[ -z "${APP_DIR_OWNER}" || "${APP_DIR_OWNER}" == "root" ]] && APP_DIR_OWNER="ubuntu"
 
 # ── Generate secrets (preserved if .env already exists) ──────────
 NEW_DB_PASS="$(openssl rand -hex 16)"
@@ -139,30 +131,28 @@ systemctl start postgresql
 ok "PostgreSQL service running"
 
 # ════════════════════════════════════════════════════════════════
-# STEP 4 — App system user
+# STEP 4 — Ensure app user exists
 # ════════════════════════════════════════════════════════════════
-step "4 / 10  App user: ${APP_USER}"
-if ! id "${APP_USER}" &>/dev/null; then
-  useradd --system --create-home --shell /bin/bash \
-    --comment "SERV-IT application user" "${APP_USER}"
-  ok "User '${APP_USER}' created"
+step "4 / 10  App user: ${APP_DIR_OWNER}"
+if id "${APP_DIR_OWNER}" &>/dev/null; then
+  ok "User '${APP_DIR_OWNER}' exists"
 else
-  ok "User '${APP_USER}' already exists — skipping"
+  useradd --create-home --shell /bin/bash "${APP_DIR_OWNER}"
+  ok "User '${APP_DIR_OWNER}' created"
 fi
 
 # ════════════════════════════════════════════════════════════════
-# STEP 5 — Clone repository
+# STEP 5 — Clone / update repository to /opt/PSH
 # ════════════════════════════════════════════════════════════════
-step "5 / 10  Repository"
-if [[ "${APP_DIR}" == "${SCRIPT_DIR}" ]]; then
-  ok "Already inside cloned repo at ${APP_DIR} — skipping clone"
-elif [[ -d "${APP_DIR}/.git" ]]; then
-  warn "Repo already exists at ${APP_DIR} — pulling latest changes"
-  git -C "${APP_DIR}" pull origin main 2>&1 | tail -3
+step "5 / 10  Repository → ${APP_DIR}"
+if [[ -d "${APP_DIR}/.git" ]]; then
+  info "Repo already exists at ${APP_DIR} — pulling latest changes"
+  sudo -u "${APP_DIR_OWNER}" git -C "${APP_DIR}" pull origin main 2>&1 | tail -3
+  ok "Repository updated"
 else
   info "Cloning ${REPO_URL} → ${APP_DIR}"
   git clone "${REPO_URL}" "${APP_DIR}" 2>&1 | tail -5
-  ok "Repository cloned"
+  ok "Repository cloned to ${APP_DIR}"
 fi
 chown -R "${APP_DIR_OWNER}:${APP_DIR_OWNER}" "${APP_DIR}"
 
