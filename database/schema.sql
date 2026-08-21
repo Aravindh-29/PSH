@@ -32,6 +32,14 @@ ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key;
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_active_uq ON users(username) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_active_uq    ON users(email)    WHERE deleted_at IS NULL;
 
+-- Free username/email for any existing soft-deleted rows so credentials can be reused.
+-- The _del_ guard makes this idempotent (safe to re-run on every startup).
+UPDATE users
+SET username = username || '_del_' || substring(id::text, 1, 8),
+    email    = email    || '_del_' || substring(id::text, 1, 8)
+WHERE deleted_at IS NOT NULL
+  AND username NOT LIKE '%\_del\_%';
+
 -- Modules
 CREATE TABLE IF NOT EXISTS modules (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
