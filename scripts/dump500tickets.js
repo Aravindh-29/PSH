@@ -111,11 +111,15 @@ async function main() {
     const rows      = [];
 
     batchNums.forEach((ticketNum, idx) => {
-      const base      = idx * 13;
-      const createdBy = pick(allUserIds);
+      const base       = idx * 13;
+      const createdBy  = pick(allUserIds);
       const assignedTo = Math.random() > 0.35 ? pick(allUserIds) : null;
-      const daysAgo   = Math.floor(Math.random() * 180);
-      const ts        = new Date(Date.now() - daysAgo * 86400000).toISOString();
+
+      // All tickets in the past — 1 to 365 days ago, never in the future
+      const daysAgo  = 1 + Math.floor(Math.random() * 364);
+      const today    = new Date(); today.setHours(23, 59, 59, 999);   // end of today
+      const tsDate   = new Date(Math.min(Date.now() - daysAgo * 86400000, today.getTime()));
+      const ts       = tsDate.toISOString();
 
       rows.push(
         `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},` +
