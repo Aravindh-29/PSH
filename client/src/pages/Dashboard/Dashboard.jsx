@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import {
   Plus, Eye, Calendar, TrendingUp, TrendingDown, ChevronDown,
-  Ticket, AlertTriangle, ChevronRight, Users, ShieldCheck, LayoutList
+  Ticket, AlertTriangle, ChevronRight, Users, ShieldCheck, LayoutList, LayoutDashboard
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBadge, PriorityBadge } from '../../components/Badge';
@@ -49,9 +49,11 @@ function SparkLine({ data, color }) {
   );
 }
 
-export default function Dashboard() {
+export default function Dashboard({ personal = false }) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  // personal=true → admin viewing their own tickets (like an employee view)
+  const isPersonal = isAdmin && personal;
 
   const [stats, setStats]           = useState(null);
   const [trends, setTrends]         = useState({});
@@ -81,6 +83,7 @@ export default function Dashboard() {
       params.set('startDate', format(dateRange.start, 'yyyy-MM-dd'));
       params.set('endDate',   format(dateRange.end,   'yyyy-MM-dd'));
     }
+    if (isPersonal) params.set('personal', 'true');
     api.get(`/dashboard?${params}`)
       .then(res => {
         setStats(res.data.stats);
@@ -91,7 +94,7 @@ export default function Dashboard() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [dateRange]);
+  }, [dateRange, isPersonal]);
 
   const applyPreset = (preset) => {
     setDateRange(preset.getRange());
@@ -124,8 +127,12 @@ export default function Dashboard() {
         && format(r.end,   'yyyy-MM-dd') === format(dateRange.end,   'yyyy-MM-dd');
   });
 
-  // Quick actions — different per role
-  const quickActions = isAdmin ? [
+  // Quick actions — differ by view
+  const quickActions = isPersonal ? [
+    { label: 'Create New Ticket',  to: '/tickets/new',          icon: Plus },
+    { label: 'My Tickets',         to: '/my-tickets',            icon: Ticket },
+    { label: 'Global Dashboard',   to: '/',                      icon: LayoutDashboard },
+  ] : isAdmin ? [
     { label: 'Create New Ticket',  to: '/tickets/new',          icon: Plus },
     { label: 'User Wise Tickets',  to: '/admin/user-tickets',   icon: LayoutList },
     { label: 'User Management',    to: '/admin/users',           icon: Users },
@@ -148,9 +155,13 @@ export default function Dashboard() {
       {/* Header */}
       <div className="dash-header">
         <div>
-          <h1 className="dash-welcome">Welcome back, {user?.fullName?.split(' ')[0]}! 👋</h1>
+          <h1 className="dash-welcome">
+            {isPersonal ? 'Admin Dashboard' : isAdmin ? 'Global Dashboard' : `Welcome back, ${user?.fullName?.split(' ')[0]}! 👋`}
+          </h1>
           <p className="dash-sub">
-            {isAdmin
+            {isPersonal
+              ? "Your own tickets — created and managed by you."
+              : isAdmin
               ? "Here's an overview of all tickets across the system."
               : "Here's what's happening with your tickets today."}
           </p>

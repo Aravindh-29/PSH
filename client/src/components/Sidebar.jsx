@@ -7,7 +7,12 @@ import {
 } from 'lucide-react';
 import './Sidebar.css';
 
-const NAV_TOP = [
+const NAV_TOP_ADMIN = [
+  { to: '/',                    icon: LayoutDashboard, label: 'Global Dashboard', exact: true },
+  { to: '/admin/my-dashboard',  icon: LayoutDashboard, label: 'Admin Dashboard'               },
+];
+
+const NAV_TOP_EMPLOYEE = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
 ];
 
@@ -64,8 +69,10 @@ export default function Sidebar({ collapsed, onToggle }) {
       </div>
 
       <nav className="sidebar-nav">
-        {/* Dashboard — always first */}
-        {NAV_TOP.map(item => <NavItem key={item.to} {...item} collapsed={collapsed} />)}
+        {/* Dashboard links — differ by role */}
+        {(isAdmin ? NAV_TOP_ADMIN : NAV_TOP_EMPLOYEE).map(item => (
+          <NavItem key={item.to} {...item} collapsed={collapsed} />
+        ))}
 
         {/* User Wise Tickets — admin only, right after Dashboard */}
         {isAdmin && ADMIN_MAIN.map(item => <NavItem key={item.to} {...item} collapsed={collapsed} />)}

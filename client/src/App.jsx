@@ -45,6 +45,7 @@ function AppRoutes() {
         <Route path="tickets/:id" element={<TicketDetail />} />
         <Route path="tickets/:id/edit" element={<EditTicket />} />
         <Route path="my-tickets" element={<TicketList myTickets />} />
+        <Route path="admin/my-dashboard" element={<RequireAdmin><Dashboard personal /></RequireAdmin>} />
         <Route path="admin/users" element={<RequireAdmin><AdminUsers /></RequireAdmin>} />
         <Route path="admin/user-tickets" element={<RequireAdmin><UserWiseTickets /></RequireAdmin>} />
         <Route path="admin/user-tickets/:userId" element={<RequireAdmin><AdminUserDetail /></RequireAdmin>} />

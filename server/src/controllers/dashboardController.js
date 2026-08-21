@@ -38,8 +38,8 @@ function buildWhere(isAdmin, userId, startDate, endDate, { userField = 't.create
 
 async function getStats(req, res, next) {
   try {
-    const isAdmin = req.session.role === 'admin';
-    const userId  = req.session.userId;
+    const isAdmin   = req.session.role === 'admin' && req.query.personal !== 'true';
+    const userId    = req.session.userId;
 
     const startDate = req.query.startDate || null;
     const endDate   = req.query.endDate   || null;
