@@ -285,6 +285,14 @@ chmod 600 "${SSL_DIR}/servit.key"
 ok "Self-signed certificate generated (${SSL_DIR})"
 info "Tip: replace with a Let's Encrypt cert for a real domain → sudo certbot --nginx"
 
+# ── Ensure sites-available/sites-enabled dirs exist (some nginx installs omit them)
+mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
+# Ensure nginx.conf includes sites-enabled
+if ! grep -q "sites-enabled" /etc/nginx/nginx.conf 2>/dev/null; then
+  sed -i '/include \/etc\/nginx\/conf\.d/a\    include /etc/nginx/sites-enabled/*;' \
+    /etc/nginx/nginx.conf 2>/dev/null || true
+fi
+
 # ── Write Nginx site config ──────────────────────────────────────
 info "Writing Nginx config..."
 cat > "/etc/nginx/sites-available/${NGINX_CONF}" << 'NGINXEOF'
