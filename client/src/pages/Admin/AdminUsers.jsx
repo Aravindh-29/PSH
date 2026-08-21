@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { KeyRound, X, Eye, EyeOff, Trash2 } from 'lucide-react';
+import { KeyRound, X, Eye, EyeOff, Trash2, ShieldCheck, UserRound } from 'lucide-react';
 
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
 import './Admin.css';
 
 export default function AdminUsers() {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ username: '', email: '', fullName: '', password: '', role: 'employee' });
@@ -64,6 +66,16 @@ export default function AdminUsers() {
       toast.success(u.is_active ? 'User deactivated' : 'User activated');
       load();
     } catch { toast.error('Failed to update status'); }
+  };
+
+  const changeRole = async (e, u) => {
+    e.stopPropagation();
+    const newRole = u.role === 'admin' ? 'employee' : 'admin';
+    try {
+      await api.put(`/users/${u.id}`, { role: newRole });
+      toast.success(`${u.full_name} is now ${newRole}`);
+      load();
+    } catch { toast.error('Failed to change role'); }
   };
 
   const handleResetPassword = async (e) => {
@@ -182,6 +194,15 @@ export default function AdminUsers() {
                       title="Reset Password"
                     >
                       <KeyRound size={12} /> Reset Password
+                    </button>
+                    <button
+                      className="toggle-btn"
+                      style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+                      onClick={(e) => changeRole(e, u)}
+                      disabled={currentUser?.id === u.id}
+                      title={currentUser?.id === u.id ? 'Cannot change your own role' : u.role === 'admin' ? 'Change to Employee' : 'Change to Admin'}
+                    >
+                      {u.role === 'admin' ? <><UserRound size={12} /> Make Employee</> : <><ShieldCheck size={12} /> Make Admin</>}
                     </button>
                     <button className="toggle-btn" onClick={(e) => toggleActive(e, u)}>
                       {u.is_active ? 'Deactivate' : 'Activate'}
