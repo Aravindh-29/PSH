@@ -31,29 +31,11 @@ run_sql() {
   PGPASSWORD="${DB_PASS}" psql -U "${DB_USER}" -h "${DB_HOST}" -p "${DB_PORT}" -d "${DB_NAME}" -c "$1" -q 2>/dev/null
 }
 
-# ── Clean up previous demo data ──────────────────────────────────
-echo -e "  ${YELLOW}Cleaning up previous demo data...${NC}"
+# ── Clean up ALL previous tickets and demo users ─────────────────
+echo -e "  ${YELLOW}Cleaning up all existing tickets and demo users...${NC}"
 
-run_sql "
-  DELETE FROM ticket_comments
-  WHERE ticket_id IN (
-    SELECT t.id FROM tickets t
-    JOIN users u ON t.created_by = u.id
-    WHERE u.username IN ('alice.johnson','bob.williams','carol.smith')
-  );
-  DELETE FROM ticket_attachments
-  WHERE ticket_id IN (
-    SELECT t.id FROM tickets t
-    JOIN users u ON t.created_by = u.id
-    WHERE u.username IN ('alice.johnson','bob.williams','carol.smith')
-  );
-  DELETE FROM tickets
-  WHERE created_by IN (
-    SELECT id FROM users WHERE username IN ('alice.johnson','bob.williams','carol.smith')
-  );
-  DELETE FROM users
-  WHERE username IN ('alice.johnson','bob.williams','carol.smith');
-"
+run_sql "TRUNCATE TABLE ticket_comments, ticket_attachments, tickets RESTART IDENTITY CASCADE;"
+run_sql "DELETE FROM users WHERE username IN ('alice.johnson','bob.williams','carol.smith');"
 
 echo -e "  ${GREEN}✓ Cleanup done${NC}"
 echo ""
