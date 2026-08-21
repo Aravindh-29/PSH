@@ -2,8 +2,22 @@ const pool = require('../db/pool');
 
 async function getReport(req, res, next) {
   try {
-    const userId = req.session.userId;
-    const params = [userId];
+    const userId    = req.session.userId;
+    const startDate = req.query.startDate || null;
+    const endDate   = req.query.endDate   || null;
+
+    // Base params: always filter by user
+    const baseParams = [userId];
+
+    // Date clause appended when a range is selected
+    let dateCond = '';
+    const dateParams = [];
+    if (startDate && endDate) {
+      dateParams.push(startDate, endDate);
+      const s = baseParams.length + 1;
+      dateCond = `AND t.created_at >= $${s}::date AND t.created_at < ($${s + 1}::date + INTERVAL '1 day')`;
+    }
+    const filteredParams = [...baseParams, ...dateParams];
 
     const summaryResult = await pool.query(`
       SELECT
@@ -18,9 +32,10 @@ async function getReport(req, res, next) {
         AVG(EXTRACT(EPOCH FROM (t.updated_at - t.created_at)) / 3600)
           FILTER (WHERE t.status IN ('RESOLVED','CLOSED'))                   AS avg_resolution_hours
       FROM tickets t
-      WHERE t.deleted_at IS NULL AND t.created_by = $1
-    `, params);
+      WHERE t.deleted_at IS NULL AND t.created_by = $1 ${dateCond}
+    `, filteredParams);
 
+    // Monthly / weekly charts always show fixed 12-month / 12-week windows for trend context
     const monthlyResult = await pool.query(`
       SELECT
         TO_CHAR(months.month, 'Mon YYYY') AS label,
@@ -37,7 +52,7 @@ async function getReport(req, res, next) {
         AND t.created_by = $1
       GROUP BY months.month
       ORDER BY months.month ASC
-    `, params);
+    `, baseParams);
 
     const weeklyResult = await pool.query(`
       SELECT
@@ -54,23 +69,23 @@ async function getReport(req, res, next) {
         AND t.created_by = $1
       GROUP BY weeks.week_start
       ORDER BY weeks.week_start ASC
-    `, params);
+    `, baseParams);
 
     const statusResult = await pool.query(`
       SELECT t.status AS name, COUNT(*) AS value
       FROM tickets t
-      WHERE t.deleted_at IS NULL AND t.created_by = $1
+      WHERE t.deleted_at IS NULL AND t.created_by = $1 ${dateCond}
       GROUP BY t.status
       ORDER BY value DESC
-    `, params);
+    `, filteredParams);
 
     const priorityResult = await pool.query(`
       SELECT t.priority AS name, COUNT(*) AS value
       FROM tickets t
-      WHERE t.deleted_at IS NULL AND t.created_by = $1
+      WHERE t.deleted_at IS NULL AND t.created_by = $1 ${dateCond}
       GROUP BY t.priority
       ORDER BY CASE t.priority WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END
-    `, params);
+    `, filteredParams);
 
     const allTicketsResult = await pool.query(`
       SELECT
@@ -87,9 +102,9 @@ async function getReport(req, res, next) {
       LEFT JOIN categories c ON t.category_id = c.id
       LEFT JOIN users u2     ON t.created_by = u2.id
       LEFT JOIN users u3     ON t.ticket_owner = u3.id
-      WHERE t.deleted_at IS NULL AND t.created_by = $1
+      WHERE t.deleted_at IS NULL AND t.created_by = $1 ${dateCond}
       ORDER BY t.created_at DESC
-    `, params);
+    `, filteredParams);
 
     const s = summaryResult.rows[0];
     res.json({

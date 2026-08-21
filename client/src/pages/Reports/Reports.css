@@ -298,6 +298,52 @@
   white-space: nowrap;
 }
 
+/* ── Date Picker (shared style with Dashboard) ───────────────── */
+.date-picker-wrap { position: relative; }
+.date-picker-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: 8px;
+  border: 1px solid #E2E8F0; background: white;
+  font-size: 13px; color: #64748B; cursor: pointer;
+  transition: border-color 0.15s;
+}
+.date-picker-btn:hover { border-color: #E85D04; color: #0F172A; }
+.date-picker-dropdown {
+  position: absolute; top: calc(100% + 6px); right: 0;
+  background: white; border: 1px solid #E2E8F0; border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.13); z-index: 200;
+  min-width: 220px; overflow: hidden;
+}
+.date-picker-presets { padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+.date-preset-btn {
+  width: 100%; text-align: left; padding: 9px 12px;
+  border: none; background: none; border-radius: 7px;
+  font-size: 13px; color: #334155; cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.date-preset-btn:hover  { background: #FFF4EE; color: #E85D04; }
+.date-preset-btn.active { background: #FFF4EE; color: #E85D04; font-weight: 600; }
+.date-picker-divider { height: 1px; background: #F1F5F9; margin: 0; }
+.date-picker-custom { padding: 12px; }
+.date-custom-label {
+  font-size: 11px; font-weight: 600; color: #94A3B8;
+  text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 10px;
+}
+.date-custom-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.date-custom-row label { font-size: 12px; color: #64748B; width: 30px; flex-shrink: 0; }
+.date-custom-row input[type="date"] {
+  flex: 1; padding: 6px 8px; border: 1px solid #E2E8F0; border-radius: 7px;
+  font-size: 12.5px; color: #334155; outline: none; cursor: pointer;
+}
+.date-custom-row input[type="date"]:focus { border-color: #E85D04; }
+.date-apply-btn {
+  width: 100%; margin-top: 4px; padding: 8px;
+  background: #E85D04; color: white; border: none; border-radius: 7px;
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.15s;
+}
+.date-apply-btn:hover:not(:disabled) { background: #c94d02; }
+.date-apply-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
 /* Pagination */
 .rpt-pagination {
   display: flex;

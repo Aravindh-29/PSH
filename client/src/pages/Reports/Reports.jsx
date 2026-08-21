@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -6,16 +6,25 @@ import {
 import {
   Download, Calendar, TrendingUp, Ticket,
   CheckCircle, Clock, AlertTriangle, Activity, User, Globe,
-  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown,
 } from 'lucide-react';
 import XLSX from '../../utils/xlsxShim';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
-import { format } from 'date-fns';
+import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import GlobalReports from './GlobalReports';
 import './Reports.css';
 
 const RPT_LIMIT = 20;
+
+const DATE_PRESETS = [
+  { label: 'All Time',    getRange: () => null },
+  { label: 'Last 7 days',  getRange: () => ({ start: subDays(new Date(), 6),  end: new Date() }) },
+  { label: 'Last 14 days', getRange: () => ({ start: subDays(new Date(), 13), end: new Date() }) },
+  { label: 'Last 30 days', getRange: () => ({ start: subDays(new Date(), 29), end: new Date() }) },
+  { label: 'This month',   getRange: () => ({ start: startOfMonth(new Date()), end: new Date() }) },
+  { label: 'Last month',   getRange: () => ({ start: startOfMonth(subMonths(new Date(), 1)), end: endOfMonth(subMonths(new Date(), 1)) }) },
+];
 
 const SYSTEM_KEYS = ['customer_name','module_text','category_id','status','priority','impact','urgency','short_description','description'];
 const parseOpts = (opts) => {
@@ -75,9 +84,29 @@ export default function Reports() {
   const [rptPage, setRptPage] = useState(1);
   const [customFieldDefs, setCustomFieldDefs] = useState([]);
 
+  const [dateRange, setDateRange]     = useState(null); // null = All Time
+  const [showPicker, setShowPicker]   = useState(false);
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd]     = useState('');
+  const pickerRef = useRef(null);
+
+  useEffect(() => {
+    function onClickOutside(e) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) setShowPicker(false);
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
   useEffect(() => {
     if (mode !== 'personal') return;
-    Promise.all([api.get('/reports'), api.get('/config/fields')])
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (dateRange) {
+      params.set('startDate', format(dateRange.start, 'yyyy-MM-dd'));
+      params.set('endDate',   format(dateRange.end,   'yyyy-MM-dd'));
+    }
+    Promise.all([api.get(`/reports?${params}`), api.get('/config/fields')])
       .then(([res, fRes]) => {
         setData(res.data);
         setRptPage(1);
@@ -85,7 +114,30 @@ export default function Reports() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [mode]);
+  }, [mode, dateRange]);
+
+  const applyPreset = (preset) => {
+    setDateRange(preset.getRange());
+    setShowPicker(false);
+  };
+
+  const applyCustom = () => {
+    if (!customStart || !customEnd) return;
+    setDateRange({ start: new Date(customStart + 'T00:00:00'), end: new Date(customEnd + 'T23:59:59') });
+    setShowPicker(false);
+  };
+
+  const dateRangeLabel = dateRange
+    ? `${format(dateRange.start, 'MMM d')} – ${format(dateRange.end, 'MMM d, yyyy')}`
+    : 'All Time';
+
+  const activePreset = DATE_PRESETS.find(p => {
+    const r = p.getRange();
+    if (r === null && dateRange === null) return true;
+    if (!r || !dateRange) return false;
+    return format(r.start, 'yyyy-MM-dd') === format(dateRange.start, 'yyyy-MM-dd')
+        && format(r.end,   'yyyy-MM-dd') === format(dateRange.end,   'yyyy-MM-dd');
+  });
 
   const exportToExcel = useCallback(async () => {
     if (!data) return;
@@ -381,7 +433,6 @@ export default function Reports() {
   }, [data, user, customFieldDefs]);
 
   const summary = data?.summary || {};
-  const todayLabel = format(new Date(), 'MMMM d, yyyy');
 
   return (
     <div className="reports-page">
@@ -416,9 +467,58 @@ export default function Reports() {
           <p className="rpt-sub">Personal activity overview for {user?.fullName}</p>
         </div>
         <div className="rpt-header-right">
-          <div className="rpt-date-chip">
-            <Calendar size={13} />
-            {todayLabel}
+          {/* Date picker */}
+          <div className="date-picker-wrap" ref={pickerRef}>
+            <button className="date-picker-btn" onClick={() => setShowPicker(p => !p)}>
+              <Calendar size={14} />
+              <span>{dateRangeLabel}</span>
+              <ChevronDown size={12} style={{ marginLeft: 2, opacity: 0.6 }} />
+            </button>
+            {showPicker && (
+              <div className="date-picker-dropdown">
+                <div className="date-picker-presets">
+                  {DATE_PRESETS.map(p => (
+                    <button
+                      key={p.label}
+                      className={`date-preset-btn${activePreset?.label === p.label ? ' active' : ''}`}
+                      onClick={() => applyPreset(p)}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="date-picker-divider" />
+                <div className="date-picker-custom">
+                  <p className="date-custom-label">Custom range</p>
+                  <div className="date-custom-row">
+                    <label>From</label>
+                    <input
+                      type="date"
+                      value={customStart}
+                      max={customEnd || format(new Date(), 'yyyy-MM-dd')}
+                      onChange={e => setCustomStart(e.target.value)}
+                    />
+                  </div>
+                  <div className="date-custom-row">
+                    <label>To</label>
+                    <input
+                      type="date"
+                      value={customEnd}
+                      min={customStart}
+                      max={format(new Date(), 'yyyy-MM-dd')}
+                      onChange={e => setCustomEnd(e.target.value)}
+                    />
+                  </div>
+                  <button
+                    className="date-apply-btn"
+                    disabled={!customStart || !customEnd}
+                    onClick={applyCustom}
+                  >
+                    Apply Range
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           <button
             className="rpt-export-btn"
