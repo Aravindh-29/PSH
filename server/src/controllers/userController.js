@@ -187,4 +187,68 @@ async function deleteAllTickets(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { list, getOne, create, update, resetPassword, deleteUser, deleteAllTickets };
+async function bulkCreate(req, res, next) {
+  try {
+    const { adminPassword, users } = req.body;
+    if (!adminPassword || !Array.isArray(users) || users.length === 0) {
+      return res.status(400).json({ success: false, message: 'adminPassword and users array required' });
+    }
+
+    // Verify the calling admin's password
+    const adminRow = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.session.userId]);
+    if (!adminRow.rows.length) return res.status(403).json({ success: false, message: 'Admin not found' });
+    const valid = await argon2.verify(adminRow.rows[0].password_hash, adminPassword);
+    if (!valid) return res.status(403).json({ success: false, message: 'Incorrect admin password' });
+
+    const created = [];
+    const failed  = [];
+
+    for (const u of users) {
+      try {
+        const { username, email, fullName, password, role = 'employee' } = u;
+        if (!username || !email || !fullName || !password) {
+          failed.push({ username, reason: 'Missing required fields' }); continue;
+        }
+        const uname  = username.toLowerCase().trim();
+        const uemail = email.toLowerCase().trim();
+
+        // Skip if active user already exists
+        const conflict = await pool.query(
+          `SELECT id FROM users WHERE (username = $1 OR email = $2) AND deleted_at IS NULL`,
+          [uname, uemail]
+        );
+        if (conflict.rows.length > 0) {
+          failed.push({ username: uname, reason: 'Username or email already exists' }); continue;
+        }
+
+        const hash = await argon2.hash(password);
+
+        // Restore soft-deleted user if same username/email existed before
+        const deleted = await pool.query(
+          `SELECT id FROM users WHERE (username LIKE $1 OR email LIKE $2) AND deleted_at IS NOT NULL LIMIT 1`,
+          [uname + '%', uemail + '%']
+        );
+        if (deleted.rows.length > 0) {
+          await pool.query(
+            `UPDATE users SET username=$1, email=$2, full_name=$3, password_hash=$4,
+             role=$5, is_active=TRUE, deleted_at=NULL, updated_at=NOW() WHERE id=$6`,
+            [uname, uemail, fullName, hash, role, deleted.rows[0].id]
+          );
+          created.push({ username: uname, fullName });
+        } else {
+          await pool.query(
+            `INSERT INTO users (username, email, full_name, password_hash, role) VALUES ($1,$2,$3,$4,$5)`,
+            [uname, uemail, fullName, hash, role]
+          );
+          created.push({ username: uname, fullName });
+        }
+      } catch (err) {
+        failed.push({ username: u.username, reason: err.message });
+      }
+    }
+
+    res.json({ success: true, created: created.length, failed, createdUsers: created });
+  } catch (err) { next(err); }
+}
+
+module.exports = { list, getOne, create, update, resetPassword, deleteUser, deleteAllTickets, bulkCreate };

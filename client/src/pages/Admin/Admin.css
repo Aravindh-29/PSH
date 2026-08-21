@@ -49,6 +49,100 @@
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
 .btn-cancel { padding: 8px 18px; border-radius: 7px; border: 1px solid var(--border); background: white; font-size: 13.5px; cursor: pointer; }
 
+/* ── Bulk Upload Dropdown ────────────────────────────── */
+.bulk-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: white;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.12);
+  z-index: 300;
+  min-width: 210px;
+  padding: 6px;
+}
+.bulk-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: none;
+  border-radius: 7px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.bulk-dropdown-item:hover { background: #F8FAFC; }
+.bulk-dropdown-label { font-size: 13px; font-weight: 600; color: #0F172A; }
+.bulk-dropdown-sub   { font-size: 11.5px; color: #94A3B8; margin-top: 1px; }
+
+/* ── Bulk Preview Modal ──────────────────────────────── */
+.bulk-preview-modal {
+  background: white;
+  border-radius: 14px;
+  width: 95vw;
+  max-width: 1050px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.22);
+  overflow: hidden;
+}
+.bulk-preview-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 22px 28px 18px;
+  border-bottom: 1px solid #F1F5F9;
+  flex-shrink: 0;
+}
+.bulk-preview-header h3 { font-size: 17px; font-weight: 700; color: #0F172A; }
+.bulk-preview-table-wrap {
+  overflow: auto;
+  flex: 1;
+  padding: 0 28px;
+}
+.bulk-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 16px 0;
+}
+.bulk-preview-table th {
+  padding: 9px 12px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #F1F5F9;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  background: white;
+}
+.bulk-preview-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #F8FAFC;
+  color: #334155;
+  vertical-align: middle;
+}
+.bulk-preview-table tr:last-child td { border-bottom: none; }
+.bulk-preview-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 28px;
+  border-top: 1px solid #F1F5F9;
+  flex-shrink: 0;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
 /* ── User Wise Tickets Page ──────────────────────────── */
 .uwt-search-wrap {
   display: flex; align-items: center; gap: 8px;
