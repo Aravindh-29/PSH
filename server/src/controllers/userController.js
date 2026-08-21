@@ -154,10 +154,19 @@ async function deleteUser(req, res, next) {
       );
     }
 
-    // Soft-delete: mark deleted and deactivate — FK refs stay intact
+    // Soft-delete but immediately free the username/email so they can be reused.
+    // Mangle credentials with a short suffix so the partial unique index
+    // (WHERE deleted_at IS NULL) never sees these values again.
+    const suffix = `_del_${id.substring(0, 8)}`;
     await pool.query(
-      'UPDATE users SET deleted_at = NOW(), is_active = false, updated_at = NOW() WHERE id = $1',
-      [id]
+      `UPDATE users SET
+         username   = username || $1,
+         email      = email    || $1,
+         deleted_at = NOW(),
+         is_active  = false,
+         updated_at = NOW()
+       WHERE id = $2`,
+      [suffix, id]
     );
     res.json({ success: true, message: `User "${user.rows[0].full_name}" deleted` });
   } catch (err) { next(err); }
