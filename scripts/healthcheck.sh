@@ -227,7 +227,7 @@ section "7. RECENT APP ERRORS (last 20 lines)"
 # ════════════════════════════════════════════════════════════════
 
 if systemctl list-unit-files 2>/dev/null | grep -q "^${SERVICE_NAME}.service"; then
-  ERROR_COUNT=$(journalctl -u "${SERVICE_NAME}" --since "1 hour ago" --no-pager -q 2>/dev/null | grep -ci 'error\|warn\|fail' || echo 0)
+  ERROR_COUNT=$(journalctl -u "${SERVICE_NAME}" --since "1 hour ago" --no-pager -q 2>/dev/null | grep -i 'error\|warn\|fail' 2>/dev/null | wc -l)
   if (( ERROR_COUNT > 0 )); then
     warn "${ERROR_COUNT} error/warn entries in the last hour — showing last 20 log lines:"
     echo ""
