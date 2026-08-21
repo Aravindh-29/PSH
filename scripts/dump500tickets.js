@@ -126,7 +126,7 @@ async function main() {
     batchNums.forEach((ticketNum, idx) => {
       const base        = idx * 15;
       const createdBy   = pick(allUserIds);
-      const assignedTo  = Math.random() > 0.35 ? pick(allUserIds) : null;
+      const assignedTo  = pick(allUserIds);
       const ticketOwner = assignedTo;   // owner = assigned agent (same value)
 
       // All tickets in the past — 1 to 365 days ago, never in the future
