@@ -127,7 +127,7 @@ async function main() {
       const base        = idx * 15;
       const createdBy   = pick(allUserIds);
       const assignedTo  = pick(allUserIds);
-      const ticketOwner = assignedTo;   // owner = assigned agent (same value)
+      const ticketOwner = createdBy;    // owner = whoever created the ticket (mirrors real app behaviour)
 
       // All tickets in the past — 1 to 365 days ago, never in the future
       const daysAgo  = 1 + Math.floor(Math.random() * 364);
