@@ -396,6 +396,13 @@ if [[ "${CERT_CHOICE,,}" == "y" ]]; then
       apt-get install -y certbot python3-certbot-nginx 2>&1 | tail -3
       ok "Certbot installed"
 
+      # Certbot's nginx plugin needs server_name to match the domain — replace wildcard
+      info "Updating Nginx server_name to '${CERTBOT_DOMAIN}' for certbot..."
+      sed -i "s/server_name _;/server_name ${CERTBOT_DOMAIN};/g" \
+        "/etc/nginx/sites-available/${NGINX_CONF}"
+      nginx -t 2>/dev/null && systemctl reload nginx
+      ok "Nginx server_name → ${CERTBOT_DOMAIN}"
+
       info "Requesting Let's Encrypt certificate for ${CERTBOT_DOMAIN}..."
       if certbot --nginx -d "${CERTBOT_DOMAIN}" --non-interactive --agree-tos \
           --register-unsafely-without-email --redirect 2>&1; then
