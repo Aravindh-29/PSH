@@ -55,10 +55,42 @@ async function create(req, res, next) {
     if (!username || !email || !fullName || !password) {
       return res.status(400).json({ success: false, message: 'All fields required' });
     }
+
+    const uname = username.toLowerCase();
+    const uemail = email.toLowerCase();
+
+    // Check if an active (non-deleted) user already has this username or email
+    const activeConflict = await pool.query(
+      `SELECT id FROM users WHERE (username = $1 OR email = $2) AND deleted_at IS NULL`,
+      [uname, uemail]
+    );
+    if (activeConflict.rows.length > 0) {
+      return res.status(409).json({ success: false, message: 'Username or email already exists' });
+    }
+
     const hash = await argon2.hash(password);
+
+    // If a soft-deleted user exists with the same username or email, restore that row
+    // (preserves ticket history — all FKs reference the original UUID)
+    const deleted = await pool.query(
+      `SELECT id FROM users WHERE (username = $1 OR email = $2) AND deleted_at IS NOT NULL LIMIT 1`,
+      [uname, uemail]
+    );
+
+    if (deleted.rows.length > 0) {
+      const result = await pool.query(
+        `UPDATE users SET username = $1, email = $2, full_name = $3, password_hash = $4,
+         role = $5, is_active = TRUE, deleted_at = NULL, updated_at = NOW()
+         WHERE id = $6
+         RETURNING id, username, email, full_name, role`,
+        [uname, uemail, fullName, hash, role, deleted.rows[0].id]
+      );
+      return res.status(201).json({ success: true, user: result.rows[0] });
+    }
+
     const result = await pool.query(
       `INSERT INTO users (username, email, full_name, password_hash, role) VALUES ($1,$2,$3,$4,$5) RETURNING id, username, email, full_name, role`,
-      [username.toLowerCase(), email.toLowerCase(), fullName, hash, role]
+      [uname, uemail, fullName, hash, role]
     );
     res.status(201).json({ success: true, user: result.rows[0] });
   } catch (err) {
