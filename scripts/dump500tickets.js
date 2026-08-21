@@ -28,6 +28,19 @@ const CUSTOMERS   = [
   'CloudBase Systems','NetWork Pro','Alpha Industries','Beta Services',
   'Gamma Technologies','Delta Corp','Sigma Labs','Apex Solutions',
 ];
+const DESCRIPTIONS = [
+  'User reported the issue started after the last system update. Multiple attempts to resolve have failed.',
+  'This has been affecting several users in the same department. Needs urgent attention.',
+  'Issue first noticed on Monday morning. Restarting the device did not help.',
+  'User is unable to complete their daily tasks due to this problem. Escalating for priority resolution.',
+  'Intermittent issue occurring multiple times per day. Logs have been collected for analysis.',
+  'The problem started after a recent configuration change. Rolling back did not resolve it.',
+  'Affects all users on the second floor. Network team has been notified.',
+  'User has tried basic troubleshooting steps without success. Remote assistance required.',
+  'Issue is blocking critical business operations. Immediate fix needed.',
+  'Reported by multiple users. Appears to be a systemic issue rather than isolated.',
+];
+
 const SHORT_DESCS = [
   'Unable to access email','Laptop not connecting to WiFi','VPN connection dropping',
   'Printer offline in conference room','Application crashing on startup',
@@ -111,32 +124,33 @@ async function main() {
     const rows      = [];
 
     batchNums.forEach((ticketNum, idx) => {
-      const base       = idx * 13;
-      const createdBy  = pick(allUserIds);
-      const assignedTo = Math.random() > 0.35 ? pick(allUserIds) : null;
+      const base        = idx * 15;
+      const createdBy   = pick(allUserIds);
+      const assignedTo  = Math.random() > 0.35 ? pick(allUserIds) : null;
+      const ticketOwner = assignedTo;   // owner = assigned agent (same value)
 
       // All tickets in the past — 1 to 365 days ago, never in the future
       const daysAgo  = 1 + Math.floor(Math.random() * 364);
-      const today    = new Date(); today.setHours(23, 59, 59, 999);   // end of today
+      const today    = new Date(); today.setHours(23, 59, 59, 999);
       const tsDate   = new Date(Math.min(Date.now() - daysAgo * 86400000, today.getTime()));
       const ts       = tsDate.toISOString();
 
       rows.push(
         `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},` +
-        `$${base+7},$${base+8},$${base+9},$${base+10},$${base+11},$${base+12},$${base+13})`
+        `$${base+7},$${base+8},$${base+9},$${base+10},$${base+11},$${base+12},$${base+13},$${base+14},$${base+15})`
       );
       values.push(
-        ticketNum, createdBy, assignedTo,
+        ticketNum, createdBy, assignedTo, ticketOwner,
         pick(STATUSES), pick(PRIORITIES), pick(IMPACTS), pick(URGENCIES),
-        pick(SHORT_DESCS), pick(CUSTOMERS), pick(MODULES), categoryId,
+        pick(SHORT_DESCS), pick(DESCRIPTIONS), pick(CUSTOMERS), pick(MODULES), categoryId,
         ts, ts
       );
     });
 
     await pool.query(
       `INSERT INTO tickets
-         (ticket_number,created_by,assigned_to,status,priority,impact,urgency,
-          short_description,customer_name,module_text,category_id,created_at,updated_at)
+         (ticket_number,created_by,assigned_to,ticket_owner,status,priority,impact,urgency,
+          short_description,description,customer_name,module_text,category_id,created_at,updated_at)
        VALUES ${rows.join(',')}`,
       values
     );
