@@ -549,3 +549,76 @@ echo -e "  ${BOLD}Credentials saved to:${NC} ${CRED_FILE}"
 echo ""
 echo -e "${YELLOW}  ⚠  Change the admin password after first login!${NC}"
 echo ""
+
+# ════════════════════════════════════════════════════════════════
+# HEALTH CHECK — verify app is reachable on ports 80 and 443
+# ════════════════════════════════════════════════════════════════
+echo -e "${BOLD}────────────────────────────────────────────────────────${NC}"
+echo -e "  ${BOLD}Running health checks...${NC}"
+echo -e "${BOLD}────────────────────────────────────────────────────────${NC}"
+echo ""
+
+sleep 3   # give Node.js a moment to fully boot
+
+CHECK_PASS=true
+
+# ── Check port 80 (should redirect to 443) ──────────────────────
+info "Checking port 80 (HTTP)..."
+HTTP_CODE="$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+  "http://127.0.0.1" 2>/dev/null || echo "000")"
+
+if [[ "${HTTP_CODE}" == "301" || "${HTTP_CODE}" == "302" || "${HTTP_CODE}" == "200" ]]; then
+  ok "Port 80  → HTTP ${HTTP_CODE}  ✓"
+else
+  warn "Port 80  → HTTP ${HTTP_CODE}  ✗  (expected 301 redirect)"
+  CHECK_PASS=false
+fi
+
+# ── Check port 443 (HTTPS — skip cert verification for self-signed) ──
+info "Checking port 443 (HTTPS)..."
+HTTPS_CODE="$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 -k \
+  "https://127.0.0.1" 2>/dev/null || echo "000")"
+
+if [[ "${HTTPS_CODE}" == "200" || "${HTTPS_CODE}" == "301" || "${HTTPS_CODE}" == "302" ]]; then
+  ok "Port 443 → HTTPS ${HTTPS_CODE} ✓"
+else
+  warn "Port 443 → HTTPS ${HTTPS_CODE} ✗  (expected 200)"
+  CHECK_PASS=false
+fi
+
+# ── Check Node.js API directly on port 5000 (internal) ──────────
+info "Checking Node.js API (internal :5000)..."
+API_CODE="$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+  "http://127.0.0.1:${PORT}/api/auth/me" 2>/dev/null || echo "000")"
+
+if [[ "${API_CODE}" == "200" || "${API_CODE}" == "401" ]]; then
+  ok "Port ${PORT} → Node.js API ${API_CODE} ✓  (internal)"
+else
+  warn "Port ${PORT} → Node.js API ${API_CODE} ✗"
+  CHECK_PASS=false
+fi
+
+# ── Result ───────────────────────────────────────────────────────
+echo ""
+if [[ "${CHECK_PASS}" == "true" ]]; then
+  echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════════════╗${NC}"
+  echo -e "${GREEN}${BOLD}║  🎉  Congratulations! SERV-IT is up and running!     ║${NC}"
+  echo -e "${GREEN}${BOLD}║                                                      ║${NC}"
+  echo -e "${GREEN}${BOLD}║  Port 80  → redirects to HTTPS         ✓             ║${NC}"
+  echo -e "${GREEN}${BOLD}║  Port 443 → app is live and responding  ✓            ║${NC}"
+  echo -e "${GREEN}${BOLD}║  Node.js  → API healthy (internal)      ✓            ║${NC}"
+  echo -e "${GREEN}${BOLD}║                                                      ║${NC}"
+  echo -e "${GREEN}${BOLD}║  Open in browser: ${CLIENT_URL_HTTPS}${NC}"
+  echo -e "${GREEN}${BOLD}║  Login: admin / Admin@123                            ║${NC}"
+  echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════╝${NC}"
+else
+  echo -e "${YELLOW}${BOLD}╔══════════════════════════════════════════════════════╗${NC}"
+  echo -e "${YELLOW}${BOLD}║  ⚠  Setup complete but one or more checks failed.   ║${NC}"
+  echo -e "${YELLOW}${BOLD}║                                                      ║${NC}"
+  echo -e "${YELLOW}${BOLD}║  Diagnose with:                                      ║${NC}"
+  echo -e "${YELLOW}${BOLD}║    journalctl -u ${SERVICE_NAME} -n 50                      ║${NC}"
+  echo -e "${YELLOW}${BOLD}║    journalctl -u nginx -n 20                         ║${NC}"
+  echo -e "${YELLOW}${BOLD}║    curl -vk https://127.0.0.1                        ║${NC}"
+  echo -e "${YELLOW}${BOLD}╚══════════════════════════════════════════════════════╝${NC}"
+fi
+echo ""
