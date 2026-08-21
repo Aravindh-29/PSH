@@ -7,6 +7,7 @@ import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import XLSX from '../../utils/xlsxShim';
+import ExcelJS from 'exceljs';
 import './Admin.css';
 
 // ── Validation ────────────────────────────────────────────────
@@ -52,6 +53,7 @@ export default function AdminUsers() {
   const [adminPw,       setAdminPw]       = useState('');
   const [showAdminPw,   setShowAdminPw]   = useState(false);
   const [bulkCreating,  setBulkCreating]  = useState(false);
+  const [showBulkPw,    setShowBulkPw]    = useState(false);
   const bulkDropRef = useRef(null);
   const bulkFileRef = useRef(null);
 
@@ -149,36 +151,59 @@ export default function AdminUsers() {
   };
 
   // ── Bulk: parse uploaded file ─────────────────────────────────
+  // Unwrap ExcelJS cell values — handles hyperlinks, rich text, plain values
+  const cellStr = (val) => {
+    if (val === null || val === undefined) return '';
+    if (typeof val === 'object') {
+      if (val.text) return String(val.text).trim();
+      if (val.hyperlink) return String(val.hyperlink).replace(/^mailto:/i, '').trim();
+      if (val.richText) return val.richText.map(r => r.text || '').join('').trim();
+    }
+    return String(val).trim();
+  };
+
   const handleBulkFile = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     e.target.value = '';
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
-        const wb   = XLSX.read(ev.target.result, { type: 'binary' });
-        const ws   = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' });
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(ev.target.result);
+        const ws = wb.worksheets[0];
+        if (!ws) {
+          toast.error('No worksheet found in file.');
+          return;
+        }
 
-        const get = (row, keys) => {
+        // Build header map: normalised-key → 1-based column index
+        const headerMap = {};
+        ws.getRow(1).eachCell({ includeEmpty: true }, (cell, colNum) => {
+          const key = cellStr(cell.value).toLowerCase().replace(/[\s_]/g, '');
+          if (key) headerMap[key] = colNum;
+        });
+
+        const getCol = (row, keys) => {
           for (const k of keys) {
-            const key = Object.keys(row).find(rk => rk.toLowerCase().replace(/[\s_]/g, '') === k);
-            if (key) return (row[key] || '').toString().trim();
+            const colNum = headerMap[k];
+            if (colNum) return cellStr(row.getCell(colNum).value);
           }
           return '';
         };
 
-        const parsed = rows
-          .map((row, i) => {
-            const fullName = get(row, ['fullname', 'name']);
-            const username = get(row, ['username', 'user']).toLowerCase().replace(/\s+/g, '');
-            const email    = get(row, ['email']).toLowerCase();
-            const password = get(row, ['password', 'pass', 'pwd']);
-            const role     = (get(row, ['role']) || 'employee').toLowerCase().trim();
-            const errs     = validateRow({ fullName, username, email, password, role });
-            return { _idx: i + 1, fullName, username, email, password, role: role || 'employee', errors: errs, valid: errs.length === 0, selected: errs.length === 0 };
-          })
-          .filter(r => r.fullName || r.username || r.email);
+        const parsed = [];
+        ws.eachRow((row, rowNum) => {
+          if (rowNum === 1) return;
+          const fullName = getCol(row, ['fullname', 'name']);
+          const username = getCol(row, ['username', 'user']).toLowerCase().replace(/\s+/g, '');
+          const email    = getCol(row, ['email']).toLowerCase();
+          const password = getCol(row, ['password', 'pass', 'pwd']);
+          const role     = (getCol(row, ['role']) || 'employee').toLowerCase().trim();
+          if (!fullName && !username && !email) return;
+          const errs = validateRow({ fullName, username, email, password, role });
+          parsed.push({ _idx: rowNum - 1, fullName, username, email, password, role: role || 'employee', errors: errs, valid: errs.length === 0, selected: errs.length === 0 });
+        });
 
         if (!parsed.length) {
           toast.error('No data found. Make sure headers are in row 1 and data starts in row 2.');
@@ -186,11 +211,12 @@ export default function AdminUsers() {
         }
         setBulkPreview(parsed);
         setBulkDropdown(false);
-      } catch {
+      } catch (err) {
+        console.error('Bulk file parse error:', err);
         toast.error('Failed to read file. Please use the downloaded template.');
       }
     };
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   // ── Bulk: create users ────────────────────────────────────────
@@ -382,7 +408,18 @@ export default function AdminUsers() {
                     <th>Username</th>
                     <th>Email</th>
                     <th>Role</th>
-                    <th>Password</th>
+                    <th>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        Password
+                        <button
+                          onClick={() => setShowBulkPw(v => !v)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#94A3B8', display: 'flex', alignItems: 'center' }}
+                          title={showBulkPw ? 'Hide passwords' : 'Show passwords'}
+                        >
+                          {showBulkPw ? <EyeOff size={13} /> : <Eye size={13} />}
+                        </button>
+                      </span>
+                    </th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -412,8 +449,10 @@ export default function AdminUsers() {
                           {row.role || '—'}
                         </span>
                       </td>
-                      <td style={{ fontFamily: 'monospace', fontSize: 12, color: '#94A3B8', letterSpacing: 2 }}>
-                        {row.password ? '••••••' : <span style={{ color: '#DC2626' }}>—</span>}
+                      <td style={{ fontFamily: 'monospace', fontSize: 12, color: showBulkPw ? '#334155' : '#94A3B8', letterSpacing: showBulkPw ? 0 : 2 }}>
+                        {row.password
+                          ? (showBulkPw ? row.password : '••••••')
+                          : <span style={{ color: '#DC2626' }}>—</span>}
                       </td>
                       <td>
                         {row.valid

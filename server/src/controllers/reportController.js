@@ -35,41 +35,61 @@ async function getReport(req, res, next) {
       WHERE t.deleted_at IS NULL AND t.created_by = $1 ${dateCond}
     `, filteredParams);
 
-    // Monthly / weekly charts always show fixed 12-month / 12-week windows for trend context
-    const monthlyResult = await pool.query(`
-      SELECT
-        TO_CHAR(months.month, 'Mon YYYY') AS label,
-        COUNT(t.id)                        AS created,
-        COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS resolved,
-        COUNT(t.id) FILTER (WHERE t.status = 'CLOSED')   AS closed
-      FROM (
-        SELECT DATE_TRUNC('month', NOW() - (n || ' months')::INTERVAL)::date AS month
-        FROM generate_series(11, 0, -1) AS n
-      ) months
-      LEFT JOIN tickets t
-        ON DATE_TRUNC('month', t.created_at)::date = months.month
-        AND t.deleted_at IS NULL
-        AND t.created_by = $1
-      GROUP BY months.month
-      ORDER BY months.month ASC
-    `, baseParams);
+    // Monthly chart: filter to selected range, or last 12 months if no range
+    const monthlyResult = startDate && endDate
+      ? await pool.query(`
+          SELECT TO_CHAR(m.month, 'Mon YYYY') AS label,
+                 COUNT(t.id) AS created,
+                 COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS resolved,
+                 COUNT(t.id) FILTER (WHERE t.status = 'CLOSED')   AS closed
+          FROM (SELECT DATE_TRUNC('month', d)::date AS month
+                FROM generate_series($2::date, $3::date, '1 month'::INTERVAL) d) m
+          LEFT JOIN tickets t
+            ON DATE_TRUNC('month', t.created_at)::date = m.month
+            AND t.deleted_at IS NULL AND t.created_by = $1
+            AND t.created_at >= $2::date
+            AND t.created_at < ($3::date + INTERVAL '1 day')
+          GROUP BY m.month ORDER BY m.month ASC
+        `, [userId, startDate, endDate])
+      : await pool.query(`
+          SELECT TO_CHAR(m.month, 'Mon YYYY') AS label,
+                 COUNT(t.id) AS created,
+                 COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS resolved,
+                 COUNT(t.id) FILTER (WHERE t.status = 'CLOSED')   AS closed
+          FROM (SELECT DATE_TRUNC('month', NOW() - (n || ' months')::INTERVAL)::date AS month
+                FROM generate_series(11, 0, -1) n) m
+          LEFT JOIN tickets t
+            ON DATE_TRUNC('month', t.created_at)::date = m.month
+            AND t.deleted_at IS NULL AND t.created_by = $1
+          GROUP BY m.month ORDER BY m.month ASC
+        `, baseParams);
 
-    const weeklyResult = await pool.query(`
-      SELECT
-        TO_CHAR(weeks.week_start, 'Mon DD') AS label,
-        COUNT(t.id)                          AS created,
-        COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS resolved
-      FROM (
-        SELECT DATE_TRUNC('week', NOW() - (n || ' weeks')::INTERVAL)::date AS week_start
-        FROM generate_series(11, 0, -1) AS n
-      ) weeks
-      LEFT JOIN tickets t
-        ON DATE_TRUNC('week', t.created_at)::date = weeks.week_start
-        AND t.deleted_at IS NULL
-        AND t.created_by = $1
-      GROUP BY weeks.week_start
-      ORDER BY weeks.week_start ASC
-    `, baseParams);
+    // Weekly chart: filter to selected range, or last 12 weeks if no range
+    const weeklyResult = startDate && endDate
+      ? await pool.query(`
+          SELECT TO_CHAR(w.week_start, 'Mon DD') AS label,
+                 COUNT(t.id) AS created,
+                 COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS resolved
+          FROM (SELECT DATE_TRUNC('week', d)::date AS week_start
+                FROM generate_series($2::date, $3::date, '1 week'::INTERVAL) d) w
+          LEFT JOIN tickets t
+            ON DATE_TRUNC('week', t.created_at)::date = w.week_start
+            AND t.deleted_at IS NULL AND t.created_by = $1
+            AND t.created_at >= $2::date
+            AND t.created_at < ($3::date + INTERVAL '1 day')
+          GROUP BY w.week_start ORDER BY w.week_start ASC
+        `, [userId, startDate, endDate])
+      : await pool.query(`
+          SELECT TO_CHAR(w.week_start, 'Mon DD') AS label,
+                 COUNT(t.id) AS created,
+                 COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS resolved
+          FROM (SELECT DATE_TRUNC('week', NOW() - (n || ' weeks')::INTERVAL)::date AS week_start
+                FROM generate_series(11, 0, -1) n) w
+          LEFT JOIN tickets t
+            ON DATE_TRUNC('week', t.created_at)::date = w.week_start
+            AND t.deleted_at IS NULL AND t.created_by = $1
+          GROUP BY w.week_start ORDER BY w.week_start ASC
+        `, baseParams);
 
     const statusResult = await pool.query(`
       SELECT t.status AS name, COUNT(*) AS value
@@ -144,6 +164,16 @@ async function getReport(req, res, next) {
 
 async function getGlobalReport(req, res, next) {
   try {
+    const startDate = req.query.startDate || null;
+    const endDate   = req.query.endDate   || null;
+
+    let dateCond = '';
+    const dateParams = [];
+    if (startDate && endDate) {
+      dateParams.push(startDate, endDate);
+      dateCond = `AND t.created_at >= $1::date AND t.created_at < ($2::date + INTERVAL '1 day')`;
+    }
+
     const [summaryRes, usersRes, monthlyRes, weeklyRes, statusRes, priorityRes, employeeRes, allTicketsRes] =
       await Promise.all([
         pool.query(`
@@ -158,37 +188,70 @@ async function getGlobalReport(req, res, next) {
             COUNT(*) FILTER (WHERE t.priority = 'HIGH')                                AS high_count,
             AVG(EXTRACT(EPOCH FROM (t.updated_at - t.created_at))/3600)
               FILTER (WHERE t.status IN ('RESOLVED','CLOSED'))                         AS avg_resolution_hours
-          FROM tickets t WHERE t.deleted_at IS NULL
-        `),
-        pool.query(`SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE is_active = true) AS active FROM users`),
-        pool.query(`
-          SELECT TO_CHAR(months.month, 'Mon YYYY') AS label,
-                 COUNT(t.id) AS created,
-                 COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS resolved,
-                 COUNT(t.id) FILTER (WHERE t.status = 'CLOSED')   AS closed
-          FROM (SELECT DATE_TRUNC('month', NOW() - (n||' months')::INTERVAL)::date AS month
-                FROM generate_series(11,0,-1) n) months
-          LEFT JOIN tickets t ON DATE_TRUNC('month', t.created_at)::date = months.month AND t.deleted_at IS NULL
-          GROUP BY months.month ORDER BY months.month ASC
-        `),
-        pool.query(`
-          SELECT TO_CHAR(weeks.week_start, 'Mon DD') AS label,
-                 COUNT(t.id) AS created,
-                 COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS resolved
-          FROM (SELECT DATE_TRUNC('week', NOW() - (n||' weeks')::INTERVAL)::date AS week_start
-                FROM generate_series(11,0,-1) n) weeks
-          LEFT JOIN tickets t ON DATE_TRUNC('week', t.created_at)::date = weeks.week_start AND t.deleted_at IS NULL
-          GROUP BY weeks.week_start ORDER BY weeks.week_start ASC
-        `),
+          FROM tickets t WHERE t.deleted_at IS NULL ${dateCond}
+        `, dateParams),
+
+        pool.query(`SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE is_active = true) AS active FROM users WHERE deleted_at IS NULL`),
+
+        startDate && endDate
+          ? pool.query(`
+              SELECT TO_CHAR(m.month, 'Mon YYYY') AS label,
+                     COUNT(t.id) AS created,
+                     COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS resolved,
+                     COUNT(t.id) FILTER (WHERE t.status = 'CLOSED')   AS closed
+              FROM (SELECT DATE_TRUNC('month', d)::date AS month
+                    FROM generate_series($1::date, $2::date, '1 month'::INTERVAL) d) m
+              LEFT JOIN tickets t
+                ON DATE_TRUNC('month', t.created_at)::date = m.month
+                AND t.deleted_at IS NULL
+                AND t.created_at >= $1::date AND t.created_at < ($2::date + INTERVAL '1 day')
+              GROUP BY m.month ORDER BY m.month ASC
+            `, dateParams)
+          : pool.query(`
+              SELECT TO_CHAR(months.month, 'Mon YYYY') AS label,
+                     COUNT(t.id) AS created,
+                     COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS resolved,
+                     COUNT(t.id) FILTER (WHERE t.status = 'CLOSED')   AS closed
+              FROM (SELECT DATE_TRUNC('month', NOW() - (n||' months')::INTERVAL)::date AS month
+                    FROM generate_series(11,0,-1) n) months
+              LEFT JOIN tickets t ON DATE_TRUNC('month', t.created_at)::date = months.month AND t.deleted_at IS NULL
+              GROUP BY months.month ORDER BY months.month ASC
+            `),
+
+        startDate && endDate
+          ? pool.query(`
+              SELECT TO_CHAR(w.week_start, 'Mon DD') AS label,
+                     COUNT(t.id) AS created,
+                     COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS resolved
+              FROM (SELECT DATE_TRUNC('week', d)::date AS week_start
+                    FROM generate_series($1::date, $2::date, '1 week'::INTERVAL) d) w
+              LEFT JOIN tickets t
+                ON DATE_TRUNC('week', t.created_at)::date = w.week_start
+                AND t.deleted_at IS NULL
+                AND t.created_at >= $1::date AND t.created_at < ($2::date + INTERVAL '1 day')
+              GROUP BY w.week_start ORDER BY w.week_start ASC
+            `, dateParams)
+          : pool.query(`
+              SELECT TO_CHAR(weeks.week_start, 'Mon DD') AS label,
+                     COUNT(t.id) AS created,
+                     COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS resolved
+              FROM (SELECT DATE_TRUNC('week', NOW() - (n||' weeks')::INTERVAL)::date AS week_start
+                    FROM generate_series(11,0,-1) n) weeks
+              LEFT JOIN tickets t ON DATE_TRUNC('week', t.created_at)::date = weeks.week_start AND t.deleted_at IS NULL
+              GROUP BY weeks.week_start ORDER BY weeks.week_start ASC
+            `),
+
         pool.query(`
           SELECT t.status AS name, COUNT(*) AS value FROM tickets t
-          WHERE t.deleted_at IS NULL GROUP BY t.status ORDER BY value DESC
-        `),
+          WHERE t.deleted_at IS NULL ${dateCond} GROUP BY t.status ORDER BY value DESC
+        `, dateParams),
+
         pool.query(`
           SELECT t.priority AS name, COUNT(*) AS value FROM tickets t
-          WHERE t.deleted_at IS NULL GROUP BY t.priority
+          WHERE t.deleted_at IS NULL ${dateCond} GROUP BY t.priority
           ORDER BY CASE t.priority WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END
-        `),
+        `, dateParams),
+
         pool.query(`
           SELECT u.id, u.full_name, u.email, u.username, u.role, u.is_active,
             COUNT(t.id)                                                             AS total_tickets,
@@ -201,9 +264,12 @@ async function getGlobalReport(req, res, next) {
               FILTER (WHERE t.status IN ('RESOLVED','CLOSED'))                      AS avg_resolution_hours
           FROM users u
           LEFT JOIN tickets t ON t.created_by = u.id AND t.deleted_at IS NULL
+            ${startDate && endDate ? 'AND t.created_at >= $1::date AND t.created_at < ($2::date + INTERVAL \'1 day\')' : ''}
+          WHERE u.deleted_at IS NULL
           GROUP BY u.id, u.full_name, u.email, u.username, u.role, u.is_active
           ORDER BY total_tickets DESC, u.full_name ASC
-        `),
+        `, dateParams),
+
         pool.query(`
           SELECT t.ticket_number, t.short_description, t.customer_name,
                  COALESCE(t.module_text, m.name, '') AS module_name,
@@ -216,10 +282,10 @@ async function getGlobalReport(req, res, next) {
           LEFT JOIN categories c ON t.category_id = c.id
           LEFT JOIN users u2     ON t.created_by = u2.id
           LEFT JOIN users u3     ON t.ticket_owner = u3.id
-          WHERE t.deleted_at IS NULL
+          WHERE t.deleted_at IS NULL ${dateCond}
           ORDER BY t.created_at DESC
           LIMIT 500
-        `),
+        `, dateParams),
       ]);
 
     const s = summaryRes.rows[0];

@@ -563,7 +563,7 @@ export default function Reports() {
       <div className="rpt-charts-row">
         <div className="rpt-chart-card rpt-chart-wide">
           <div className="rpt-chart-header">
-            <h3>Monthly Ticket Activity (Last 12 Months)</h3>
+            <h3>Monthly Ticket Activity ({dateRange ? dateRangeLabel : 'Last 12 Months'})</h3>
           </div>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={data?.monthly || []} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
@@ -619,7 +619,7 @@ export default function Reports() {
       <div className="rpt-charts-row">
         <div className="rpt-chart-card rpt-chart-wide">
           <div className="rpt-chart-header">
-            <h3>Weekly Ticket Activity (Last 12 Weeks)</h3>
+            <h3>Weekly Ticket Activity ({dateRange ? dateRangeLabel : 'Last 12 Weeks'})</h3>
           </div>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={data?.weekly || []} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>

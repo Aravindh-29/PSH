@@ -1,15 +1,24 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from 'recharts';
 import {
-  Download, Users, Ticket, CheckCircle, AlertTriangle, Activity, Clock, TrendingUp,
+  Download, Users, Ticket, CheckCircle, AlertTriangle, Activity, Clock, TrendingUp, ChevronDown, Calendar,
 } from 'lucide-react';
 import XLSX from '../../utils/xlsxShim';
 import api from '../../api/axios';
-import { format } from 'date-fns';
+import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import './Reports.css';
+
+const DATE_PRESETS = [
+  { label: 'All Time',     getRange: () => null },
+  { label: 'Last 7 days',  getRange: () => ({ start: subDays(new Date(), 6),  end: new Date() }) },
+  { label: 'Last 14 days', getRange: () => ({ start: subDays(new Date(), 13), end: new Date() }) },
+  { label: 'Last 30 days', getRange: () => ({ start: subDays(new Date(), 29), end: new Date() }) },
+  { label: 'This month',   getRange: () => ({ start: startOfMonth(new Date()), end: new Date() }) },
+  { label: 'Last month',   getRange: () => ({ start: startOfMonth(subMonths(new Date(), 1)), end: endOfMonth(subMonths(new Date(), 1)) }) },
+];
 
 const SYSTEM_KEYS = ['customer_name','module_text','category_id','status','priority','impact','urgency','short_description','description'];
 const parseOpts = (opts) => {
@@ -45,20 +54,70 @@ const SUMMARY_CARDS = [
 ];
 
 export default function GlobalReports() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState(false);
+  const [data, setData]               = useState(null);
+  const [loading, setLoading]         = useState(true);
+  const [exporting, setExporting]     = useState(false);
   const [customFieldDefs, setCustomFieldDefs] = useState([]);
 
+  const [dateRange,   setDateRange]   = useState(null);
+  const [showPicker,  setShowPicker]  = useState(false);
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd,   setCustomEnd]   = useState('');
+  const pickerRef = useRef(null);
+
   useEffect(() => {
-    Promise.all([api.get('/reports/global'), api.get('/config/fields')])
+    const handler = (e) => { if (pickerRef.current && !pickerRef.current.contains(e.target)) setShowPicker(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const applyPreset = (preset) => {
+    setDateRange(preset.getRange());
+    setShowPicker(false);
+    setCustomStart('');
+    setCustomEnd('');
+  };
+
+  const applyCustom = () => {
+    if (!customStart || !customEnd) return;
+    setDateRange({ start: new Date(customStart), end: new Date(customEnd) });
+    setShowPicker(false);
+  };
+
+  const dateRangeLabel = dateRange
+    ? `${format(dateRange.start, 'MMM d')} – ${format(dateRange.end, 'MMM d, yyyy')}`
+    : 'All Time';
+
+  const activePreset = DATE_PRESETS.find(p => {
+    const r = p.getRange();
+    if (r === null && dateRange === null) return true;
+    if (!r || !dateRange) return false;
+    return format(r.start, 'yyyy-MM-dd') === format(dateRange.start, 'yyyy-MM-dd')
+        && format(r.end,   'yyyy-MM-dd') === format(dateRange.end,   'yyyy-MM-dd');
+  });
+
+  const chartTitle = dateRange
+    ? `Monthly Ticket Activity — System Wide (${dateRangeLabel})`
+    : 'Monthly Ticket Activity — System Wide (Last 12 Months)';
+
+  useEffect(() => {
+    setLoading(true);
+    const params = {};
+    if (dateRange) {
+      params.startDate = format(dateRange.start, 'yyyy-MM-dd');
+      params.endDate   = format(dateRange.end,   'yyyy-MM-dd');
+    }
+    Promise.all([
+      api.get('/reports/global', { params }),
+      api.get('/config/fields'),
+    ])
       .then(([r, fRes]) => {
         setData(r.data);
         setCustomFieldDefs((fRes.data.fields || []).filter(f => !SYSTEM_KEYS.includes(f.field_key)));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [dateRange]);
 
   const exportToExcel = useCallback(async () => {
     if (!data) return;
@@ -362,10 +421,46 @@ export default function GlobalReports() {
           <h2 className="rpt-global-title">Global Reports</h2>
           <p className="rpt-sub">System-wide statistics across all users</p>
         </div>
-        <button className="rpt-export-btn" onClick={exportToExcel} disabled={!data || exporting}>
-          <Download size={15} />
-          {exporting ? 'Exporting…' : 'Export Global Report'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Date Picker */}
+          <div className="date-picker-wrap" ref={pickerRef}>
+            <button className="date-picker-btn" onClick={() => setShowPicker(p => !p)}>
+              <Calendar size={14} />
+              <span>{activePreset ? activePreset.label : dateRangeLabel}</span>
+              <ChevronDown size={12} style={{ marginLeft: 2, opacity: 0.6 }} />
+            </button>
+            {showPicker && (
+              <div className="date-picker-dropdown">
+                <div className="date-picker-presets">
+                  {DATE_PRESETS.map(p => (
+                    <button key={p.label} className={`date-preset-btn${activePreset?.label === p.label ? ' active' : ''}`} onClick={() => applyPreset(p)}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="date-picker-divider" />
+                <div className="date-picker-custom">
+                  <p className="date-custom-label">Custom range</p>
+                  <div className="date-custom-row">
+                    <label>From</label>
+                    <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} max={customEnd || undefined} />
+                  </div>
+                  <div className="date-custom-row">
+                    <label>To</label>
+                    <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} min={customStart || undefined} />
+                  </div>
+                  <button className="date-apply-btn" onClick={applyCustom} disabled={!customStart || !customEnd}>
+                    Apply Range
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          <button className="rpt-export-btn" onClick={exportToExcel} disabled={!data || exporting}>
+            <Download size={15} />
+            {exporting ? 'Exporting…' : 'Export Global Report'}
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -399,7 +494,7 @@ export default function GlobalReports() {
       {/* Charts Row 1: Monthly + Status donut */}
       <div className="rpt-charts-row">
         <div className="rpt-chart-card rpt-chart-wide">
-          <div className="rpt-chart-header"><h3>Monthly Ticket Activity — System Wide (Last 12 Months)</h3></div>
+          <div className="rpt-chart-header"><h3>{chartTitle}</h3></div>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={data?.monthly || []} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
