@@ -56,6 +56,7 @@ app.use('/api/config', require('./routes/config'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/kb',      require('./routes/kb'));
 app.use('/api/audit',   require('./routes/audit'));
+app.use('/api/notifications', require('./routes/notifications'));
 
 if (isProd) {
   app.use(express.static(path.join(__dirname, '../../client/dist')));

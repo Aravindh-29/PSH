@@ -9,7 +9,9 @@ async function list(req, res, next) {
     // default: only active non-deleted users (for User Management)
     const whereClause = scope === 'with_tickets'
       ? `WHERE (u.deleted_at IS NULL OR EXISTS (
-           SELECT 1 FROM tickets WHERE created_by = u.id AND deleted_at IS NULL
+           SELECT 1 FROM tickets
+           WHERE (assigned_to = u.id OR (assigned_to IS NULL AND created_by = u.id))
+             AND deleted_at IS NULL
          ))`
       : `WHERE u.deleted_at IS NULL`;
 
@@ -21,7 +23,7 @@ async function list(req, res, next) {
              COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL AND t.status IN ('RESOLVED','CLOSED')) AS resolved_count,
              COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL AND t.priority = 'CRITICAL') AS critical_count
       FROM users u
-      LEFT JOIN tickets t ON t.created_by = u.id
+      LEFT JOIN tickets t ON (t.assigned_to = u.id OR (t.assigned_to IS NULL AND t.created_by = u.id))
       ${whereClause}
       GROUP BY u.id
       ORDER BY u.full_name
@@ -40,7 +42,7 @@ async function getOne(req, res, next) {
              COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL AND t.status IN ('RESOLVED','CLOSED')) AS resolved_count,
              COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL AND t.priority = 'CRITICAL') AS critical_count
       FROM users u
-      LEFT JOIN tickets t ON t.created_by = u.id
+      LEFT JOIN tickets t ON (t.assigned_to = u.id OR (t.assigned_to IS NULL AND t.created_by = u.id))
       WHERE u.id = $1
       GROUP BY u.id
     `, [id]);

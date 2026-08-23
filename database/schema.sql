@@ -194,4 +194,18 @@ CREATE INDEX IF NOT EXISTS idx_audit_ticket ON ticket_audit_logs(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_comments_ticket ON ticket_comments(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_attachments_ticket ON ticket_attachments(ticket_id);
 
+-- Notifications
+CREATE TABLE IF NOT EXISTS notifications (
+  id           SERIAL PRIMARY KEY,
+  user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type         VARCHAR(50) NOT NULL DEFAULT 'TICKET_ASSIGNED',
+  title        TEXT NOT NULL,
+  message      TEXT,
+  ticket_id    UUID REFERENCES tickets(id) ON DELETE CASCADE,
+  ticket_number VARCHAR(20),
+  is_read      BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read, created_at DESC);
+
 COMMIT;

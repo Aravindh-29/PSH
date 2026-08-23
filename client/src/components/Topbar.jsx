@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Search, ChevronDown, LogOut, User, Loader } from 'lucide-react';
+import { Menu, Search, ChevronDown, LogOut, User, Loader, Bell, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import { StatusBadge, PriorityBadge } from './Badge';
 import api from '../api/axios';
 import './Topbar.css';
@@ -15,12 +16,27 @@ function useDebounce(value, delay) {
   return debounced;
 }
 
-export default function Topbar({ onMenuClick }) {
+function relativeTime(ts) {
+  const diff = Date.now() - new Date(ts).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return `${Math.floor(hr / 24)}d ago`;
+}
+
+export default function Topbar({ onMenuClick, darkMode, onThemeToggle }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { notifications, unread, markRead, markAllRead } = useNotifications();
 
   // user dropdown
   const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  // notifications dropdown
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef(null);
 
   // search
   const [query, setQuery]       = useState('');
@@ -65,11 +81,22 @@ export default function Topbar({ onMenuClick }) {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  // ── click outside → close ─────────────────────────────
+  // ── click outside → close search ─────────────────────
   useEffect(() => {
     const onClick = (e) => {
       if (containerRef.current && !containerRef.current.contains(e.target)) {
         setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, []);
+
+  // ── click outside → close notification dropdown ───────
+  useEffect(() => {
+    const onClick = (e) => {
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setNotifOpen(false);
       }
     };
     document.addEventListener('mousedown', onClick);
@@ -157,6 +184,68 @@ export default function Topbar({ onMenuClick }) {
       </div>
 
       <div className="topbar-right">
+        {/* ── Theme Toggle ── */}
+        <button
+          className="theme-toggle-btn"
+          onClick={onThemeToggle}
+          title={darkMode ? 'Switch to Light mode' : 'Switch to Dark mode'}
+        >
+          {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
+
+        {/* ── Notification Bell ── */}
+        <div className="notif-wrapper" ref={notifRef}>
+          <button
+            className="topbar-icon-btn"
+            onClick={() => setNotifOpen(o => !o)}
+            title="Notifications"
+          >
+            <Bell size={18} />
+            {unread > 0 && (
+              <span className="notif-badge">{unread > 9 ? '9+' : unread}</span>
+            )}
+          </button>
+
+          {notifOpen && (
+            <div className="notif-dropdown">
+              <div className="notif-header">
+                <span>Notifications</span>
+                {unread > 0 && (
+                  <button className="notif-mark-all" onClick={() => markAllRead()}>
+                    Mark all read
+                  </button>
+                )}
+              </div>
+              {notifications.filter(n => !n.is_read).length === 0 ? (
+                <div className="notif-empty">No new notifications</div>
+              ) : (
+                <div className="notif-list">
+                  {notifications.filter(n => !n.is_read).map(n => (
+                    <div
+                      key={n.id}
+                      className={`notif-item ${!n.is_read ? 'notif-unread' : ''}`}
+                      onClick={() => {
+                        markRead(n.id);
+                        if (n.ticket_id) {
+                          setNotifOpen(false);
+                          navigate(`/tickets/${n.ticket_id}`);
+                        }
+                      }}
+                    >
+                      {!n.is_read && <span className="notif-dot" />}
+                      <div className="notif-body">
+                        <div className="notif-title">{n.title}</div>
+                        {n.message && <div className="notif-msg">{n.message}</div>}
+                        <div className="notif-time">{relativeTime(n.created_at)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="topbar-user" onClick={() => setDropdownOpen(o => !o)}>
           <div className="topbar-avatar">{user?.fullName?.[0] || 'U'}</div>
           <div className="topbar-user-info">

@@ -18,6 +18,24 @@
 .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(232,93,4,0.08); }
 .form-group textarea { resize: vertical; min-height: 120px; }
 .req { color: var(--orange); }
+.tf-save-note {
+  width: 100%; box-sizing: border-box;
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 14px; font-size: 13.5px; color: var(--text);
+  font-family: inherit; resize: vertical; outline: none;
+  min-height: 140px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.tf-save-note:focus {
+  border-color: var(--orange);
+  box-shadow: 0 0 0 3px rgba(232,93,4,0.08);
+}
+.tf-save-note-required {
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 3px rgba(220,38,38,0.08) !important;
+}
+.tf-save-note::placeholder { color: var(--text-muted); }
+
 .tf-actions { display: flex; gap: 12px; justify-content: flex-end; }
 .btn-cancel { padding: 9px 20px; border-radius: 7px; border: 1px solid var(--border); background: white; font-size: 13.5px; cursor: pointer; }
 .btn-submit { padding: 9px 24px; border-radius: 7px; border: none; background: var(--orange); color: white; font-size: 13.5px; font-weight: 600; cursor: pointer; }

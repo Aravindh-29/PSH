@@ -120,7 +120,7 @@ async function createField(req, res, next) {
 async function updateField(req, res, next) {
   try {
     const { id } = req.params;
-    const { label, is_required, is_active, is_system, field_order, placeholder, options } = req.body;
+    const { label, field_type, is_required, is_active, is_system, field_order, placeholder, options } = req.body;
 
     const existing = await pool.query('SELECT * FROM ticket_fields WHERE id = $1', [id]);
     if (existing.rows.length === 0) return res.status(404).json({ success: false, message: 'Field not found' });
@@ -128,10 +128,11 @@ async function updateField(req, res, next) {
 
     const result = await pool.query(
       `UPDATE ticket_fields SET
-        label=$1, is_required=$2, is_active=$3, is_system=$4, field_order=$5, placeholder=$6, options=$7, updated_at=NOW()
-       WHERE id=$8 RETURNING *`,
+        label=$1, field_type=$2, is_required=$3, is_active=$4, is_system=$5, field_order=$6, placeholder=$7, options=$8, updated_at=NOW()
+       WHERE id=$9 RETURNING *`,
       [
         label       !== undefined ? label       : f.label,
+        field_type  !== undefined ? field_type  : f.field_type,
         is_required !== undefined ? is_required : f.is_required,
         is_active   !== undefined ? is_active   : f.is_active,
         is_system   !== undefined ? is_system   : f.is_system,
@@ -212,8 +213,9 @@ async function resetFields(req, res, next) {
     await pool.query(`
       INSERT INTO ticket_fields (field_key, label, field_type, is_required, is_system, is_active, field_order, placeholder, options)
       VALUES
-        ('customer_name',    'Customer / Client',   'text',     true,  true, true, 10, 'e.g. TechCorp Inc.',           '[]'::jsonb),
-        ('module_text',      'Module',              'text',     true,  true, true, 20, 'e.g. Cloud, Storage, Network', '[]'::jsonb),
+        ('customer_name',    'Customer / Client',   'dropdown', true,  true, true, 10, 'e.g. TechCorp Inc.',           '[]'::jsonb),
+        ('module_text',      'Module',              'dropdown', true,  true, true, 20, 'e.g. Cloud, Storage, Network',
+          '[{"label":"FlashArray","value":"FlashArray"},{"label":"FlashBlade","value":"FlashBlade"},{"label":"Pure Cloud Block Store","value":"Pure Cloud Block Store"},{"label":"Evergreen//One","value":"Evergreen//One"},{"label":"ActiveCluster","value":"ActiveCluster"},{"label":"Portworx","value":"Portworx"},{"label":"General","value":"General"}]'::jsonb),
         ('category_id',      'Category',            'category', true,  true, true, 30, '',                             '[]'::jsonb),
         ('status',           'Status',              'dropdown', true,  true, true, 40, '',
           '[{"label":"New","value":"NEW"},{"label":"Open","value":"OPEN"},{"label":"In Progress","value":"IN_PROGRESS"},{"label":"Work In Progress","value":"WORK_IN_PROGRESS"},{"label":"Pending","value":"PENDING"},{"label":"On Hold","value":"ON_HOLD"},{"label":"Resolved","value":"RESOLVED"},{"label":"Closed","value":"CLOSED"},{"label":"Reopened","value":"REOPENED"},{"label":"Cancelled","value":"CANCELLED"}]'::jsonb),
@@ -224,7 +226,9 @@ async function resetFields(req, res, next) {
         ('urgency',          'Urgency',             'dropdown', false, true, true, 70, '',
           '[{"label":"Low","value":"LOW"},{"label":"Medium","value":"MEDIUM"},{"label":"High","value":"HIGH"}]'::jsonb),
         ('short_description','Short Description',   'text',     true,  true, true, 80, 'Brief summary of the issue',   '[]'::jsonb),
-        ('description',      'Detailed Description','textarea', true,  true, true, 90, 'Provide full details...',      '[]'::jsonb)
+        ('description',      'Detailed Description','textarea', true,  true, true, 90, 'Provide full details...',      '[]'::jsonb),
+        ('assignment_group', 'Assignment Group',    'dropdown', false, true, true, 95, 'e.g. Storage Team',
+          '[{"label":"Storage Team","value":"Storage Team"},{"label":"Network Team","value":"Network Team"},{"label":"Cloud Team","value":"Cloud Team"},{"label":"Hardware Support","value":"Hardware Support"},{"label":"Software Support","value":"Software Support"},{"label":"Access Management","value":"Access Management"},{"label":"DevOps Team","value":"DevOps Team"},{"label":"Security Team","value":"Security Team"},{"label":"L1 Support","value":"L1 Support"},{"label":"L2 Support","value":"L2 Support"},{"label":"L3 Support","value":"L3 Support"}]'::jsonb)
     `);
 
     res.json({ success: true, message: 'Fields reset to defaults successfully' });

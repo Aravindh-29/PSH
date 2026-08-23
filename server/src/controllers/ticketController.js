@@ -23,14 +23,24 @@ async function list(req, res, next) {
     const params = [];
 
     if (!isAdmin) {
+      // Employee sees tickets assigned to them, OR unassigned tickets they created.
+      // Once a ticket is assigned to someone else it leaves their bucket completely.
       params.push(userId);
-      conditions.push(`(t.created_by = $${params.length} OR t.ticket_owner = $${params.length})`);
+      conditions.push(
+        `(t.assigned_to = $${params.length} OR (t.assigned_to IS NULL AND (t.created_by = $${params.length} OR t.ticket_owner = $${params.length})))`
+      );
     } else if (myTickets === 'true') {
       params.push(userId);
-      conditions.push(`t.created_by = $${params.length}`);
+      conditions.push(
+        `(t.assigned_to = $${params.length} OR (t.assigned_to IS NULL AND t.created_by = $${params.length}))`
+      );
     } else if (createdBy) {
+      // Admin viewing a specific user's bucket: tickets assigned to that user,
+      // or unassigned tickets they originally created.
       params.push(createdBy);
-      conditions.push(`t.created_by = $${params.length}`);
+      conditions.push(
+        `(t.assigned_to = $${params.length} OR (t.assigned_to IS NULL AND t.created_by = $${params.length}))`
+      );
     }
     if (status) { params.push(status); conditions.push(`t.status = $${params.length}`); }
     if (priority) { params.push(priority); conditions.push(`t.priority = $${params.length}`); }
@@ -99,9 +109,8 @@ async function create(req, res, next) {
     const rawStatus = req.body.status || 'NEW';
     const status = (!isAdmin || !VALID_STATUSES.includes(rawStatus)) ? 'NEW' : rawStatus;
 
-    // assignedTo (ticket_owner): admins may choose; employees auto-assign to self
+    // assignedTo → assigned_to column; ticket_owner is always the creating user
     const rawAssigned = req.body.assignedTo || null;
-    const ticketOwner = isAdmin && rawAssigned ? rawAssigned : req.session.userId;
 
     if (!customerName || !shortDescription || !description || !moduleText || !categoryId) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
@@ -117,11 +126,12 @@ async function create(req, res, next) {
       INSERT INTO tickets (ticket_number, customer_name, module_text, category_id, short_description,
         description, status, priority, impact, urgency, assigned_to, assignment_group,
         ticket_owner, created_by, updated_by, type_id, classification, custom_data)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULL,$11,$12,$13,$13,$14,$15,$16)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13,$13,$14,$15,$16)
       RETURNING *
     `, [ticketNumber, customerName, moduleText, categoryId, shortDescription, description,
         status, priority, impact, urgency,
-        assignmentGroup || null, ticketOwner,
+        rawAssigned || null,
+        assignmentGroup || null,
         req.session.userId,
         typeId || null, classification || null,
         JSON.stringify(customData)]);
@@ -168,13 +178,13 @@ async function getOne(req, res, next) {
 
     const ticket = result.rows[0];
     const isAdmin = req.session.role === 'admin';
-    if (!isAdmin && ticket.created_by !== req.session.userId && ticket.ticket_owner !== req.session.userId) {
+    if (!isAdmin && ticket.created_by !== req.session.userId && ticket.ticket_owner !== req.session.userId && ticket.assigned_to !== req.session.userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
     const [attachments, comments, auditRaw] = await Promise.all([
       pool.query('SELECT id, file_name, mime_type, file_size, uploaded_by, uploaded_at, (SELECT full_name FROM users WHERE id = uploaded_by) AS uploader_name FROM ticket_attachments WHERE ticket_id = $1 ORDER BY uploaded_at DESC', [id]),
-      pool.query('SELECT tc.*, u.full_name AS author_name FROM ticket_comments tc JOIN users u ON tc.user_id = u.id WHERE tc.ticket_id = $1 ORDER BY tc.created_at ASC', [id]),
+      pool.query('SELECT tc.*, u.full_name AS author_name, u.role AS author_role FROM ticket_comments tc JOIN users u ON tc.user_id = u.id WHERE tc.ticket_id = $1 ORDER BY tc.created_at ASC', [id]),
       pool.query('SELECT tal.*, u.full_name AS user_name FROM ticket_audit_logs tal LEFT JOIN users u ON tal.user_id = u.id WHERE tal.ticket_id = $1 ORDER BY tal.created_at ASC', [id]),
     ]);
 
@@ -236,7 +246,7 @@ async function update(req, res, next) {
     }
     const ticket = existing.rows[0];
     const isAdmin = req.session.role === 'admin';
-    if (!isAdmin && ticket.created_by !== req.session.userId) {
+    if (!isAdmin && ticket.created_by !== req.session.userId && ticket.assigned_to !== req.session.userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
@@ -247,7 +257,8 @@ async function update(req, res, next) {
       shortDescription: 'short_description', description: 'description', status: 'status',
       priority: 'priority', impact: 'impact', urgency: 'urgency',
       assignmentGroup: 'assignment_group', classification: 'classification', typeId: 'type_id',
-      ...(isAdmin ? { ticketOwner: 'ticket_owner', assignedTo: 'assigned_to' } : {}),
+      assignedTo: 'assigned_to',
+      ...(isAdmin ? { ticketOwner: 'ticket_owner' } : {}),
     };
 
     const sets = [];
@@ -299,6 +310,24 @@ async function update(req, res, next) {
       await logAudit(client, id, req.session.userId, 'UPDATED', change.field, change.old, change.new, req.ip);
     }
 
+    // Fire notification when ticket is assigned (or reassigned) to a user
+    const assignChange = auditChanges.find(c => c.field === 'assigned_to');
+    if (assignChange && assignChange.new && assignChange.new !== req.session.userId) {
+      const assignerRow = await client.query('SELECT full_name FROM users WHERE id = $1', [req.session.userId]);
+      const assignerName = assignerRow.rows[0]?.full_name || 'Someone';
+      await client.query(
+        `INSERT INTO notifications (user_id, type, title, message, ticket_id, ticket_number)
+         VALUES ($1, 'TICKET_ASSIGNED', $2, $3, $4, $5)`,
+        [
+          assignChange.new,
+          `Ticket assigned to you`,
+          `${assignerName} assigned ${ticket.ticket_number} to you — ${ticket.short_description || ''}`,
+          ticket.id,
+          ticket.ticket_number,
+        ]
+      );
+    }
+
     await client.query('COMMIT');
     logger.info(`Ticket ${ticket.ticket_number} updated by ${req.session.username}`);
     res.json({ success: true, ticket: updated.rows[0] });
@@ -348,7 +377,7 @@ async function addComment(req, res, next) {
 
     const isAdmin = req.session.role === 'admin';
     const t = ticket.rows[0];
-    if (!isAdmin && t.created_by !== req.session.userId) {
+    if (!isAdmin && t.created_by !== req.session.userId && t.assigned_to !== req.session.userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
     if (type === 'WORK_NOTE' && !isAdmin) {
@@ -367,4 +396,17 @@ async function addComment(req, res, next) {
   }
 }
 
-module.exports = { list, create, getOne, update, remove, addComment };
+async function nextNumber(req, res, next) {
+  try {
+    const result = await pool.query(
+      `SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END AS next
+       FROM ticket_number_seq`
+    );
+    const next = result.rows[0].next;
+    res.json({ number: `PSH${String(next).padStart(6, '0')}` });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { list, create, getOne, update, remove, addComment, nextNumber };

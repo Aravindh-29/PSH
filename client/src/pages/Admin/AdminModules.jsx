@@ -74,7 +74,7 @@ function ResetModal({ onClose, onSuccess }) {
         </div>
         <div className="cfg-modal-body">
           <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 16px', lineHeight: 1.6 }}>
-            This will <strong style={{ color: '#f87171' }}>delete all custom fields</strong> and restore the 9 default system fields. Existing ticket data is not affected.
+            This will <strong style={{ color: '#f87171' }}>delete all custom fields</strong> and restore the 10 default system fields. Existing ticket data is not affected.
           </p>
           <div className="cfg-form-row">
             <label>Enter your admin password to confirm</label>
@@ -172,7 +172,7 @@ function FieldModal({ field, onSave, onClose }) {
 
   const handleSave = async () => {
     if (!label.trim()) { toast.error('Label is required'); return; }
-    if (fieldType === 'dropdown' && options.length === 0) { toast.error('Dropdown needs at least one option'); return; }
+    if (fieldType === 'dropdown' && options.length === 0) { toast('Dropdown has no options — it will accept free-text input only.', { icon: '⚠️' }); }
     setSaving(true);
     try {
       await onSave({ label: label.trim(), field_type: fieldType, is_required: isRequired, placeholder, options });
@@ -214,9 +214,19 @@ function FieldModal({ field, onSave, onClose }) {
               Required field <span className="cfg-req-note">(users must fill this in)</span>
             </label>
           </div>
-          {(fieldType === 'dropdown' || field?.field_type === 'dropdown') && (
+          {(fieldType === 'dropdown' || fieldType === 'text' ||
+            field?.field_type === 'dropdown' || field?.field_type === 'text') && (
             <div className="cfg-form-row">
-              <label>Options</label>
+              <label>
+                {fieldType === 'text' || field?.field_type === 'text'
+                  ? 'Dropdown Suggestions'
+                  : 'Options'}
+              </label>
+              {(fieldType === 'text' || (field?.field_type === 'text' && !fieldType)) && (
+                <p style={{ fontSize: '0.78rem', color: '#94a3b8', margin: '0 0 8px', lineHeight: 1.5 }}>
+                  These values appear as searchable suggestions in the field on ticket forms.
+                </p>
+              )}
               <OptionEditor options={options} onChange={setOptions} />
             </div>
           )}
@@ -574,8 +584,8 @@ export default function AdminModules() {
                       </td>
                       <td><span className="cfg-type-badge">{TYPE_LABELS[f.field_type] || f.field_type}</span></td>
                       <td>
-                        {f.field_type === 'dropdown' && opts.length > 0
-                          ? <span className="cfg-opts-count">{opts.length} options</span>
+                        {(f.field_type === 'dropdown' || f.field_type === 'text') && opts.length > 0
+                          ? <span className="cfg-opts-count">{opts.length} {f.field_type === 'text' ? 'suggestions' : 'options'}</span>
                           : f.field_type === 'category'
                           ? <span className="cfg-opts-count">from Categories tab</span>
                           : <span className="cfg-opts-none">—</span>}

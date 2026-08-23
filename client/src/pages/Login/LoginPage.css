@@ -197,10 +197,8 @@
     0 48px 96px rgba(14, 30, 55, 0.08);
 }
 
-/* No top accent bar */
 .login-card::before { display: none; }
 
-/* Subtle diagonal shimmer */
 .login-card::after {
   content: '';
   position: absolute;
