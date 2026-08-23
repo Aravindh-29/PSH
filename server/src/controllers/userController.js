@@ -308,4 +308,27 @@ async function updateMe(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { list, getOne, create, update, resetPassword, deleteUser, deleteAllTickets, bulkCreate, getMe, updateMe };
+async function bulkCheck(req, res, next) {
+  try {
+    const { usernames = [], emails = [] } = req.body;
+    if (!usernames.length && !emails.length) {
+      return res.json({ success: true, conflictUsernames: [], conflictEmails: [] });
+    }
+    const rows = await pool.query(
+      `SELECT username, email FROM users
+       WHERE deleted_at IS NULL
+         AND (username = ANY($1) OR email = ANY($2))`,
+      [
+        usernames.map(u => String(u).toLowerCase().trim()),
+        emails.map(e => String(e).toLowerCase().trim()),
+      ]
+    );
+    res.json({
+      success: true,
+      conflictUsernames: rows.rows.map(r => r.username),
+      conflictEmails:    rows.rows.map(r => r.email),
+    });
+  } catch (err) { next(err); }
+}
+
+module.exports = { list, getOne, create, update, resetPassword, deleteUser, deleteAllTickets, bulkCreate, bulkCheck, getMe, updateMe };

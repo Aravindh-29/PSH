@@ -234,6 +234,34 @@ export default function AdminUsers() {
           }
         }
 
+        // Check valid, non-file-duplicate rows against existing DB users
+        const rowsToCheck = parsed.filter(r => r.valid && !r.isDuplicate);
+        if (rowsToCheck.length > 0) {
+          try {
+            const checkRes = await api.post('/users/bulk-check', {
+              usernames: rowsToCheck.map(r => r.username),
+              emails:    rowsToCheck.map(r => r.email),
+            });
+            const conflictUsernames = new Set(checkRes.data.conflictUsernames || []);
+            const conflictEmails    = new Set(checkRes.data.conflictEmails    || []);
+            for (const r of parsed) {
+              if (r.isDuplicate || !r.valid) continue;
+              const unameHit = conflictUsernames.has(r.username);
+              const emailHit = conflictEmails.has(r.email);
+              if (unameHit || emailHit) {
+                r.isDuplicate     = true;
+                r.isDbDuplicate   = true;
+                r.selected        = false;
+                r.duplicateReason = unameHit
+                  ? `Username "${r.username}" already exists in the system`
+                  : `Email "${r.email}" already exists in the system`;
+              }
+            }
+          } catch {
+            // Network / server error: silently proceed — server will reject on create
+          }
+        }
+
         setBulkPreview(parsed);
         setBulkDropdown(false);
       } catch (err) {
@@ -268,7 +296,8 @@ export default function AdminUsers() {
 
   const validCount    = (bulkPreview || []).filter(r => r.valid && !r.isDuplicate && r.selected).length;
   const invalidCount  = (bulkPreview || []).filter(r => !r.valid).length;
-  const dupCount      = (bulkPreview || []).filter(r => r.isDuplicate).length;
+  const dupCount      = (bulkPreview || []).filter(r => r.isDuplicate && !r.isDbDuplicate).length;
+  const dbDupCount    = (bulkPreview || []).filter(r => r.isDbDuplicate).length;
 
   return (
     <div className="admin-page">
@@ -418,7 +447,12 @@ export default function AdminUsers() {
                   )}
                   {dupCount > 0 && (
                     <span style={{ fontSize: 12, color: '#94A3B8', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
-                      ⚠ {dupCount} duplicate{dupCount !== 1 ? 's' : ''} — skipped
+                      ⚠ {dupCount} duplicate{dupCount !== 1 ? 's' : ''} in file — skipped
+                    </span>
+                  )}
+                  {dbDupCount > 0 && (
+                    <span style={{ fontSize: 12, color: '#F59E0B', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                      ⚠ {dbDupCount} already in DB — skipped
                     </span>
                   )}
                 </div>
@@ -456,7 +490,7 @@ export default function AdminUsers() {
                 </thead>
                 <tbody>
                   {bulkPreview.map((row, i) => {
-                    const rowBg = row.isDuplicate ? '#F8F9FB' : (row.valid ? 'white' : '#FFF5F5');
+                    const rowBg = row.isDbDuplicate ? '#FFFBEB' : row.isDuplicate ? '#F8F9FB' : (row.valid ? 'white' : '#FFF5F5');
                     const textOp = row.isDuplicate ? { opacity: 0.5 } : {};
                     return (
                     <tr key={i} style={{ background: rowBg }}>
@@ -489,7 +523,11 @@ export default function AdminUsers() {
                           : <span style={{ color: '#DC2626' }}>—</span>}
                       </td>
                       <td>
-                        {row.isDuplicate
+                        {row.isDbDuplicate
+                          ? <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#D97706', fontSize: 11.5, fontWeight: 600 }} title={row.duplicateReason}>
+                              ⚠ Already in DB
+                            </span>
+                          : row.isDuplicate
                           ? <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#94A3B8', fontSize: 11.5, fontWeight: 600 }} title={row.duplicateReason}>
                               ⚠ Duplicate
                             </span>
