@@ -111,6 +111,7 @@ export default function EditTicket() {
   const [customData, setCustomData]   = useState({});
   const [attachments, setAttachments] = useState([]);
   const [uploadQueue, setUploadQueue] = useState([]);
+  const [pendingDeletes, setPendingDeletes] = useState(new Set());
   const fileInputRef = useRef(null);
 
   const CLASSIFICATIONS = [
@@ -164,6 +165,10 @@ export default function EditTicket() {
     e.preventDefault();
     setLoading(true);
     try {
+      if (pendingDeletes.size > 0) {
+        await Promise.all([...pendingDeletes].map(attId => api.delete(`/attachments/${attId}`)));
+        setPendingDeletes(new Set());
+      }
       const payload = {
         ...form,
         typeId: form.typeId || undefined,
@@ -222,14 +227,13 @@ export default function EditTicket() {
     }
   };
 
-  const handleDeleteAttachment = async (attId) => {
-    try {
-      await api.delete(`/attachments/${attId}`);
-      toast.success('Attachment deleted');
-      setAttachments(prev => prev.filter(a => a.id !== attId));
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'Delete failed');
-    }
+  const markForDelete = (attId) => {
+    setPendingDeletes(prev => {
+      const next = new Set(prev);
+      if (next.has(attId)) next.delete(attId);
+      else next.add(attId);
+      return next;
+    });
   };
 
   const fmtBytes = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KB` : `${(n/1048576).toFixed(1)} MB`;
@@ -238,27 +242,60 @@ export default function EditTicket() {
 
   const fieldByKey  = Object.fromEntries(fields.map(f => [f.field_key, f]));
   const customFields = fields.filter(f => !SYSTEM_KEYS.includes(f.field_key));
-  const gridKeys = ['customer_name','module_text','category_id','status','priority','impact','urgency'];
-  const fullKeys  = ['short_description','description'];
 
   return (
     <div className="ticket-form-page">
       <div className="tf-header">
-        <h1>Edit Ticket</h1>
+        <h1>Edit Incident</h1>
         <p>Update ticket details below.</p>
       </div>
 
       <form onSubmit={handleSubmit} className="tf-form">
-        {/* ── Basic Information ── */}
+
+        {/* ── Contact Information ── */}
         <div className="tf-card">
-          <h2 className="tf-section-title">Basic Information</h2>
+          <h2 className="tf-section-title">Contact Information</h2>
           <div className="tf-grid">
-            {gridKeys.map(key => {
-              const f = fieldByKey[key];
-              if (!f) return null;
-              return <React.Fragment key={key}>{renderSystemField(f, form, set, categories, users, isAdmin)}</React.Fragment>;
-            })}
-            {/* Assigned To (ticket_owner) */}
+            {fieldByKey['customer_name'] && renderSystemField(fieldByKey['customer_name'], form, set, categories, users, isAdmin)}
+            {fieldByKey['module_text'] && renderSystemField(fieldByKey['module_text'], form, set, categories, users, isAdmin)}
+          </div>
+        </div>
+
+        {/* ── Incident Details ── */}
+        <div className="tf-card">
+          <h2 className="tf-section-title">Incident Details</h2>
+          <div className="tf-grid">
+            {fieldByKey['status'] && renderSystemField(fieldByKey['status'], form, set, categories, users, isAdmin)}
+            {fieldByKey['priority'] && renderSystemField(fieldByKey['priority'], form, set, categories, users, isAdmin)}
+            {fieldByKey['impact'] && renderSystemField(fieldByKey['impact'], form, set, categories, users, isAdmin)}
+            {fieldByKey['urgency'] && renderSystemField(fieldByKey['urgency'], form, set, categories, users, isAdmin)}
+            {ticketTypes.length > 0 && (
+              <div className="form-group">
+                <label>Type</label>
+                <select value={form.typeId || ''} onChange={e => set('typeId', e.target.value)}>
+                  <option value="">Select type</option>
+                  {ticketTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+            )}
+            {fieldByKey['category_id'] && renderSystemField(fieldByKey['category_id'], form, set, categories, users, isAdmin)}
+            <div className="form-group">
+              <label>Classification</label>
+              <select value={form.classification || ''} onChange={e => set('classification', e.target.value)}>
+                {CLASSIFICATIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Assignment ── */}
+        <div className="tf-card">
+          <h2 className="tf-section-title">Assignment</h2>
+          <div className="tf-grid">
+            <div className="form-group">
+              <label>Assignment Group</label>
+              <input type="text" value={form.assignmentGroup || ''} onChange={e => set('assignmentGroup', e.target.value)} placeholder="e.g. Storage Team, Network Ops" />
+            </div>
             {isAdmin ? (
               <div className="form-group">
                 <label>Assigned To</label>
@@ -273,37 +310,10 @@ export default function EditTicket() {
                 <div className="tf-readonly-field">{form.ticketOwnerName || 'Unassigned'}</div>
               </div>
             )}
-            {/* Type */}
-            {ticketTypes.length > 0 && (
-              <div className="form-group">
-                <label>Type</label>
-                <select value={form.typeId || ''} onChange={e => set('typeId', e.target.value)}>
-                  <option value="">Select type</option>
-                  {ticketTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </div>
-            )}
-            {/* Classification */}
-            <div className="form-group">
-              <label>Classification</label>
-              <select value={form.classification || ''} onChange={e => set('classification', e.target.value)}>
-                {CLASSIFICATIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
-            </div>
-            {/* Assignment Group */}
-            <div className="form-group">
-              <label>Assignment Group</label>
-              <input type="text" value={form.assignmentGroup || ''} onChange={e => set('assignmentGroup', e.target.value)} placeholder="e.g. Storage Team, Network Ops" />
-            </div>
           </div>
-          {fullKeys.map(key => {
-            const f = fieldByKey[key];
-            if (!f) return null;
-            return <React.Fragment key={key}>{renderSystemField(f, form, set, categories, users, isAdmin)}</React.Fragment>;
-          })}
         </div>
 
-        {/* ── Custom Fields ── */}
+        {/* ── Additional Information (custom fields) ── */}
         {customFields.length > 0 && (
           <div className="tf-card">
             <h2 className="tf-section-title">Additional Information</h2>
@@ -312,6 +322,15 @@ export default function EditTicket() {
             </div>
           </div>
         )}
+
+        {/* ── Description ── */}
+        <div className="tf-card">
+          <h2 className="tf-section-title">Description</h2>
+          {fieldByKey['short_description'] && renderSystemField(fieldByKey['short_description'], form, set, categories, users, isAdmin)}
+          <div style={{ marginTop: 14 }}>
+            {fieldByKey['description'] && renderSystemField(fieldByKey['description'], form, set, categories, users, isAdmin)}
+          </div>
+        </div>
 
         {/* ── Attachments ── */}
         <div className="tf-card">
@@ -341,6 +360,12 @@ export default function EditTicket() {
             </div>
           )}
 
+          {pendingDeletes.size > 0 && (
+            <div className="att-pending-banner">
+              ⚠ {pendingDeletes.size} attachment{pendingDeletes.size > 1 ? 's' : ''} marked for removal — will be deleted when you click <strong>Save Changes</strong>. Click the ✕ again to undo.
+            </div>
+          )}
+
           {attachments.length === 0 && uploadQueue.length === 0 && (
             <div className="tf-attach-empty">
               <Paperclip size={20} strokeWidth={1.5} />
@@ -351,26 +376,30 @@ export default function EditTicket() {
           {attachments.map(att => {
             const isImage = att.mime_type?.startsWith('image/');
             const isPreviewable = isImage || att.mime_type === 'application/pdf' || att.mime_type === 'text/plain';
+            const isPending = pendingDeletes.has(att.id);
             return (
-              <div key={att.id} className="att-row">
+              <div key={att.id} className={`att-row${isPending ? ' att-pending-delete' : ''}`}>
                 {isImage
-                  ? <img src={`/api/attachments/${att.id}/download?preview=true`} alt={att.file_name} className="att-thumb" />
-                  : <div className="att-icon">📎</div>
+                  ? <img src={`/api/attachments/${att.id}/download?preview=true`} alt={att.file_name} className="att-thumb" style={isPending ? { opacity: 0.4 } : {}} />
+                  : <div className="att-icon" style={isPending ? { opacity: 0.4 } : {}}>📎</div>
                 }
-                <div className="att-info">
+                <div className="att-info" style={isPending ? { opacity: 0.45, textDecoration: 'line-through' } : {}}>
                   <div className="att-name">{att.file_name}</div>
                   <div className="att-meta">{fmtBytes(att.file_size)} · {fmt(att.uploaded_at)} · {att.uploader_name}</div>
                 </div>
-                {isPreviewable && (
+                {isPending && <span className="att-pending-label">Will be removed</span>}
+                {isPreviewable && !isPending && (
                   <a href={`/api/attachments/${att.id}/download?preview=true`} className="att-btn" title="Preview" target="_blank" rel="noreferrer">
                     <Eye size={13} />
                   </a>
                 )}
-                <a href={`/api/attachments/${att.id}/download`} className="att-btn" title="Download" target="_blank" rel="noreferrer">
-                  <Download size={13} />
-                </a>
+                {!isPending && (
+                  <a href={`/api/attachments/${att.id}/download`} className="att-btn" title="Download" target="_blank" rel="noreferrer">
+                    <Download size={13} />
+                  </a>
+                )}
                 {(isAdmin || att.uploaded_by === currentUser?.id) && (
-                  <button type="button" className="att-btn danger" onClick={() => handleDeleteAttachment(att.id)} title="Delete">
+                  <button type="button" className={`att-btn ${isPending ? 'att-undo-btn' : 'danger'}`} onClick={() => markForDelete(att.id)} title={isPending ? 'Undo removal' : 'Mark for removal'}>
                     <X size={13} />
                   </button>
                 )}
@@ -380,7 +409,7 @@ export default function EditTicket() {
         </div>
 
         <div className="tf-actions">
-          <button type="button" className="btn-cancel" onClick={() => navigate(-1)}>Cancel</button>
+          <button type="button" className="btn-cancel" onClick={() => { setPendingDeletes(new Set()); navigate(-1); }}>Cancel</button>
           <button type="submit" className="btn-submit" disabled={loading}>{loading ? 'Saving...' : 'Save Changes'}</button>
         </div>
       </form>

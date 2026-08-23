@@ -5,8 +5,8 @@
 .tf-form { display: flex; flex-direction: column; gap: 20px; }
 .tf-card { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 24px; box-shadow: var(--shadow); }
 .tf-section-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
-.tf-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-@media (max-width: 700px) { .tf-grid { grid-template-columns: 1fr 1fr; } }
+.tf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+@media (max-width: 600px) { .tf-grid { grid-template-columns: 1fr; } }
 .form-group { display: flex; flex-direction: column; gap: 5px; }
 .form-group.full { grid-column: 1 / -1; }
 .form-group label { font-size: 12.5px; font-weight: 500; color: #374151; }
@@ -165,6 +165,21 @@
 }
 .att-btn:hover { background: var(--bg); color: var(--text); }
 .att-btn.danger:hover { background: #FEE2E2; color: var(--danger); }
+.att-pending-delete { background: #FAFAFA; border-radius: 6px; }
+.att-pending-banner {
+  margin-bottom: 10px; padding: 9px 14px; border-radius: 7px;
+  background: #FFFBEB; border: 1px solid #FCD34D;
+  color: #92400E; font-size: 12.5px; line-height: 1.45;
+}
+.att-pending-label {
+  font-size: 11px; font-weight: 600; color: #EF4444; background: #FEE2E2;
+  padding: 2px 7px; border-radius: 99px; white-space: nowrap; flex-shrink: 0;
+}
+.att-undo-btn {
+  padding: 5px; border-radius: 5px; background: #FEE2E2; border: none;
+  color: #EF4444; cursor: pointer; display: flex; align-items: center;
+}
+.att-undo-btn:hover { background: #FECACA; }
 
 /* upload-queue in create form (mirrors TicketDetail.css) */
 .upload-queue {

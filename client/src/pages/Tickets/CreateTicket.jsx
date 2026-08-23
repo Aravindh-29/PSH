@@ -251,17 +251,8 @@ export default function CreateTicket() {
     }
   };
 
-  // Split fields into system and custom
-  const systemFields = fields.filter(f => SYSTEM_KEYS.includes(f.field_key));
   const customFields = fields.filter(f => !SYSTEM_KEYS.includes(f.field_key));
-
-  // Build field lookup map for ordered rendering
   const fieldByKey = Object.fromEntries(fields.map(f => [f.field_key, f]));
-
-  // Grid fields (left two columns) and full-width fields
-  // Status is excluded from create — always set to NEW server-side
-  const gridKeys = ['customer_name','module_text','category_id','priority','impact','urgency'];
-  const fullKeys  = ['short_description','description'];
 
   const isUploading = loading && uploadProgress.length > 0;
   const btnLabel    = isUploading ? `Uploading ${uploadProgress.filter(q => q.status === 'done').length}/${uploadProgress.length}...`
@@ -271,43 +262,32 @@ export default function CreateTicket() {
   return (
     <div className="ticket-form-page">
       <div className="tf-header">
-        <h1>Create New Ticket</h1>
+        <h1>New Incident</h1>
         <p>Fill in the details below to submit a new support ticket.</p>
       </div>
 
       <form onSubmit={handleSubmit} className="tf-form">
-        {/* ── Basic Information ── */}
-        <div className="tf-card">
-          <h2 className="tf-section-title">Basic Information</h2>
-          <div className="tf-grid">
-            {gridKeys.map(key => {
-              const f = fieldByKey[key];
-              if (!f) return null;
-              return <React.Fragment key={key}>{renderSystemField(f, form, setForm, categories)}</React.Fragment>;
-            })}
-          </div>
-          {fullKeys.map(key => {
-            const f = fieldByKey[key];
-            if (!f) return null;
-            return <React.Fragment key={key}>{renderSystemField(f, form, setForm, categories)}</React.Fragment>;
-          })}
-        </div>
 
-        {/* ── Custom Fields (if any) ── */}
-        {customFields.length > 0 && (
-          <div className="tf-card">
-            <h2 className="tf-section-title">Additional Information</h2>
-            <div className="tf-grid">
-              {customFields.map(f => renderCustomField(f, customData, setCustomData))}
+        {/* ── Contact Information ── */}
+        <div className="tf-card">
+          <h2 className="tf-section-title">Contact Information</h2>
+          <div className="tf-grid">
+            {fieldByKey['customer_name'] && renderSystemField(fieldByKey['customer_name'], form, setForm, categories)}
+            {fieldByKey['module_text'] && renderSystemField(fieldByKey['module_text'], form, setForm, categories)}
+            <div className="form-group">
+              <label>Reported By</label>
+              <div className="tf-readonly-field">{user?.fullName || user?.username}</div>
             </div>
           </div>
-        )}
+        </div>
 
-        {/* ── Classification ── */}
+        {/* ── Incident Details ── */}
         <div className="tf-card">
-          <h2 className="tf-section-title">Classification</h2>
+          <h2 className="tf-section-title">Incident Details</h2>
           <div className="tf-grid">
-            {/* Type */}
+            {fieldByKey['priority'] && renderSystemField(fieldByKey['priority'], form, setForm, categories)}
+            {fieldByKey['impact'] && renderSystemField(fieldByKey['impact'], form, setForm, categories)}
+            {fieldByKey['urgency'] && renderSystemField(fieldByKey['urgency'], form, setForm, categories)}
             {ticketTypes.length > 0 && (
               <div className="form-group">
                 <label>Type</label>
@@ -317,19 +297,24 @@ export default function CreateTicket() {
                 </select>
               </div>
             )}
-            {/* Classification */}
+            {fieldByKey['category_id'] && renderSystemField(fieldByKey['category_id'], form, setForm, categories)}
             <div className="form-group">
               <label>Classification</label>
               <select value={form.classification} onChange={e => setForm(p => ({ ...p, classification: e.target.value }))}>
                 {CLASSIFICATIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
             </div>
-            {/* Assignment Group */}
+          </div>
+        </div>
+
+        {/* ── Assignment ── */}
+        <div className="tf-card">
+          <h2 className="tf-section-title">Assignment</h2>
+          <div className="tf-grid">
             <div className="form-group">
               <label>Assignment Group</label>
               <input type="text" value={form.assignmentGroup} onChange={e => setForm(p => ({ ...p, assignmentGroup: e.target.value }))} placeholder="e.g. Storage Team, Network Ops" />
             </div>
-            {/* Assigned To — admins choose; employees see their own name */}
             <div className="form-group">
               <label>Assigned To</label>
               {isAdmin ? (
@@ -338,9 +323,28 @@ export default function CreateTicket() {
                   {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
                 </select>
               ) : (
-                <input type="text" value={user?.fullName || user?.username || ''} disabled />
+                <div className="tf-readonly-field">{user?.fullName || user?.username || '—'}</div>
               )}
             </div>
+          </div>
+        </div>
+
+        {/* ── Additional Information (custom fields) ── */}
+        {customFields.length > 0 && (
+          <div className="tf-card">
+            <h2 className="tf-section-title">Additional Information</h2>
+            <div className="tf-grid">
+              {customFields.map(f => renderCustomField(f, customData, setCustomData))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Description ── */}
+        <div className="tf-card">
+          <h2 className="tf-section-title">Description</h2>
+          {fieldByKey['short_description'] && renderSystemField(fieldByKey['short_description'], form, setForm, categories)}
+          <div style={{ marginTop: 14 }}>
+            {fieldByKey['description'] && renderSystemField(fieldByKey['description'], form, setForm, categories)}
           </div>
         </div>
 
@@ -392,19 +396,6 @@ export default function CreateTicket() {
               ))}
             </div>
           )}
-        </div>
-
-        {/* ── Reporter ── */}
-        <div className="tf-card">
-          <h2 className="tf-section-title">Reporter</h2>
-          <div className="tf-owner-info">
-            <div className="tf-owner-avatar">{(user?.fullName || user?.username || 'U')[0].toUpperCase()}</div>
-            <div>
-              <p className="tf-owner-label">Reported By</p>
-              <p className="tf-owner-name">{user?.fullName || user?.username}</p>
-              <p className="tf-owner-note">You are logged as the reporter of this ticket.</p>
-            </div>
-          </div>
         </div>
 
         <div className="tf-actions">

@@ -202,13 +202,38 @@ export default function AdminUsers() {
           const role     = (getCol(row, ['role']) || 'employee').toLowerCase().trim();
           if (!fullName && !username && !email) return;
           const errs = validateRow({ fullName, username, email, password, role });
-          parsed.push({ _idx: rowNum - 1, fullName, username, email, password, role: role || 'employee', errors: errs, valid: errs.length === 0, selected: errs.length === 0 });
+          parsed.push({ _idx: rowNum - 1, fullName, username, email, password, role: role || 'employee', errors: errs, valid: errs.length === 0, selected: errs.length === 0, isDuplicate: false, duplicateReason: '' });
         });
 
         if (!parsed.length) {
           toast.error('No data found. Make sure headers are in row 1 and data starts in row 2.');
           return;
         }
+
+        // Detect within-file duplicates by username or email
+        const unameCounts = {};
+        const emailCounts = {};
+        for (const r of parsed) {
+          if (r.username) unameCounts[r.username] = (unameCounts[r.username] || 0) + 1;
+          if (r.email)    emailCounts[r.email]    = (emailCounts[r.email]    || 0) + 1;
+        }
+        const firstSeen = {};
+        for (const r of parsed) {
+          const dupeByUser  = r.username && unameCounts[r.username] > 1;
+          const dupeByEmail = r.email    && emailCounts[r.email]    > 1;
+          if (r.valid && (dupeByUser || dupeByEmail)) {
+            const key = `${r.username}|${r.email}`;
+            if (firstSeen[key]) {
+              // Mark second+ occurrence as duplicate
+              r.isDuplicate = true;
+              r.selected = false;
+              r.duplicateReason = dupeByUser ? `Username "${r.username}" used ${unameCounts[r.username]}× in file` : `Email "${r.email}" used ${emailCounts[r.email]}× in file`;
+            } else {
+              firstSeen[key] = true;
+            }
+          }
+        }
+
         setBulkPreview(parsed);
         setBulkDropdown(false);
       } catch (err) {
@@ -241,8 +266,9 @@ export default function AdminUsers() {
     } finally { setBulkCreating(false); }
   };
 
-  const validCount    = (bulkPreview || []).filter(r => r.valid && r.selected).length;
+  const validCount    = (bulkPreview || []).filter(r => r.valid && !r.isDuplicate && r.selected).length;
   const invalidCount  = (bulkPreview || []).filter(r => !r.valid).length;
+  const dupCount      = (bulkPreview || []).filter(r => r.isDuplicate).length;
 
   return (
     <div className="admin-page">
@@ -390,6 +416,11 @@ export default function AdminUsers() {
                       <AlertCircle size={13} /> {invalidCount} invalid
                     </span>
                   )}
+                  {dupCount > 0 && (
+                    <span style={{ fontSize: 12, color: '#94A3B8', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                      ⚠ {dupCount} duplicate{dupCount !== 1 ? 's' : ''} — skipped
+                    </span>
+                  )}
                 </div>
               </div>
               <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }} onClick={() => setBulkPreview(null)}>
@@ -424,10 +455,13 @@ export default function AdminUsers() {
                   </tr>
                 </thead>
                 <tbody>
-                  {bulkPreview.map((row, i) => (
-                    <tr key={i} style={{ background: row.valid ? 'white' : '#FFF5F5' }}>
+                  {bulkPreview.map((row, i) => {
+                    const rowBg = row.isDuplicate ? '#F8F9FB' : (row.valid ? 'white' : '#FFF5F5');
+                    const textOp = row.isDuplicate ? { opacity: 0.5 } : {};
+                    return (
+                    <tr key={i} style={{ background: rowBg }}>
                       <td style={{ textAlign: 'center' }}>
-                        {row.valid && (
+                        {row.valid && !row.isDuplicate && (
                           <input
                             type="checkbox"
                             checked={row.selected}
@@ -441,30 +475,35 @@ export default function AdminUsers() {
                         )}
                       </td>
                       <td style={{ color: '#94A3B8', fontSize: 12 }}>{row._idx}</td>
-                      <td style={{ fontWeight: 500 }}>{row.fullName || <span style={{ color: '#DC2626' }}>—</span>}</td>
-                      <td style={{ fontFamily: 'monospace', fontSize: 12.5 }}>{row.username || <span style={{ color: '#DC2626' }}>—</span>}</td>
-                      <td style={{ fontSize: 12.5 }}>{row.email || <span style={{ color: '#DC2626' }}>—</span>}</td>
+                      <td style={{ fontWeight: 500, ...textOp }}>{row.fullName || <span style={{ color: '#DC2626' }}>—</span>}</td>
+                      <td style={{ fontFamily: 'monospace', fontSize: 12.5, ...textOp }}>{row.username || <span style={{ color: '#DC2626' }}>—</span>}</td>
+                      <td style={{ fontSize: 12.5, ...textOp }}>{row.email || <span style={{ color: '#DC2626' }}>—</span>}</td>
                       <td>
-                        <span className={`role-badge ${['employee','admin'].includes(row.role) ? row.role : ''}`} style={{ fontSize: 11 }}>
+                        <span className={`role-badge ${['employee','admin'].includes(row.role) ? row.role : ''}`} style={{ fontSize: 11, ...textOp }}>
                           {row.role || '—'}
                         </span>
                       </td>
-                      <td style={{ fontFamily: 'monospace', fontSize: 12, color: showBulkPw ? '#334155' : '#94A3B8', letterSpacing: showBulkPw ? 0 : 2 }}>
+                      <td style={{ fontFamily: 'monospace', fontSize: 12, color: showBulkPw ? '#334155' : '#94A3B8', letterSpacing: showBulkPw ? 0 : 2, ...textOp }}>
                         {row.password
                           ? (showBulkPw ? row.password : '••••••')
                           : <span style={{ color: '#DC2626' }}>—</span>}
                       </td>
                       <td>
-                        {row.valid
-                          ? <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#16A34A', fontSize: 12, fontWeight: 600 }}><CheckCircle size={13} /> Valid</span>
-                          : <span style={{ color: '#DC2626', fontSize: 11.5 }} title={row.errors.join('\n')}>
-                              <AlertCircle size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-                              {row.errors[0]}{row.errors.length > 1 ? ` +${row.errors.length - 1} more` : ''}
+                        {row.isDuplicate
+                          ? <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#94A3B8', fontSize: 11.5, fontWeight: 600 }} title={row.duplicateReason}>
+                              ⚠ Duplicate
                             </span>
+                          : row.valid
+                            ? <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#16A34A', fontSize: 12, fontWeight: 600 }}><CheckCircle size={13} /> Valid</span>
+                            : <span style={{ color: '#DC2626', fontSize: 11.5 }} title={row.errors.join('\n')}>
+                                <AlertCircle size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                                {row.errors[0]}{row.errors.length > 1 ? ` +${row.errors.length - 1} more` : ''}
+                              </span>
                         }
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

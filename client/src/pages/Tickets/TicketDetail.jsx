@@ -135,6 +135,47 @@ export default function TicketDetail() {
 
   const fmtBytes = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KB` : `${(n/1048576).toFixed(1)} MB`;
 
+  const FIELD_LABELS = {
+    ticket_owner: 'Assigned To', assigned_to: 'Secondary Assignee',
+    category_id: 'Category', type_id: 'Type',
+    status: 'Status', priority: 'Priority', impact: 'Impact', urgency: 'Urgency',
+    short_description: 'Short Description', description: 'Description',
+    customer_name: 'Customer', module_text: 'Module',
+    assignment_group: 'Assignment Group', classification: 'Classification',
+    attachment: 'Attachment',
+  };
+
+  // Build unified activity feed from comments + audit events
+  const activityFeed = [
+    ...comments.map(c => ({
+      key: `c-${c.id}`,
+      type: c.type === 'WORK_NOTE' ? 'work_note' : 'comment',
+      user: c.author_name,
+      content: c.body,
+      time: c.created_at,
+    })),
+    ...audit.filter(a => a.action !== 'COMMENT_ADDED').map(a => ({
+      key: `a-${a.id}`,
+      type: 'system',
+      action: a.action,
+      field: a.field_name,
+      oldVal: a.old_value,
+      newVal: a.new_value,
+      user: a.user_name,
+      time: a.created_at,
+    })),
+  ].sort((a, b) => new Date(a.time) - new Date(b.time));
+
+  const systemActionLabel = (action) => {
+    switch (action) {
+      case 'TICKET_CREATED': return 'opened this ticket';
+      case 'TICKET_UPDATED': return 'updated this ticket';
+      case 'ATTACHMENT_ADDED': return 'attached a file';
+      case 'ATTACHMENT_DELETED': return 'removed an attachment';
+      default: return action.replace(/_/g, ' ').toLowerCase();
+    }
+  };
+
   return (
     <div className="ticket-detail">
       <div className="td-header">
@@ -150,181 +191,158 @@ export default function TicketDetail() {
         )}
       </div>
 
-      <div className="td-body">
-        {/* Left: Ticket Details */}
-        <div className="td-main">
-          <div className="td-card">
-            <div className="td-status-row">
-              <StatusBadge status={ticket.status} />
-              <PriorityBadge priority={ticket.priority} />
+      <div className="td-main">
+
+        {/* Ticket Details */}
+        <div className="td-card">
+          <div className="td-status-row">
+            <StatusBadge status={ticket.status} />
+            <PriorityBadge priority={ticket.priority} />
+          </div>
+          <h2 className="td-subject">{ticket.short_description}</h2>
+          <p className="td-desc">{ticket.description}</p>
+          <div className="td-fields-grid">
+            <Field label="Customer" value={ticket.customer_name} />
+            <Field label="Module" value={ticket.module_name} />
+            <Field label="Type" value={ticket.type_name} />
+            <Field label="Category" value={ticket.category_name} />
+            <Field label="Classification" value={ticket.classification} />
+            <Field label="Priority" value={ticket.priority} />
+            <Field label="Impact" value={ticket.impact} />
+            <Field label="Urgency" value={ticket.urgency} />
+            <Field label="Assigned To" value={ticket.ticket_owner_name} />
+            <Field label="Assignment Group" value={ticket.assignment_group} />
+            <Field label="Reported By" value={ticket.created_by_name} />
+            <Field label="Created At" value={fmt(ticket.created_at)} />
+            <Field label="Updated By" value={ticket.updated_by_name} />
+            <Field label="Updated At" value={fmt(ticket.updated_at)} />
+            {customFieldDefs.map(f => {
+              const raw = (ticket.custom_data || {})[f.field_key];
+              if (!raw && raw !== 0) return null;
+              const opts = Array.isArray(f.options) ? f.options : (JSON.parse(f.options || '[]'));
+              const display = f.field_type === 'dropdown'
+                ? (opts.find(o => o.value === raw)?.label || raw)
+                : String(raw);
+              return <Field key={f.field_key} label={f.label} value={display} />;
+            })}
+          </div>
+        </div>
+
+        {/* Attachments */}
+        <div className="td-card">
+          <div className="td-card-header">
+            <h3>Attachments</h3>
+            <label className="td-upload-btn" style={{ cursor: 'pointer' }}>
+              <Upload size={13} /> Upload Files
+              <input ref={fileInputRef} type="file" multiple hidden onChange={handleUpload} />
+            </label>
+          </div>
+          {uploadQueue.length > 0 && (
+            <div className="upload-queue">
+              {uploadQueue.map(item => (
+                <div key={item.id} className={`upload-item upload-${item.status}`}>
+                  <div className="upload-item-name">
+                    <span className="upload-icon">{item.status === 'done' ? '✓' : item.status === 'error' ? '✗' : '↑'}</span>
+                    <span>{item.name}</span>
+                  </div>
+                  <div className="upload-bar-wrap"><div className="upload-bar" style={{ width: `${item.progress}%` }} /></div>
+                  <span className="upload-pct">{item.status === 'done' ? 'Done' : item.status === 'error' ? 'Failed' : `${item.progress}%`}</span>
+                </div>
+              ))}
             </div>
-            <h2 className="td-subject">{ticket.short_description}</h2>
-            <p className="td-desc">{ticket.description}</p>
-            <div className="td-fields-grid">
-              <Field label="Customer" value={ticket.customer_name} />
-              <Field label="Module" value={ticket.module_name} />
-              {ticket.type_name && <Field label="Type" value={ticket.type_name} />}
-              <Field label="Category" value={ticket.category_name} />
-              {ticket.classification && <Field label="Classification" value={ticket.classification} />}
-              <Field label="Priority" value={ticket.priority} />
-              <Field label="Impact" value={ticket.impact} />
-              <Field label="Urgency" value={ticket.urgency} />
-              <Field label="Assigned To" value={ticket.ticket_owner_name} />
-              {ticket.assignment_group && <Field label="Assignment Group" value={ticket.assignment_group} />}
-              <Field label="Reported By" value={ticket.created_by_name} />
-              <Field label="Created At" value={fmt(ticket.created_at)} />
-              <Field label="Updated By" value={ticket.updated_by_name} />
-              <Field label="Updated At" value={fmt(ticket.updated_at)} />
-              {/* Custom fields */}
-              {customFieldDefs.map(f => {
-                const raw = (ticket.custom_data || {})[f.field_key];
-                if (!raw && raw !== 0) return null;
-                const opts = Array.isArray(f.options) ? f.options : (JSON.parse(f.options || '[]'));
-                const display = f.field_type === 'dropdown'
-                  ? (opts.find(o => o.value === raw)?.label || raw)
-                  : String(raw);
-                return <Field key={f.field_key} label={f.label} value={display} />;
-              })}
-            </div>
+          )}
+          {attachments.length === 0 && uploadQueue.length === 0 && <p className="td-empty">No attachments</p>}
+          {attachments.map(att => {
+            const isImage = att.mime_type.startsWith('image/');
+            const isPreviewable = isImage || att.mime_type === 'application/pdf' || att.mime_type === 'text/plain';
+            return (
+              <div key={att.id} className="att-row">
+                {isImage
+                  ? <img src={`/api/attachments/${att.id}/download?preview=true`} alt={att.file_name} className="att-thumb" />
+                  : <div className="att-icon">📎</div>
+                }
+                <div className="att-info">
+                  <div className="att-name">{att.file_name}</div>
+                  <div className="att-meta">{fmtBytes(att.file_size)} · {fmt(att.uploaded_at)} · {att.uploader_name}</div>
+                </div>
+                {isPreviewable && (
+                  <a href={`/api/attachments/${att.id}/download?preview=true`} target="_blank" rel="noopener noreferrer" className="att-btn" title="Preview"><Eye size={13} /></a>
+                )}
+                <a href={`/api/attachments/${att.id}/download`} className="att-btn" title="Download"><Download size={13} /></a>
+                {(isAdmin || att.uploaded_by === user?.id) && (
+                  <button className="att-btn danger" onClick={() => handleDeleteAttachment(att.id)} title="Delete"><X size={13} /></button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Unified Activity Feed */}
+        <div className="td-card">
+          <div className="td-card-header">
+            <h3>Activity</h3>
+            {isAdmin && (
+              <select className="comment-type-sel" value={commentType} onChange={e => setCommentType(e.target.value)}>
+                <option value="COMMENT">Comment</option>
+                <option value="WORK_NOTE">Work Note</option>
+              </select>
+            )}
           </div>
 
-          {/* Attachments */}
-          <div className="td-card">
-            <div className="td-card-header">
-              <h3>Attachments</h3>
-              <label className="td-upload-btn" style={{ cursor: 'pointer' }}>
-                <Upload size={13} />
-                Upload Files
-                <input ref={fileInputRef} type="file" multiple hidden onChange={handleUpload} />
-              </label>
-            </div>
-
-            {/* Upload progress queue */}
-            {uploadQueue.length > 0 && (
-              <div className="upload-queue">
-                {uploadQueue.map(item => (
-                  <div key={item.id} className={`upload-item upload-${item.status}`}>
-                    <div className="upload-item-name">
-                      <span className="upload-icon">
-                        {item.status === 'done' ? '✓' : item.status === 'error' ? '✗' : '↑'}
-                      </span>
-                      <span>{item.name}</span>
+          <div className="act-feed">
+            {activityFeed.length === 0 && <p className="td-empty">No activity yet</p>}
+            {activityFeed.map(item => {
+              if (item.type === 'comment' || item.type === 'work_note') {
+                return (
+                  <div key={item.key} className={`act-item act-${item.type}`}>
+                    <div className="act-avatar">{item.user?.[0]?.toUpperCase() || '?'}</div>
+                    <div className="act-content">
+                      <div className="act-meta">
+                        <strong className="act-user">{item.user}</strong>
+                        {item.type === 'work_note' && <span className="wn-tag">Work Note</span>}
+                        <span className="act-time">{fmt(item.time)}</span>
+                      </div>
+                      <div className="act-text">{item.content}</div>
                     </div>
-                    <div className="upload-bar-wrap">
-                      <div className="upload-bar" style={{ width: `${item.progress}%` }} />
-                    </div>
-                    <span className="upload-pct">
-                      {item.status === 'done' ? 'Done' : item.status === 'error' ? 'Failed' : `${item.progress}%`}
-                    </span>
                   </div>
-                ))}
-              </div>
-            )}
-
-            {attachments.length === 0 && uploadQueue.length === 0 && <p className="td-empty">No attachments</p>}
-            {attachments.map(att => {
-              const isImage = att.mime_type.startsWith('image/');
-              const isPreviewable = isImage || att.mime_type === 'application/pdf' || att.mime_type === 'text/plain';
+                );
+              }
+              // system / audit event
+              const fieldLabel = item.field ? (FIELD_LABELS[item.field] || item.field.replace(/_/g, ' ')) : null;
               return (
-                <div key={att.id} className="att-row">
-                  {isImage
-                    ? <img src={`/api/attachments/${att.id}/download?preview=true`} alt={att.file_name} className="att-thumb" />
-                    : <div className="att-icon">📎</div>
-                  }
-                  <div className="att-info">
-                    <div className="att-name">{att.file_name}</div>
-                    <div className="att-meta">{fmtBytes(att.file_size)} · {fmt(att.uploaded_at)} · {att.uploader_name}</div>
+                <div key={item.key} className="act-item act-system">
+                  <div className="act-system-dot" />
+                  <div className="act-content act-system-content">
+                    <span className="act-user">{item.user}</span>
+                    {fieldLabel ? (
+                      <span className="act-change">
+                        {' '}changed <span className="act-field">{fieldLabel}</span>
+                        {item.oldVal && <><span className="act-sep"> from </span><span className="act-old">{item.oldVal}</span></>}
+                        {item.newVal && <><span className="act-sep"> to </span><span className="act-new">{item.newVal}</span></>}
+                      </span>
+                    ) : (
+                      <span className="act-action-text"> {systemActionLabel(item.action)}{item.newVal ? `: ${item.newVal}` : ''}</span>
+                    )}
+                    <span className="act-time act-sys-time">{fmt(item.time)}</span>
                   </div>
-                  {isPreviewable && (
-                    <a href={`/api/attachments/${att.id}/download?preview=true`} target="_blank" rel="noopener noreferrer" className="att-btn" title="Preview"><Eye size={13} /></a>
-                  )}
-                  <a href={`/api/attachments/${att.id}/download`} className="att-btn" title="Download"><Download size={13} /></a>
-                  {(isAdmin || att.uploaded_by === user?.id) && (
-                    <button className="att-btn danger" onClick={() => handleDeleteAttachment(att.id)} title="Delete"><X size={13} /></button>
-                  )}
                 </div>
               );
             })}
           </div>
 
-          {/* Comments */}
-          <div className="td-card">
-            <div className="td-card-header">
-              <h3>Comments &amp; Work Notes</h3>
-              {isAdmin && (
-                <select className="comment-type-sel" value={commentType} onChange={e => setCommentType(e.target.value)}>
-                  <option value="COMMENT">Comment</option>
-                  <option value="WORK_NOTE">Work Note</option>
-                </select>
-              )}
-            </div>
-            <div className="comments-list">
-              {comments.length === 0 && <p className="td-empty">No comments yet</p>}
-              {comments.map(c => (
-                <div key={c.id} className={`comment-item ${c.type === 'WORK_NOTE' ? 'work-note' : ''}`}>
-                  <div className="comment-avatar">{c.author_name?.[0]}</div>
-                  <div className="comment-body">
-                    <div className="comment-meta">
-                      <strong>{c.author_name}</strong>
-                      {c.type === 'WORK_NOTE' && <span className="wn-tag">Work Note</span>}
-                      <span className="comment-date">{fmt(c.created_at)}</span>
-                    </div>
-                    <p>{c.body}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <form onSubmit={handleComment} className="comment-form">
-              <textarea
-                value={comment}
-                onChange={e => setComment(e.target.value)}
-                placeholder={commentType === 'WORK_NOTE' ? 'Add internal work note...' : 'Add a comment...'}
-                rows={3}
-              />
-              <button type="submit" disabled={submitting || !comment.trim()}>
-                <Send size={13} /> {submitting ? 'Posting...' : 'Post'}
-              </button>
-            </form>
-          </div>
+          <form onSubmit={handleComment} className="comment-form">
+            <textarea
+              value={comment}
+              onChange={e => setComment(e.target.value)}
+              placeholder={commentType === 'WORK_NOTE' ? 'Add internal work note...' : 'Add a comment...'}
+              rows={3}
+            />
+            <button type="submit" disabled={submitting || !comment.trim()}>
+              <Send size={13} /> {submitting ? 'Posting...' : 'Post'}
+            </button>
+          </form>
         </div>
 
-        {/* Right: Audit */}
-        <div className="td-sidebar">
-          <div className="td-card">
-            <h3 className="td-card-title">Activity History</h3>
-            <div className="audit-list">
-              {audit.length === 0 && <p className="td-empty">No history</p>}
-              {audit.map((a) => {
-                const FIELD_LABELS = {
-                  ticket_owner: 'Assigned To', assigned_to: 'Secondary Assignee',
-                  category_id: 'Category', type_id: 'Type',
-                  status: 'Status', priority: 'Priority', impact: 'Impact', urgency: 'Urgency',
-                  short_description: 'Short Description', description: 'Description',
-                  customer_name: 'Customer', module_text: 'Module',
-                  assignment_group: 'Assignment Group', classification: 'Classification',
-                  attachment: 'Attachment',
-                };
-                const fieldLabel = a.field_name ? (FIELD_LABELS[a.field_name] || a.field_name.replace(/_/g, ' ')) : null;
-                return (
-                  <div key={a.id} className="audit-item">
-                    <div className="audit-dot" />
-                    <div className="audit-content">
-                      <div className="audit-action">{a.action.replace(/_/g, ' ')}</div>
-                      {fieldLabel && (
-                        <div className="audit-change">
-                          <span className="audit-field">{fieldLabel}</span>:
-                          {a.old_value && <span className="audit-old"> {a.old_value}</span>}
-                          {a.new_value && <span className="audit-new"> → {a.new_value}</span>}
-                        </div>
-                      )}
-                      <div className="audit-meta">{a.user_name} · {fmt(a.created_at)}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
       </div>
 
       {deleteModal && (
