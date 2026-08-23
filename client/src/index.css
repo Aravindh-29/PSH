@@ -23,6 +23,140 @@
   --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
   --shadow-md: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
   --shadow-lg: 0 10px 15px rgba(0,0,0,0.1), 0 4px 6px rgba(0,0,0,0.05);
+
+  /* ── Topbar ── */
+  --topbar-bg: #FFFFFF;
+  --topbar-border: #E2E8F0;
+
+  /* ── Sidebar (light defaults) ── */
+  --sb-bg: #FFFFFF;
+  --sb-logo-border: rgba(0,0,0,0.07);
+  --sb-text: rgba(30,41,59,0.65);
+  --sb-text-active: #0D1B2A;
+  --sb-text-section: #B0B8C4;
+  --sb-hover: rgba(0,0,0,0.04);
+  --sb-active-bg: rgba(232,93,4,0.09);
+  --sb-footer-border: rgba(0,0,0,0.07);
+  --sb-user-bg: rgba(0,0,0,0.035);
+  --sb-user-name: #0D1B2A;
+  --sb-user-role: #94A3B8;
+  --sb-btn-muted: #94A3B8;
+  --sb-collapse-text: #B0B8C4;
+
+  /* ── Config table (light defaults) ── */
+  --cfg-bg: #FFFFFF;
+  --cfg-bg-deep: #F8FAFC;
+  --cfg-bg-input: #F8FAFC;
+  --cfg-border: #E2E8F0;
+  --cfg-text: #0D1B2A;
+  --cfg-text-muted: #64748B;
+  --cfg-text-hint: #94A3B8;
+  --cfg-placeholder-color: #B0BAC9;
+  --cfg-badge-type-bg: #EFF6FF;
+  --cfg-badge-type-text: #2563EB;
+  --cfg-tab-border: #E2E8F0;
+  --cfg-tab-count-bg: #F1F5F9;
+  --cfg-tab-count-text: #64748B;
+  --cfg-row-hover: #F8FAFC;
+  --cfg-order-btn-border: #E2E8F0;
+  --cfg-order-btn-text: #94A3B8;
+  --cfg-icon-btn-bg: #F1F5F9;
+  --cfg-icon-btn-border: #E2E8F0;
+  --cfg-icon-btn-text: #94A3B8;
+  --cfg-icon-btn-hover-bg: #E2E8F0;
+  --cfg-icon-btn-hover-text: #0D1B2A;
+  --cfg-opt-count-bg: #F1F5F9;
+  --cfg-opt-count-text: #64748B;
+  --cfg-reset-btn-border: #E2E8F0;
+  --cfg-reset-btn-text: #64748B;
+  --cfg-cancel-btn-bg: #F1F5F9;
+  --cfg-cancel-btn-border: #E2E8F0;
+  --cfg-cancel-btn-text: #64748B;
+  --cfg-opt-list-bg: #F8FAFC;
+  --cfg-opt-input-bg: #FFFFFF;
+  --cfg-opt-input-border: #E2E8F0;
+  --cfg-opt-input-text: #0D1B2A;
+  --cfg-no-opts: #94A3B8;
+  --cfg-empty-row: #94A3B8;
+  --cfg-field-label-text: #0D1B2A;
+  --cfg-modal-bg: #FFFFFF;
+  --cfg-modal-border: #E2E8F0;
+  --cfg-modal-h: #0D1B2A;
+  --cfg-form-label: #64748B;
+  --cfg-form-input-bg: #FFFFFF;
+  --cfg-form-input-border: #E2E8F0;
+  --cfg-form-input-text: #0D1B2A;
+}
+
+[data-theme="dark"] {
+  --bg: #0F1923;
+  --border: #1e3a5f;
+  --text: #E2E8F0;
+  --text-muted: #94A3B8;
+  --text-light: #64748B;
+
+  /* Topbar */
+  --topbar-bg: #0D1B2A;
+  --topbar-border: #1e3a5f;
+
+  /* Sidebar */
+  --sb-bg: #0D1B2A;
+  --sb-logo-border: rgba(255,255,255,0.08);
+  --sb-text: rgba(255,255,255,0.6);
+  --sb-text-active: #FFFFFF;
+  --sb-text-section: rgba(255,255,255,0.25);
+  --sb-hover: rgba(255,255,255,0.07);
+  --sb-active-bg: rgba(232,93,4,0.15);
+  --sb-footer-border: rgba(255,255,255,0.08);
+  --sb-user-bg: rgba(255,255,255,0.05);
+  --sb-user-name: #FFFFFF;
+  --sb-user-role: rgba(255,255,255,0.4);
+  --sb-btn-muted: rgba(255,255,255,0.4);
+  --sb-collapse-text: rgba(255,255,255,0.3);
+
+  /* Config table */
+  --cfg-bg: #0d1b2a;
+  --cfg-bg-deep: #0a1628;
+  --cfg-bg-input: #0a1628;
+  --cfg-border: #1e3a5f;
+  --cfg-text: #e2e8f0;
+  --cfg-text-muted: #94a3b8;
+  --cfg-text-hint: #4a6fa5;
+  --cfg-placeholder-color: #4a6fa5;
+  --cfg-badge-type-bg: #1e3a5f;
+  --cfg-badge-type-text: #7db9f0;
+  --cfg-tab-border: #1e3a5f;
+  --cfg-tab-count-bg: #1e3a5f;
+  --cfg-tab-count-text: #94a3b8;
+  --cfg-row-hover: #112030;
+  --cfg-order-btn-border: #1e3a5f;
+  --cfg-order-btn-text: #64748b;
+  --cfg-icon-btn-bg: #1e3a5f;
+  --cfg-icon-btn-border: #2a4a73;
+  --cfg-icon-btn-text: #94a3b8;
+  --cfg-icon-btn-hover-bg: #2a4a73;
+  --cfg-icon-btn-hover-text: #e2e8f0;
+  --cfg-opt-count-bg: #1a2d45;
+  --cfg-opt-count-text: #94a3b8;
+  --cfg-reset-btn-border: #2a4a73;
+  --cfg-reset-btn-text: #94a3b8;
+  --cfg-cancel-btn-bg: #1e3a5f;
+  --cfg-cancel-btn-border: #2a4a73;
+  --cfg-cancel-btn-text: #94a3b8;
+  --cfg-opt-list-bg: #0a1628;
+  --cfg-opt-input-bg: #112030;
+  --cfg-opt-input-border: #1e3a5f;
+  --cfg-opt-input-text: #e2e8f0;
+  --cfg-no-opts: #4a6fa5;
+  --cfg-empty-row: #4a6fa5;
+  --cfg-field-label-text: #e2e8f0;
+  --cfg-modal-bg: #0d1b2a;
+  --cfg-modal-border: #1e3a5f;
+  --cfg-modal-h: #e2e8f0;
+  --cfg-form-label: #94a3b8;
+  --cfg-form-input-bg: #0a1628;
+  --cfg-form-input-border: #1e3a5f;
+  --cfg-form-input-text: #e2e8f0;
 }
 
 html, body, #root { height: 100%; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }

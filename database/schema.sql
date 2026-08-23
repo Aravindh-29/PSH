@@ -160,6 +160,30 @@ CREATE TABLE IF NOT EXISTS sso_config (
   updated_by     UUID         REFERENCES users(id)
 );
 
+-- Ticket Types (Incident, Service Request, Problem, Change, etc.)
+CREATE TABLE IF NOT EXISTS ticket_types (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(100) UNIQUE NOT NULL,
+  description TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Seed default ticket types if none exist
+INSERT INTO ticket_types (name, description) VALUES
+  ('Incident',        'Unplanned interruption or degradation of a service'),
+  ('Service Request', 'Request for information, access, or a standard change'),
+  ('Problem',         'Root cause investigation of one or more incidents'),
+  ('Change Request',  'Planned modification to the IT environment')
+ON CONFLICT (name) DO NOTHING;
+
+-- Link categories to a ticket type (optional – used for cascading subcategory dropdown)
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS type_id UUID REFERENCES ticket_types(id);
+
+-- Add type and classification columns to tickets
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS type_id         UUID REFERENCES ticket_types(id);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS classification  VARCHAR(100);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_tickets_priority ON tickets(priority) WHERE deleted_at IS NULL;
@@ -169,5 +193,19 @@ CREATE INDEX IF NOT EXISTS idx_tickets_updated_at ON tickets(updated_at DESC) WH
 CREATE INDEX IF NOT EXISTS idx_audit_ticket ON ticket_audit_logs(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_comments_ticket ON ticket_comments(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_attachments_ticket ON ticket_attachments(ticket_id);
+
+-- Notifications
+CREATE TABLE IF NOT EXISTS notifications (
+  id           SERIAL PRIMARY KEY,
+  user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type         VARCHAR(50) NOT NULL DEFAULT 'TICKET_ASSIGNED',
+  title        TEXT NOT NULL,
+  message      TEXT,
+  ticket_id    UUID REFERENCES tickets(id) ON DELETE CASCADE,
+  ticket_number VARCHAR(20),
+  is_read      BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read, created_at DESC);
 
 COMMIT;

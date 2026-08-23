@@ -17,13 +17,16 @@ function formatDuration(hours) {
 // Builds WHERE clause and params array for a query.
 // userField: the column to filter on for non-admin (e.g. 't.created_by')
 // dateField: the column to apply the date range to (e.g. 't.created_at')
-function buildWhere(isAdmin, userId, startDate, endDate, { userField = 't.created_by', dateField = 't.created_at' } = {}) {
+function buildWhere(isAdmin, userId, startDate, endDate, { dateField = 't.created_at' } = {}) {
   const conditions = ['t.deleted_at IS NULL'];
   const params = [];
 
   if (!isAdmin) {
+    // Ticket belongs to user if assigned to them, or unassigned and they created it
     params.push(userId);
-    conditions.push(`${userField} = $${params.length}`);
+    conditions.push(
+      `(t.assigned_to = $${params.length} OR (t.assigned_to IS NULL AND t.created_by = $${params.length}))`
+    );
   }
 
   if (startDate && endDate) {
@@ -129,7 +132,7 @@ async function getStats(req, res, next) {
       LEFT JOIN tickets t
         ON DATE_TRUNC('day', t.created_at)::date = days.day
         AND t.deleted_at IS NULL
-        ${!isAdmin ? `AND t.created_by = $3` : ''}
+        ${!isAdmin ? `AND (t.assigned_to = $3 OR (t.assigned_to IS NULL AND t.created_by = $3))` : ''}
       GROUP BY days.day
       ORDER BY days.day ASC
     `, !isAdmin ? [chartStart, chartEnd, userId] : [chartStart, chartEnd]);

@@ -113,6 +113,7 @@ async function getReport(req, res, next) {
         COALESCE(t.module_text, m.name, '') AS module_name,
         COALESCE(c.name, '')                AS category_name,
         t.status, t.priority, t.impact, t.urgency,
+        t.assignment_group, t.classification,
         u2.full_name AS created_by_name,
         u3.full_name AS ticket_owner_name,
         t.created_at, t.updated_at,
@@ -275,6 +276,7 @@ async function getGlobalReport(req, res, next) {
                  COALESCE(t.module_text, m.name, '') AS module_name,
                  COALESCE(c.name, '')                AS category_name,
                  t.status, t.priority, t.impact, t.urgency,
+                 t.assignment_group, t.classification,
                  u2.full_name AS created_by_name, u3.full_name AS ticket_owner_name,
                  t.created_at, t.updated_at, t.custom_data
           FROM tickets t

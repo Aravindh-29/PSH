@@ -18,6 +18,7 @@ import AuditLogs from './pages/Audit/AuditLogs';
 import Reports from './pages/Reports/Reports';
 import KnowledgeBase from './pages/KnowledgeBase/KnowledgeBase';
 import KBArticle from './pages/KnowledgeBase/KBArticle';
+import Profile from './pages/Profile/Profile';
 
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
@@ -55,6 +56,7 @@ function AppRoutes() {
         <Route path="reports" element={<Reports />} />
         <Route path="knowledge-base" element={<KnowledgeBase />} />
         <Route path="knowledge-base/:id" element={<KBArticle />} />
+        <Route path="profile" element={<Profile />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

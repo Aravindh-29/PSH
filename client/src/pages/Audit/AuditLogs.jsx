@@ -22,8 +22,9 @@ function ActionBadge({ action }) {
 const FIELD_LABELS = {
   status: 'Status', priority: 'Priority', impact: 'Impact', urgency: 'Urgency',
   short_description: 'Short Description', customer_name: 'Customer',
-  description: 'Description', ticket_owner: 'Owner', category_id: 'Category',
-  assigned_to: 'Assigned To', custom_data: 'Custom Fields',
+  description: 'Description', ticket_owner: 'Assigned To', category_id: 'Category',
+  type_id: 'Type', classification: 'Classification', assignment_group: 'Assignment Group',
+  assigned_to: 'Secondary Assignee', custom_data: 'Custom Fields',
 };
 const fieldLabel = (f) => f ? (FIELD_LABELS[f] || f.replace(/_/g, ' ')) : '—';
 

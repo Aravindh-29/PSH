@@ -19,6 +19,7 @@ function handleMulterError(req, res, next) {
 }
 
 router.use(requireAuth);
+router.get('/next-number', ticketCtrl.nextNumber);
 router.get('/', ticketCtrl.list);
 router.post('/', ticketCtrl.create);
 router.get('/:id', ticketCtrl.getOne);

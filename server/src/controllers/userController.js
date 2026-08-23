@@ -9,7 +9,9 @@ async function list(req, res, next) {
     // default: only active non-deleted users (for User Management)
     const whereClause = scope === 'with_tickets'
       ? `WHERE (u.deleted_at IS NULL OR EXISTS (
-           SELECT 1 FROM tickets WHERE created_by = u.id AND deleted_at IS NULL
+           SELECT 1 FROM tickets
+           WHERE (assigned_to = u.id OR (assigned_to IS NULL AND created_by = u.id))
+             AND deleted_at IS NULL
          ))`
       : `WHERE u.deleted_at IS NULL`;
 
@@ -21,7 +23,7 @@ async function list(req, res, next) {
              COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL AND t.status IN ('RESOLVED','CLOSED')) AS resolved_count,
              COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL AND t.priority = 'CRITICAL') AS critical_count
       FROM users u
-      LEFT JOIN tickets t ON t.created_by = u.id
+      LEFT JOIN tickets t ON (t.assigned_to = u.id OR (t.assigned_to IS NULL AND t.created_by = u.id))
       ${whereClause}
       GROUP BY u.id
       ORDER BY u.full_name
@@ -40,7 +42,7 @@ async function getOne(req, res, next) {
              COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL AND t.status IN ('RESOLVED','CLOSED')) AS resolved_count,
              COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL AND t.priority = 'CRITICAL') AS critical_count
       FROM users u
-      LEFT JOIN tickets t ON t.created_by = u.id
+      LEFT JOIN tickets t ON (t.assigned_to = u.id OR (t.assigned_to IS NULL AND t.created_by = u.id))
       WHERE u.id = $1
       GROUP BY u.id
     `, [id]);
@@ -251,4 +253,59 @@ async function bulkCreate(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { list, getOne, create, update, resetPassword, deleteUser, deleteAllTickets, bulkCreate };
+async function getMe(req, res, next) {
+  try {
+    const result = await pool.query(
+      'SELECT id, username, email, full_name, role, is_active, created_at FROM users WHERE id = $1 AND deleted_at IS NULL',
+      [req.session.userId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+    res.json({ success: true, user: result.rows[0] });
+  } catch (err) { next(err); }
+}
+
+async function updateMe(req, res, next) {
+  try {
+    const { fullName, email, currentPassword, newPassword } = req.body;
+    const existing = await pool.query(
+      'SELECT id, email, full_name, password_hash FROM users WHERE id = $1 AND deleted_at IS NULL',
+      [req.session.userId]
+    );
+    if (existing.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+    const user = existing.rows[0];
+
+    const sets = [];
+    const params = [];
+
+    if (fullName && fullName.trim()) {
+      params.push(fullName.trim()); sets.push(`full_name = $${params.length}`);
+    }
+    if (email && email.trim() && email.toLowerCase() !== user.email) {
+      const conflict = await pool.query(
+        'SELECT id FROM users WHERE email = $1 AND id != $2 AND deleted_at IS NULL',
+        [email.toLowerCase(), req.session.userId]
+      );
+      if (conflict.rows.length > 0) return res.status(409).json({ success: false, message: 'Email already in use' });
+      params.push(email.toLowerCase()); sets.push(`email = $${params.length}`);
+    }
+
+    if (newPassword) {
+      if (!currentPassword) return res.status(400).json({ success: false, message: 'Current password required to set a new password' });
+      const valid = await argon2.verify(user.password_hash, currentPassword);
+      if (!valid) return res.status(401).json({ success: false, message: 'Current password is incorrect' });
+      const hash = await argon2.hash(newPassword, { type: argon2.argon2id });
+      params.push(hash); sets.push(`password_hash = $${params.length}`);
+    }
+
+    if (sets.length === 0) return res.json({ success: true, message: 'No changes' });
+
+    params.push(req.session.userId);
+    const result = await pool.query(
+      `UPDATE users SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${params.length} RETURNING id, username, email, full_name, role`,
+      params
+    );
+    res.json({ success: true, user: result.rows[0] });
+  } catch (err) { next(err); }
+}
+
+module.exports = { list, getOne, create, update, resetPassword, deleteUser, deleteAllTickets, bulkCreate, getMe, updateMe };

@@ -370,6 +370,7 @@ export default function GlobalReports() {
     };
     const tHdrs = [
       'Ticket ID', 'Subject', 'Customer', 'Module', 'Status', 'Priority',
+      'Impact', 'Urgency', 'Assignment Group', 'Classification',
       'Owner', 'Created By', 'Created At', 'Last Updated',
       ...customFieldDefs.map(f => f.label),
     ];
@@ -388,6 +389,10 @@ export default function GlobalReports() {
           cs(t.module_name || '—', dat(bg, '64748B')),
           cs(t.status?.replace(/_/g, ' '), { fill: fl(stPal.bg), font: fnt({ bold: true, color: stPal.fg, sz: 9 }), alignment: al('center'), border: borders }),
           cs(t.priority, { fill: fl(prPal.bg), font: fnt({ bold: true, color: prPal.fg, sz: 9 }), alignment: al('center'), border: borders }),
+          cs(t.impact || '—', dat(bg, '334155')),
+          cs(t.urgency || '—', dat(bg, '334155')),
+          cs(t.assignment_group || '—', dat(bg, '334155')),
+          cs(t.classification || '—', dat(bg, '334155')),
           cs(t.ticket_owner_name || '—', dat(bg, '334155')),
           cs(t.created_by_name || '—', dat(bg, '334155')),
           cs(t.created_at ? format(new Date(t.created_at), 'yyyy-MM-dd HH:mm') : '—', dat(bg, '64748B')),
@@ -400,6 +405,7 @@ export default function GlobalReports() {
     ws8['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: tHdrs.length - 1 } }];
     ws8['!cols'] = [
       { wch: 14 }, { wch: 30 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 11 },
+      { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 20 },
       { wch: 22 }, { wch: 22 }, { wch: 18 }, { wch: 18 },
       ...customFieldDefs.map(() => ({ wch: 20 })),
     ];

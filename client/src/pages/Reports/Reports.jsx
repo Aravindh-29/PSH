@@ -26,7 +26,7 @@ const DATE_PRESETS = [
   { label: 'Last month',   getRange: () => ({ start: startOfMonth(subMonths(new Date(), 1)), end: endOfMonth(subMonths(new Date(), 1)) }) },
 ];
 
-const SYSTEM_KEYS = ['customer_name','module_text','category_id','status','priority','impact','urgency','short_description','description'];
+const SYSTEM_KEYS = ['customer_name','module_text','category_id','status','priority','impact','urgency','short_description','description','assignment_group'];
 const parseOpts = (opts) => {
   if (Array.isArray(opts)) return opts;
   if (typeof opts === 'string') { try { return JSON.parse(opts); } catch { return []; } }
@@ -390,6 +390,7 @@ export default function Reports() {
     };
     const ticketHeaders = [
       'Ticket ID', 'Subject', 'Customer', 'Module', 'Status', 'Priority',
+      'Impact', 'Urgency', 'Assignment Group', 'Classification',
       'Owner', 'Created By', 'Created At', 'Last Updated',
       ...customFieldDefs.map(f => f.label),
     ];
@@ -408,6 +409,10 @@ export default function Reports() {
           cs(t.module_name || '—', dat(rowBg, '64748B')),
           cs(t.status?.replace(/_/g, ' '), { fill: fill(stPal.bg), font: font({ bold: true, color: stPal.fg, sz: 9 }), alignment: align('center'), border: borders }),
           cs(t.priority, { fill: fill(prPal.bg), font: font({ bold: true, color: prPal.fg, sz: 9 }), alignment: align('center'), border: borders }),
+          cs(t.impact || '—', dat(rowBg, '334155')),
+          cs(t.urgency || '—', dat(rowBg, '334155')),
+          cs(t.assignment_group || '—', dat(rowBg, '334155')),
+          cs(t.classification || '—', dat(rowBg, '334155')),
           cs(t.ticket_owner_name || '—', dat(rowBg, '334155')),
           cs(t.created_by_name || '—', dat(rowBg, '334155')),
           cs(t.created_at ? format(new Date(t.created_at), 'yyyy-MM-dd HH:mm') : '—', dat(rowBg, '64748B')),
@@ -420,6 +425,7 @@ export default function Reports() {
     ws7['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: ticketHeaders.length - 1 } }];
     ws7['!cols'] = [
       { wch: 14 }, { wch: 32 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 11 },
+      { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 20 },
       { wch: 22 }, { wch: 22 }, { wch: 18 }, { wch: 18 },
       ...customFieldDefs.map(() => ({ wch: 20 })),
     ];

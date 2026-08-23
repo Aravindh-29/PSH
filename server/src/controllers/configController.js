@@ -10,8 +10,67 @@ async function getModules(req, res, next) {
 
 async function getCategories(req, res, next) {
   try {
-    const result = await pool.query('SELECT * FROM categories WHERE is_active = true ORDER BY name');
+    const { typeId } = req.query;
+    let query = 'SELECT * FROM categories WHERE is_active = true';
+    const params = [];
+    if (typeId) { params.push(typeId); query += ` AND (type_id = $1 OR type_id IS NULL)`; }
+    query += ' ORDER BY name';
+    const result = await pool.query(query, params);
     res.json({ success: true, categories: result.rows });
+  } catch (err) { next(err); }
+}
+
+async function getTicketTypes(req, res, next) {
+  try {
+    const result = await pool.query('SELECT * FROM ticket_types WHERE is_active = true ORDER BY name');
+    res.json({ success: true, types: result.rows });
+  } catch (err) { next(err); }
+}
+
+async function getAdminTicketTypes(req, res, next) {
+  try {
+    const result = await pool.query('SELECT * FROM ticket_types ORDER BY name');
+    res.json({ success: true, types: result.rows });
+  } catch (err) { next(err); }
+}
+
+async function createTicketType(req, res, next) {
+  try {
+    const { name, description } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ success: false, message: 'name is required' });
+    const result = await pool.query(
+      'INSERT INTO ticket_types (name, description) VALUES ($1,$2) ON CONFLICT (name) DO NOTHING RETURNING *',
+      [name.trim(), description || null]
+    );
+    if (result.rows.length === 0) return res.status(400).json({ success: false, message: 'Type already exists' });
+    res.status(201).json({ success: true, type: result.rows[0] });
+  } catch (err) { next(err); }
+}
+
+async function updateTicketType(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { name, description, is_active } = req.body;
+    const result = await pool.query(
+      'UPDATE ticket_types SET name=COALESCE($1,name), description=COALESCE($2,description), is_active=COALESCE($3,is_active) WHERE id=$4 RETURNING *',
+      [name || null, description !== undefined ? description : null, is_active ?? null, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
+    res.json({ success: true, type: result.rows[0] });
+  } catch (err) { next(err); }
+}
+
+async function deleteTicketType(req, res, next) {
+  try {
+    const { id } = req.params;
+    const countRes = await pool.query('SELECT COUNT(*) FROM tickets WHERE type_id=$1 AND deleted_at IS NULL', [id]);
+    const count = parseInt(countRes.rows[0].count);
+    if (count > 0) {
+      return res.status(409).json({ success: false, inUse: true, count, message: `${count} ticket${count > 1 ? 's' : ''} use this type` });
+    }
+    const result = await pool.query('DELETE FROM ticket_types WHERE id=$1 RETURNING id', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
+    res.json({ success: true });
   } catch (err) { next(err); }
 }
 
@@ -61,7 +120,7 @@ async function createField(req, res, next) {
 async function updateField(req, res, next) {
   try {
     const { id } = req.params;
-    const { label, is_required, is_active, is_system, field_order, placeholder, options } = req.body;
+    const { label, field_type, is_required, is_active, is_system, field_order, placeholder, options } = req.body;
 
     const existing = await pool.query('SELECT * FROM ticket_fields WHERE id = $1', [id]);
     if (existing.rows.length === 0) return res.status(404).json({ success: false, message: 'Field not found' });
@@ -69,10 +128,11 @@ async function updateField(req, res, next) {
 
     const result = await pool.query(
       `UPDATE ticket_fields SET
-        label=$1, is_required=$2, is_active=$3, is_system=$4, field_order=$5, placeholder=$6, options=$7, updated_at=NOW()
-       WHERE id=$8 RETURNING *`,
+        label=$1, field_type=$2, is_required=$3, is_active=$4, is_system=$5, field_order=$6, placeholder=$7, options=$8, updated_at=NOW()
+       WHERE id=$9 RETURNING *`,
       [
         label       !== undefined ? label       : f.label,
+        field_type  !== undefined ? field_type  : f.field_type,
         is_required !== undefined ? is_required : f.is_required,
         is_active   !== undefined ? is_active   : f.is_active,
         is_system   !== undefined ? is_system   : f.is_system,
@@ -99,11 +159,11 @@ async function deleteField(req, res, next) {
 
 async function createCategory(req, res, next) {
   try {
-    const { name, description } = req.body;
+    const { name, description, type_id } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ success: false, message: 'name is required' });
     const result = await pool.query(
-      'INSERT INTO categories (name, description) VALUES ($1,$2) ON CONFLICT (name) DO NOTHING RETURNING *',
-      [name.trim(), description || null]
+      'INSERT INTO categories (name, description, type_id) VALUES ($1,$2,$3) ON CONFLICT (name) DO NOTHING RETURNING *',
+      [name.trim(), description || null, type_id || null]
     );
     if (result.rows.length === 0) return res.status(400).json({ success: false, message: 'Category already exists' });
     res.status(201).json({ success: true, category: result.rows[0] });
@@ -113,10 +173,10 @@ async function createCategory(req, res, next) {
 async function updateCategory(req, res, next) {
   try {
     const { id } = req.params;
-    const { name, is_active } = req.body;
+    const { name, is_active, type_id } = req.body;
     const result = await pool.query(
-      'UPDATE categories SET name=COALESCE($1,name), is_active=COALESCE($2,is_active) WHERE id=$3 RETURNING *',
-      [name || null, is_active ?? null, id]
+      'UPDATE categories SET name=COALESCE($1,name), is_active=COALESCE($2,is_active), type_id=COALESCE($3::uuid,type_id) WHERE id=$4 RETURNING *',
+      [name || null, is_active ?? null, type_id || null, id]
     );
     if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Category not found' });
     res.json({ success: true, category: result.rows[0] });
@@ -153,8 +213,9 @@ async function resetFields(req, res, next) {
     await pool.query(`
       INSERT INTO ticket_fields (field_key, label, field_type, is_required, is_system, is_active, field_order, placeholder, options)
       VALUES
-        ('customer_name',    'Customer / Client',   'text',     true,  true, true, 10, 'e.g. TechCorp Inc.',           '[]'::jsonb),
-        ('module_text',      'Module',              'text',     true,  true, true, 20, 'e.g. Cloud, Storage, Network', '[]'::jsonb),
+        ('customer_name',    'Customer / Client',   'dropdown', true,  true, true, 10, 'e.g. TechCorp Inc.',           '[]'::jsonb),
+        ('module_text',      'Module',              'dropdown', true,  true, true, 20, 'e.g. Cloud, Storage, Network',
+          '[{"label":"FlashArray","value":"FlashArray"},{"label":"FlashBlade","value":"FlashBlade"},{"label":"Pure Cloud Block Store","value":"Pure Cloud Block Store"},{"label":"Evergreen//One","value":"Evergreen//One"},{"label":"ActiveCluster","value":"ActiveCluster"},{"label":"Portworx","value":"Portworx"},{"label":"General","value":"General"}]'::jsonb),
         ('category_id',      'Category',            'category', true,  true, true, 30, '',                             '[]'::jsonb),
         ('status',           'Status',              'dropdown', true,  true, true, 40, '',
           '[{"label":"New","value":"NEW"},{"label":"Open","value":"OPEN"},{"label":"In Progress","value":"IN_PROGRESS"},{"label":"Work In Progress","value":"WORK_IN_PROGRESS"},{"label":"Pending","value":"PENDING"},{"label":"On Hold","value":"ON_HOLD"},{"label":"Resolved","value":"RESOLVED"},{"label":"Closed","value":"CLOSED"},{"label":"Reopened","value":"REOPENED"},{"label":"Cancelled","value":"CANCELLED"}]'::jsonb),
@@ -165,7 +226,9 @@ async function resetFields(req, res, next) {
         ('urgency',          'Urgency',             'dropdown', false, true, true, 70, '',
           '[{"label":"Low","value":"LOW"},{"label":"Medium","value":"MEDIUM"},{"label":"High","value":"HIGH"}]'::jsonb),
         ('short_description','Short Description',   'text',     true,  true, true, 80, 'Brief summary of the issue',   '[]'::jsonb),
-        ('description',      'Detailed Description','textarea', true,  true, true, 90, 'Provide full details...',      '[]'::jsonb)
+        ('description',      'Detailed Description','textarea', true,  true, true, 90, 'Provide full details...',      '[]'::jsonb),
+        ('assignment_group', 'Assignment Group',    'dropdown', false, true, true, 95, 'e.g. Storage Team',
+          '[{"label":"Storage Team","value":"Storage Team"},{"label":"Network Team","value":"Network Team"},{"label":"Cloud Team","value":"Cloud Team"},{"label":"Hardware Support","value":"Hardware Support"},{"label":"Software Support","value":"Software Support"},{"label":"Access Management","value":"Access Management"},{"label":"DevOps Team","value":"DevOps Team"},{"label":"Security Team","value":"Security Team"},{"label":"L1 Support","value":"L1 Support"},{"label":"L2 Support","value":"L2 Support"},{"label":"L3 Support","value":"L3 Support"}]'::jsonb)
     `);
 
     res.json({ success: true, message: 'Fields reset to defaults successfully' });
@@ -176,4 +239,5 @@ module.exports = {
   getModules, getCategories, getUsers,
   getFields, getAdminFields, createField, updateField, deleteField,
   createCategory, updateCategory, deleteCategory, resetFields,
+  getTicketTypes, getAdminTicketTypes, createTicketType, updateTicketType, deleteTicketType,
 };

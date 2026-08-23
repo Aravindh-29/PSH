@@ -43,7 +43,6 @@ function ParticleCanvas() {
       ctx.clearRect(0, 0, w, h);
       t += 0.005;
 
-      // Wave mesh lines
       ctx.save();
       const waveRows = 6;
       const cols = 12;
@@ -62,7 +61,6 @@ function ParticleCanvas() {
         ctx.lineWidth = 0.8;
         ctx.stroke();
 
-        // Vertical connecting lines
         for (let col = 0; col <= cols; col++) {
           if (row < waveRows - 1) {
             const x = (col / cols) * w;
@@ -77,7 +75,6 @@ function ParticleCanvas() {
             ctx.lineWidth = 0.5;
             ctx.stroke();
 
-            // Dot at intersections
             ctx.beginPath();
             ctx.arc(x, y1, 1.5, 0, Math.PI * 2);
             ctx.fillStyle = col % 3 === 0 ? `rgba(100, 180, 255, 0.6)` : `rgba(80, 150, 255, 0.3)`;
@@ -87,7 +84,6 @@ function ParticleCanvas() {
       }
       ctx.restore();
 
-      // Orange glow point (bottom-left area)
       const glowX = w * 0.18;
       const glowY = h * 0.72;
       const grad = ctx.createRadialGradient(glowX, glowY, 0, glowX, glowY, 120);
@@ -97,7 +93,6 @@ function ParticleCanvas() {
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, w, h);
 
-      // Floating particles
       for (const p of particles) {
         p.x += p.vx;
         p.y += p.vy;
@@ -146,13 +141,11 @@ export default function LoginPage() {
   const [ssoLabel,   setSsoLabel]   = useState('SSO');
   const [ssoLoading, setSsoLoading] = useState(false);
 
-  // Show error from SSO callback redirect (e.g. /login?error=sso_failed)
   useEffect(() => {
     const err = searchParams.get('error');
     if (err && SSO_ERRORS[err]) toast.error(SSO_ERRORS[err]);
   }, []);
 
-  // Check if SSO is configured on this server
   useEffect(() => {
     api.get('/auth/sso-status')
       .then(r => {
@@ -189,7 +182,6 @@ export default function LoginPage() {
       <ParticleCanvas />
       <div className="login-gradient-overlay" />
 
-      {/* Center layout */}
       <div className="login-inner">
         {/* Left branding */}
         <div className="login-left">
@@ -216,78 +208,82 @@ export default function LoginPage() {
 
         {/* Right card */}
         <div className="login-right">
-        <div className="login-card">
-          <div className="login-card-icon">
-            <Shield size={24} color="var(--orange)" />
+          <div className="login-card">
+            <div className="login-card-icon">
+              <Shield size={24} color="var(--orange)" />
+            </div>
+
+            <h2 className="login-card-title">Sign in to your account</h2>
+            <p className="login-card-sub">Enter your credentials to access the ticketing system</p>
+
+            <form onSubmit={handleSubmit} className="login-form">
+              <div className="form-group">
+                <label>Username or Email <span className="req">*</span></label>
+                <div className="input-wrap">
+                  <User size={15} className="input-icon" />
+                  <input
+                    type="text"
+                    placeholder="Enter your username or email"
+                    value={form.username}
+                    onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+                    autoComplete="username"
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Password <span className="req">*</span></label>
+                <div className="input-wrap">
+                  <Lock size={15} className="input-icon" />
+                  <input
+                    type={showPass ? 'text' : 'password'}
+                    placeholder="Enter your password"
+                    value={form.password}
+                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                    autoComplete="current-password"
+                  />
+                  <button type="button" className="input-eye" onClick={() => setShowPass(s => !s)}>
+                    {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="login-options">
+                <label className="remember-me">
+                  <input
+                    type="checkbox"
+                    checked={form.remember}
+                    onChange={e => setForm(f => ({ ...f, remember: e.target.checked }))}
+                  />
+                  Remember me
+                </label>
+                <button type="button" className="forgot-link">Forgot password?</button>
+              </div>
+
+              <button type="submit" className="login-btn" disabled={loading}>
+                {loading ? <span className="login-spinner" /> : <Lock size={15} />}
+                {loading ? 'Signing in...' : 'Sign In'}
+              </button>
+
+              {ssoEnabled && (
+                <>
+                  <div className="login-or"><span>OR</span></div>
+                  <button
+                    type="button"
+                    className="sso-btn"
+                    onClick={handleSso}
+                    disabled={ssoLoading}
+                  >
+                    {ssoLoading ? <span className="login-spinner" /> : <Shield size={15} />}
+                    {ssoLoading ? 'Redirecting...' : `Sign in with ${ssoLabel}`}
+                  </button>
+                </>
+              )}
+            </form>
+
+            <p className="login-footer">© 2025 SERV-IT. All rights reserved.</p>
           </div>
-
-          <h2 className="login-card-title">Sign in to your account</h2>
-          <p className="login-card-sub">Enter your credentials to access the ticketing system</p>
-
-          <form onSubmit={handleSubmit} className="login-form">
-            <div className="form-group">
-              <label>Username or Email <span className="req">*</span></label>
-              <div className="input-wrap">
-                <User size={15} className="input-icon" />
-                <input
-                  type="text"
-                  placeholder="Enter your username or email"
-                  value={form.username}
-                  onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
-                  autoComplete="username"
-                  autoFocus
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label>Password <span className="req">*</span></label>
-              <div className="input-wrap">
-                <Lock size={15} className="input-icon" />
-                <input
-                  type={showPass ? 'text' : 'password'}
-                  placeholder="Enter your password"
-                  value={form.password}
-                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                  autoComplete="current-password"
-                />
-                <button type="button" className="input-eye" onClick={() => setShowPass(s => !s)}>
-                  {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
-                </button>
-              </div>
-            </div>
-
-            <div className="login-options">
-              <label className="remember-me">
-                <input type="checkbox" checked={form.remember} onChange={e => setForm(f => ({ ...f, remember: e.target.checked }))} />
-                Remember me
-              </label>
-              <button type="button" className="forgot-link">Forgot password?</button>
-            </div>
-
-            <button type="submit" className="login-btn" disabled={loading}>
-              {loading ? <span className="login-spinner" /> : <Lock size={15} />}
-              {loading ? 'Signing in...' : 'Sign In'}
-            </button>
-
-            {ssoEnabled && (
-              <>
-                <div className="login-or"><span>OR</span></div>
-                <button
-                  type="button"
-                  className="sso-btn"
-                  onClick={handleSso}
-                  disabled={ssoLoading}
-                >
-                  {ssoLoading ? <span className="login-spinner" /> : <Shield size={15} />}
-                  {ssoLoading ? 'Redirecting...' : `Sign in with ${ssoLabel}`}
-                </button>
-              </>
-            )}
-          </form>
-
-          <p className="login-footer">© 2025 SERV-IT. All rights reserved.</p>
-        </div>
         </div>
       </div>
     </div>
