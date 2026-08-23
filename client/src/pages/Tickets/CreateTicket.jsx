@@ -6,6 +6,16 @@ import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import './TicketForm.css';
 
+const CLASSIFICATIONS = [
+  { value: '', label: 'Select classification' },
+  { value: 'Software', label: 'Software' },
+  { value: 'Hardware', label: 'Hardware' },
+  { value: 'Network', label: 'Network' },
+  { value: 'Access', label: 'Access / Permissions' },
+  { value: 'Configuration', label: 'Configuration' },
+  { value: 'Other', label: 'Other' },
+];
+
 // System field keys rendered with fixed positions in the Basic Information grid
 const SYSTEM_KEYS = ['customer_name','module_text','category_id','status','priority','impact','urgency','short_description','description'];
 
@@ -126,15 +136,20 @@ function renderCustomField(f, customData, setCustomData) {
 export default function CreateTicket() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [fields, setFields]         = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading]       = useState(false);
+  const isAdmin = user?.role === 'admin';
+  const [fields, setFields]           = useState([]);
+  const [categories, setCategories]   = useState([]);
+  const [allCategories, setAllCategories] = useState([]);
+  const [ticketTypes, setTicketTypes] = useState([]);
+  const [users, setUsers]             = useState([]);
+  const [loading, setLoading]         = useState(false);
   const [pendingFiles, setPendingFiles] = useState([]);
   const [uploadProgress, setUploadProgress] = useState([]);
   const fileInputRef = useRef(null);
   const [form, setForm] = useState({
     customerName: '', moduleText: '', categoryId: '', shortDescription: '',
-    description: '', status: 'NEW', priority: 'MEDIUM', impact: 'MEDIUM', urgency: 'MEDIUM',
+    description: '', priority: 'MEDIUM', impact: 'MEDIUM', urgency: 'MEDIUM',
+    typeId: '', classification: '', assignedTo: '', assignmentGroup: '',
   });
   const [customData, setCustomData] = useState({});
 
@@ -142,13 +157,26 @@ export default function CreateTicket() {
     Promise.all([
       api.get('/config/fields'),
       api.get('/config/categories'),
-    ]).then(([f, c]) => {
+      api.get('/config/ticket-types'),
+      api.get('/config/users'),
+    ]).then(([f, c, tt, u]) => {
       setFields(f.data.fields || []);
+      setAllCategories(c.data.categories || []);
       setCategories(c.data.categories || []);
-    }).catch(() => {
-      // fallback: keep empty fields, form still works with hardcoded defaults
-    });
+      setTicketTypes(tt.data.types || []);
+      setUsers(u.data.users || []);
+    }).catch(() => {});
   }, []);
+
+  // Filter categories by selected type
+  useEffect(() => {
+    if (!form.typeId) {
+      setCategories(allCategories);
+    } else {
+      setCategories(allCategories.filter(c => !c.type_id || c.type_id === form.typeId));
+    }
+    setForm(p => ({ ...p, categoryId: '' }));
+  }, [form.typeId, allCategories]);
 
   const handleFileSelect = (e) => {
     const files = Array.from(e.target.files);
@@ -180,7 +208,15 @@ export default function CreateTicket() {
     if (!validate()) return;
     setLoading(true);
     try {
-      const res = await api.post('/tickets', { ...form, customData });
+      const payload = {
+        ...form,
+        typeId: form.typeId || undefined,
+        classification: form.classification || undefined,
+        assignedTo: isAdmin && form.assignedTo ? form.assignedTo : undefined,
+        assignmentGroup: form.assignmentGroup || undefined,
+        customData,
+      };
+      const res = await api.post('/tickets', payload);
       const { id: ticketId, ticket_number } = res.data.ticket;
 
       if (pendingFiles.length > 0) {
@@ -223,7 +259,8 @@ export default function CreateTicket() {
   const fieldByKey = Object.fromEntries(fields.map(f => [f.field_key, f]));
 
   // Grid fields (left two columns) and full-width fields
-  const gridKeys = ['customer_name','module_text','category_id','status','priority','impact','urgency'];
+  // Status is excluded from create — always set to NEW server-side
+  const gridKeys = ['customer_name','module_text','category_id','priority','impact','urgency'];
   const fullKeys  = ['short_description','description'];
 
   const isUploading = loading && uploadProgress.length > 0;
@@ -265,6 +302,47 @@ export default function CreateTicket() {
             </div>
           </div>
         )}
+
+        {/* ── Classification ── */}
+        <div className="tf-card">
+          <h2 className="tf-section-title">Classification</h2>
+          <div className="tf-grid">
+            {/* Type */}
+            {ticketTypes.length > 0 && (
+              <div className="form-group">
+                <label>Type</label>
+                <select value={form.typeId} onChange={e => setForm(p => ({ ...p, typeId: e.target.value }))}>
+                  <option value="">Select type</option>
+                  {ticketTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+            )}
+            {/* Classification */}
+            <div className="form-group">
+              <label>Classification</label>
+              <select value={form.classification} onChange={e => setForm(p => ({ ...p, classification: e.target.value }))}>
+                {CLASSIFICATIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+            {/* Assignment Group */}
+            <div className="form-group">
+              <label>Assignment Group</label>
+              <input type="text" value={form.assignmentGroup} onChange={e => setForm(p => ({ ...p, assignmentGroup: e.target.value }))} placeholder="e.g. Storage Team, Network Ops" />
+            </div>
+            {/* Assigned To — admins choose; employees see their own name */}
+            <div className="form-group">
+              <label>Assigned To</label>
+              {isAdmin ? (
+                <select value={form.assignedTo} onChange={e => setForm(p => ({ ...p, assignedTo: e.target.value }))}>
+                  <option value="">Unassigned</option>
+                  {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                </select>
+              ) : (
+                <input type="text" value={user?.fullName || user?.username || ''} disabled />
+              )}
+            </div>
+          </div>
+        </div>
 
         {/* ── Attachments ── */}
         <div className="tf-card">
@@ -316,15 +394,15 @@ export default function CreateTicket() {
           )}
         </div>
 
-        {/* ── Ownership ── */}
+        {/* ── Reporter ── */}
         <div className="tf-card">
-          <h2 className="tf-section-title">Ownership</h2>
+          <h2 className="tf-section-title">Reporter</h2>
           <div className="tf-owner-info">
             <div className="tf-owner-avatar">{(user?.fullName || user?.username || 'U')[0].toUpperCase()}</div>
             <div>
-              <p className="tf-owner-label">Ticket Owner</p>
+              <p className="tf-owner-label">Reported By</p>
               <p className="tf-owner-name">{user?.fullName || user?.username}</p>
-              <p className="tf-owner-note">You are automatically set as the owner of this ticket.</p>
+              <p className="tf-owner-note">You are logged as the reporter of this ticket.</p>
             </div>
           </div>
         </div>

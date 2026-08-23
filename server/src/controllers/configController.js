@@ -10,8 +10,67 @@ async function getModules(req, res, next) {
 
 async function getCategories(req, res, next) {
   try {
-    const result = await pool.query('SELECT * FROM categories WHERE is_active = true ORDER BY name');
+    const { typeId } = req.query;
+    let query = 'SELECT * FROM categories WHERE is_active = true';
+    const params = [];
+    if (typeId) { params.push(typeId); query += ` AND (type_id = $1 OR type_id IS NULL)`; }
+    query += ' ORDER BY name';
+    const result = await pool.query(query, params);
     res.json({ success: true, categories: result.rows });
+  } catch (err) { next(err); }
+}
+
+async function getTicketTypes(req, res, next) {
+  try {
+    const result = await pool.query('SELECT * FROM ticket_types WHERE is_active = true ORDER BY name');
+    res.json({ success: true, types: result.rows });
+  } catch (err) { next(err); }
+}
+
+async function getAdminTicketTypes(req, res, next) {
+  try {
+    const result = await pool.query('SELECT * FROM ticket_types ORDER BY name');
+    res.json({ success: true, types: result.rows });
+  } catch (err) { next(err); }
+}
+
+async function createTicketType(req, res, next) {
+  try {
+    const { name, description } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ success: false, message: 'name is required' });
+    const result = await pool.query(
+      'INSERT INTO ticket_types (name, description) VALUES ($1,$2) ON CONFLICT (name) DO NOTHING RETURNING *',
+      [name.trim(), description || null]
+    );
+    if (result.rows.length === 0) return res.status(400).json({ success: false, message: 'Type already exists' });
+    res.status(201).json({ success: true, type: result.rows[0] });
+  } catch (err) { next(err); }
+}
+
+async function updateTicketType(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { name, description, is_active } = req.body;
+    const result = await pool.query(
+      'UPDATE ticket_types SET name=COALESCE($1,name), description=COALESCE($2,description), is_active=COALESCE($3,is_active) WHERE id=$4 RETURNING *',
+      [name || null, description !== undefined ? description : null, is_active ?? null, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
+    res.json({ success: true, type: result.rows[0] });
+  } catch (err) { next(err); }
+}
+
+async function deleteTicketType(req, res, next) {
+  try {
+    const { id } = req.params;
+    const countRes = await pool.query('SELECT COUNT(*) FROM tickets WHERE type_id=$1 AND deleted_at IS NULL', [id]);
+    const count = parseInt(countRes.rows[0].count);
+    if (count > 0) {
+      return res.status(409).json({ success: false, inUse: true, count, message: `${count} ticket${count > 1 ? 's' : ''} use this type` });
+    }
+    const result = await pool.query('DELETE FROM ticket_types WHERE id=$1 RETURNING id', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
+    res.json({ success: true });
   } catch (err) { next(err); }
 }
 
@@ -99,11 +158,11 @@ async function deleteField(req, res, next) {
 
 async function createCategory(req, res, next) {
   try {
-    const { name, description } = req.body;
+    const { name, description, type_id } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ success: false, message: 'name is required' });
     const result = await pool.query(
-      'INSERT INTO categories (name, description) VALUES ($1,$2) ON CONFLICT (name) DO NOTHING RETURNING *',
-      [name.trim(), description || null]
+      'INSERT INTO categories (name, description, type_id) VALUES ($1,$2,$3) ON CONFLICT (name) DO NOTHING RETURNING *',
+      [name.trim(), description || null, type_id || null]
     );
     if (result.rows.length === 0) return res.status(400).json({ success: false, message: 'Category already exists' });
     res.status(201).json({ success: true, category: result.rows[0] });
@@ -113,10 +172,10 @@ async function createCategory(req, res, next) {
 async function updateCategory(req, res, next) {
   try {
     const { id } = req.params;
-    const { name, is_active } = req.body;
+    const { name, is_active, type_id } = req.body;
     const result = await pool.query(
-      'UPDATE categories SET name=COALESCE($1,name), is_active=COALESCE($2,is_active) WHERE id=$3 RETURNING *',
-      [name || null, is_active ?? null, id]
+      'UPDATE categories SET name=COALESCE($1,name), is_active=COALESCE($2,is_active), type_id=COALESCE($3::uuid,type_id) WHERE id=$4 RETURNING *',
+      [name || null, is_active ?? null, type_id || null, id]
     );
     if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Category not found' });
     res.json({ success: true, category: result.rows[0] });
@@ -176,4 +235,5 @@ module.exports = {
   getModules, getCategories, getUsers,
   getFields, getAdminFields, createField, updateField, deleteField,
   createCategory, updateCategory, deleteCategory, resetFields,
+  getTicketTypes, getAdminTicketTypes, createTicketType, updateTicketType, deleteTicketType,
 };

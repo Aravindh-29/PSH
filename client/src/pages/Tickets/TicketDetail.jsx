@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Pencil, Trash2, Download, X, Upload, Send } from 'lucide-react';
+import { Pencil, Trash2, Download, X, Upload, Send, Eye } from 'lucide-react';
 import { StatusBadge, PriorityBadge } from '../../components/Badge';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
@@ -163,12 +163,15 @@ export default function TicketDetail() {
             <div className="td-fields-grid">
               <Field label="Customer" value={ticket.customer_name} />
               <Field label="Module" value={ticket.module_name} />
+              {ticket.type_name && <Field label="Type" value={ticket.type_name} />}
               <Field label="Category" value={ticket.category_name} />
+              {ticket.classification && <Field label="Classification" value={ticket.classification} />}
               <Field label="Priority" value={ticket.priority} />
               <Field label="Impact" value={ticket.impact} />
               <Field label="Urgency" value={ticket.urgency} />
-              <Field label="Ticket Owner" value={ticket.ticket_owner_name} />
-              <Field label="Created By" value={ticket.created_by_name} />
+              <Field label="Assigned To" value={ticket.ticket_owner_name} />
+              {ticket.assignment_group && <Field label="Assignment Group" value={ticket.assignment_group} />}
+              <Field label="Reported By" value={ticket.created_by_name} />
               <Field label="Created At" value={fmt(ticket.created_at)} />
               <Field label="Updated By" value={ticket.updated_by_name} />
               <Field label="Updated At" value={fmt(ticket.updated_at)} />
@@ -219,19 +222,29 @@ export default function TicketDetail() {
             )}
 
             {attachments.length === 0 && uploadQueue.length === 0 && <p className="td-empty">No attachments</p>}
-            {attachments.map(att => (
-              <div key={att.id} className="att-row">
-                <div className="att-icon">📎</div>
-                <div className="att-info">
-                  <div className="att-name">{att.file_name}</div>
-                  <div className="att-meta">{fmtBytes(att.file_size)} · {fmt(att.uploaded_at)} · {att.uploader_name}</div>
+            {attachments.map(att => {
+              const isImage = att.mime_type.startsWith('image/');
+              const isPreviewable = isImage || att.mime_type === 'application/pdf' || att.mime_type === 'text/plain';
+              return (
+                <div key={att.id} className="att-row">
+                  {isImage
+                    ? <img src={`/api/attachments/${att.id}/download?preview=true`} alt={att.file_name} className="att-thumb" />
+                    : <div className="att-icon">📎</div>
+                  }
+                  <div className="att-info">
+                    <div className="att-name">{att.file_name}</div>
+                    <div className="att-meta">{fmtBytes(att.file_size)} · {fmt(att.uploaded_at)} · {att.uploader_name}</div>
+                  </div>
+                  {isPreviewable && (
+                    <a href={`/api/attachments/${att.id}/download?preview=true`} target="_blank" rel="noopener noreferrer" className="att-btn" title="Preview"><Eye size={13} /></a>
+                  )}
+                  <a href={`/api/attachments/${att.id}/download`} className="att-btn" title="Download"><Download size={13} /></a>
+                  {(isAdmin || att.uploaded_by === user?.id) && (
+                    <button className="att-btn danger" onClick={() => handleDeleteAttachment(att.id)} title="Delete"><X size={13} /></button>
+                  )}
                 </div>
-                <a href={`/api/attachments/${att.id}/download`} className="att-btn" title="Download"><Download size={13} /></a>
-                {(isAdmin || att.uploaded_by === user?.id) && (
-                  <button className="att-btn danger" onClick={() => handleDeleteAttachment(att.id)} title="Delete"><X size={13} /></button>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Comments */}
@@ -281,22 +294,34 @@ export default function TicketDetail() {
             <h3 className="td-card-title">Activity History</h3>
             <div className="audit-list">
               {audit.length === 0 && <p className="td-empty">No history</p>}
-              {audit.map((a) => (
-                <div key={a.id} className="audit-item">
-                  <div className="audit-dot" />
-                  <div className="audit-content">
-                    <div className="audit-action">{a.action.replace('_', ' ')}</div>
-                    {a.field_name && (
-                      <div className="audit-change">
-                        <span className="audit-field">{a.field_name}</span>:
-                        {a.old_value && <span className="audit-old"> {a.old_value}</span>}
-                        {a.new_value && <span className="audit-new"> → {a.new_value}</span>}
-                      </div>
-                    )}
-                    <div className="audit-meta">{a.user_name} · {fmt(a.created_at)}</div>
+              {audit.map((a) => {
+                const FIELD_LABELS = {
+                  ticket_owner: 'Assigned To', assigned_to: 'Secondary Assignee',
+                  category_id: 'Category', type_id: 'Type',
+                  status: 'Status', priority: 'Priority', impact: 'Impact', urgency: 'Urgency',
+                  short_description: 'Short Description', description: 'Description',
+                  customer_name: 'Customer', module_text: 'Module',
+                  assignment_group: 'Assignment Group', classification: 'Classification',
+                  attachment: 'Attachment',
+                };
+                const fieldLabel = a.field_name ? (FIELD_LABELS[a.field_name] || a.field_name.replace(/_/g, ' ')) : null;
+                return (
+                  <div key={a.id} className="audit-item">
+                    <div className="audit-dot" />
+                    <div className="audit-content">
+                      <div className="audit-action">{a.action.replace(/_/g, ' ')}</div>
+                      {fieldLabel && (
+                        <div className="audit-change">
+                          <span className="audit-field">{fieldLabel}</span>:
+                          {a.old_value && <span className="audit-old"> {a.old_value}</span>}
+                          {a.new_value && <span className="audit-new"> → {a.new_value}</span>}
+                        </div>
+                      )}
+                      <div className="audit-meta">{a.user_name} · {fmt(a.created_at)}</div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

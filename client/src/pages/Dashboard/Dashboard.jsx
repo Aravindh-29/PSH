@@ -376,7 +376,7 @@ export default function Dashboard({ personal = false }) {
               <tr>
                 <th>TICKET ID</th><th>SUBJECT</th><th>CUSTOMER</th>
                 <th>PRIORITY</th><th>STATUS</th>
-                <th>OWNER</th><th>CREATED BY</th>
+                <th>ASSIGNED TO</th><th>CREATED BY</th>
                 <th>UPDATED</th><th>ACTIONS</th>
               </tr>
             </thead>

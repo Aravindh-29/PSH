@@ -79,8 +79,10 @@ async function download(req, res, next) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
+    const PREVIEWABLE = ['image/jpeg','image/png','image/gif','image/webp','image/svg+xml','application/pdf','text/plain'];
+    const preview = req.query.preview === 'true' && PREVIEWABLE.includes(att.mime_type);
     res.setHeader('Content-Type', att.mime_type);
-    res.setHeader('Content-Disposition', `attachment; filename="${att.file_name}"`);
+    res.setHeader('Content-Disposition', `${preview ? 'inline' : 'attachment'}; filename="${att.file_name}"`);
     res.setHeader('Content-Length', att.file_size);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.send(att.file_data);

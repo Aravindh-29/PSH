@@ -228,7 +228,7 @@ export default function TicketList({ myTickets }) {
               <th className="th-sortable" onClick={() => toggleSort('status')}>
                 STATUS <SortIcon field="status" sort={sort} />
               </th>
-              <th>OWNER</th>
+              <th>ASSIGNED TO</th>
               <th>CREATED BY</th>
               <th className="th-sortable" onClick={() => toggleSort('updated_at')}>
                 UPDATED <SortIcon field="updated_at" sort={sort} />

@@ -3,6 +3,10 @@ const { requireAuth, requireAdmin } = require('../middleware/auth');
 const userCtrl = require('../controllers/userController');
 
 const router = express.Router();
+// Profile routes (self-service, any authenticated user)
+router.get('/me', requireAuth, userCtrl.getMe);
+router.put('/me', requireAuth, userCtrl.updateMe);
+
 router.get('/', requireAuth, userCtrl.list);
 router.post('/', requireAdmin, userCtrl.create);
 router.get('/:id', requireAdmin, userCtrl.getOne);

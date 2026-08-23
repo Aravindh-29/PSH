@@ -167,8 +167,8 @@ export default function Topbar({ onMenuClick }) {
 
           {dropdownOpen && (
             <div className="topbar-dropdown">
-              <button onClick={() => setDropdownOpen(false)}>
-                <User size={14} /> Profile
+              <button onClick={() => { setDropdownOpen(false); navigate('/profile'); }}>
+                <User size={14} /> My Profile
               </button>
               <hr />
               <button onClick={handleLogout} className="logout-item">

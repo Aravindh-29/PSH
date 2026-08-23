@@ -262,13 +262,50 @@ function CategoryModal({ category, onSave, onClose }) {
   );
 }
 
+function TicketTypeModal({ ticketType, onSave, onClose }) {
+  const [name, setName]         = useState(ticketType?.name || '');
+  const [description, setDesc]  = useState(ticketType?.description || '');
+  const [saving, setSaving]     = useState(false);
+  const handleSave = async () => {
+    if (!name.trim()) { toast.error('Type name is required'); return; }
+    setSaving(true);
+    try { await onSave(name.trim(), description.trim()); onClose(); } catch {} finally { setSaving(false); }
+  };
+  return (
+    <div className="cfg-modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="cfg-modal cfg-modal-sm">
+        <div className="cfg-modal-header">
+          <h3>{ticketType ? 'Edit Ticket Type' : 'Add Ticket Type'}</h3>
+          <button className="cfg-modal-close" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="cfg-modal-body">
+          <div className="cfg-form-row">
+            <label>Type Name <span className="req">*</span></label>
+            <input value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSave()} placeholder="e.g. Incident" autoFocus />
+          </div>
+          <div className="cfg-form-row">
+            <label>Description</label>
+            <input value={description} onChange={e => setDesc(e.target.value)} placeholder="Short description of this type" />
+          </div>
+        </div>
+        <div className="cfg-modal-footer">
+          <button className="cfg-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="cfg-btn-save" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminModules() {
   const [tab, setTab]             = useState('fields');
   const [fields, setFields]       = useState([]);
   const [categories, setCategories] = useState([]);
+  const [ticketTypes, setTicketTypes] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [fieldModal, setFieldModal] = useState(null); // null | 'new' | field object
   const [catModal, setCatModal]   = useState(null);   // null | 'new' | category object
+  const [typeModal, setTypeModal] = useState(null);   // null | 'new' | type object
   const [confirmModal, setConfirmModal] = useState(null); // null | { title, message, onConfirm }
   const [showResetModal, setShowResetModal] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -276,12 +313,14 @@ export default function AdminModules() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [f, c] = await Promise.all([
+      const [f, c, tt] = await Promise.all([
         api.get('/config/admin/fields'),
         api.get('/config/categories'),
+        api.get('/config/admin/ticket-types'),
       ]);
       setFields(f.data.fields);
       setCategories(c.data.categories);
+      setTicketTypes(tt.data.types || []);
     } catch { toast.error('Failed to load configuration'); }
     finally { setLoading(false); }
   };
@@ -413,6 +452,47 @@ export default function AdminModules() {
     });
   };
 
+  // ── Ticket Type operations ──
+  const saveTicketType = async (name, description) => {
+    try {
+      if (typeModal === 'new') {
+        await api.post('/config/admin/ticket-types', { name, description });
+        toast.success('Ticket type added');
+      } else {
+        await api.put(`/config/admin/ticket-types/${typeModal.id}`, { name, description });
+        toast.success('Ticket type updated');
+      }
+      await loadAll();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Save failed');
+      throw err;
+    }
+  };
+
+  const toggleTicketTypeActive = async (tt) => {
+    try {
+      await api.put(`/config/admin/ticket-types/${tt.id}`, { is_active: !tt.is_active });
+      setTicketTypes(prev => prev.map(t => t.id === tt.id ? { ...t, is_active: !t.is_active } : t));
+    } catch { toast.error('Update failed'); }
+  };
+
+  const deleteTicketType = (tt) => {
+    setConfirmModal({
+      title: 'Delete Ticket Type',
+      message: `Delete type "${tt.name}"? Tickets using this type will lose their type reference.`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/config/admin/ticket-types/${tt.id}`);
+          toast.success('Ticket type deleted');
+          setTicketTypes(prev => prev.filter(t => t.id !== tt.id));
+        } catch (err) {
+          toast.error(err?.response?.data?.message || 'Delete failed');
+        }
+      },
+    });
+  };
+
   const parseOptions = (opts) => {
     if (Array.isArray(opts)) return opts;
     try { return JSON.parse(opts || '[]'); } catch { return []; }
@@ -436,6 +516,10 @@ export default function AdminModules() {
         <button className={`cfg-tab ${tab === 'categories' ? 'active' : ''}`} onClick={() => setTab('categories')}>
           Categories
           <span className="cfg-tab-count">{categories.length}</span>
+        </button>
+        <button className={`cfg-tab ${tab === 'types' ? 'active' : ''}`} onClick={() => setTab('types')}>
+          Ticket Types
+          <span className="cfg-tab-count">{ticketTypes.length}</span>
         </button>
       </div>
 
@@ -578,6 +662,55 @@ export default function AdminModules() {
         </div>
       )}
 
+      {/* ── Ticket Types tab ── */}
+      {tab === 'types' && (
+        <div className="cfg-section">
+          <div className="cfg-section-header">
+            <div>
+              <p className="cfg-section-desc">
+                Define ticket types (Incident, Service Request, Problem, Change Request). Types cascade to filter Categories.
+              </p>
+            </div>
+            <button className="cfg-btn-primary" onClick={() => setTypeModal('new')}>
+              <Plus size={14} /> Add Type
+            </button>
+          </div>
+          <div className="cfg-table-wrap">
+            <table className="cfg-table">
+              <thead>
+                <tr>
+                  <th>Type Name</th>
+                  <th>Description</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ticketTypes.length === 0 && (
+                  <tr><td colSpan={4} className="cfg-empty-row">No ticket types yet.</td></tr>
+                )}
+                {ticketTypes.map(tt => (
+                  <tr key={tt.id} className={!tt.is_active ? 'cfg-row-inactive' : ''}>
+                    <td style={{ fontWeight: 500 }}>{tt.name}</td>
+                    <td style={{ color: '#94a3b8', fontSize: '0.85rem' }}>{tt.description || '—'}</td>
+                    <td><span className={`cfg-status-pill ${tt.is_active ? 'active' : 'inactive'}`}>{tt.is_active ? 'Active' : 'Inactive'}</span></td>
+                    <td>
+                      <div className="cfg-actions">
+                        <button className="cfg-btn-icon" onClick={() => setTypeModal(tt)} title="Edit"><Pencil size={13} /></button>
+                        <button className="cfg-btn-icon" onClick={() => toggleTicketTypeActive(tt)} title={tt.is_active ? 'Deactivate' : 'Activate'}>
+                          {tt.is_active ? <EyeOff size={13} /> : <Eye size={13} />}
+                        </button>
+                        <button className="cfg-btn-icon cfg-btn-danger" onClick={() => deleteTicketType(tt)} title="Delete"><Trash2 size={13} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* ── Modals ── */}
       {fieldModal !== null && (
         <FieldModal
@@ -591,6 +724,13 @@ export default function AdminModules() {
           category={catModal === 'new' ? null : catModal}
           onSave={saveCategory}
           onClose={() => setCatModal(null)}
+        />
+      )}
+      {typeModal !== null && (
+        <TicketTypeModal
+          ticketType={typeModal === 'new' ? null : typeModal}
+          onSave={saveTicketType}
+          onClose={() => setTypeModal(null)}
         />
       )}
       {confirmModal !== null && (

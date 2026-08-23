@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Upload, Download, X, Paperclip } from 'lucide-react';
+import { Upload, Download, X, Paperclip, Eye } from 'lucide-react';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import { fmt } from '../../utils/dateUtils';
@@ -104,6 +104,7 @@ export default function EditTicket() {
 
   const [fields, setFields]           = useState([]);
   const [categories, setCategories]   = useState([]);
+  const [ticketTypes, setTicketTypes] = useState([]);
   const [users, setUsers]             = useState([]);
   const [loading, setLoading]         = useState(false);
   const [form, setForm]               = useState(null);
@@ -112,32 +113,48 @@ export default function EditTicket() {
   const [uploadQueue, setUploadQueue] = useState([]);
   const fileInputRef = useRef(null);
 
+  const CLASSIFICATIONS = [
+    { value: '', label: 'Select classification' },
+    { value: 'Software', label: 'Software' },
+    { value: 'Hardware', label: 'Hardware' },
+    { value: 'Network', label: 'Network' },
+    { value: 'Access', label: 'Access / Permissions' },
+    { value: 'Configuration', label: 'Configuration' },
+    { value: 'Other', label: 'Other' },
+  ];
+
   useEffect(() => {
     Promise.all([
       api.get(`/tickets/${id}`),
       api.get('/config/fields'),
       api.get('/config/categories'),
       api.get('/config/users'),
-    ]).then(([t, f, c, u]) => {
+      api.get('/config/ticket-types'),
+    ]).then(([t, f, c, u, tt]) => {
       const ticket = t.data.ticket;
       setForm({
-        customerName:     ticket.customer_name  || '',
-        moduleText:       ticket.module_name    || '',
-        categoryId:       ticket.category_id    || '',
-        shortDescription: ticket.short_description || '',
-        description:      ticket.description   || '',
-        status:           ticket.status        || 'NEW',
-        priority:         ticket.priority      || 'MEDIUM',
-        impact:           ticket.impact        || 'MEDIUM',
-        urgency:          ticket.urgency       || 'MEDIUM',
-        ticketOwner:      ticket.ticket_owner  || null,
-        ticketOwnerName:  ticket.ticket_owner_name || '',
+        customerName:     ticket.customer_name       || '',
+        moduleText:       ticket.module_name         || '',
+        categoryId:       ticket.category_id         || '',
+        shortDescription: ticket.short_description   || '',
+        description:      ticket.description         || '',
+        status:           ticket.status              || 'NEW',
+        priority:         ticket.priority            || 'MEDIUM',
+        impact:           ticket.impact              || 'MEDIUM',
+        urgency:          ticket.urgency             || 'MEDIUM',
+        ticketOwner:      ticket.ticket_owner        || '',
+        ticketOwnerName:  ticket.ticket_owner_name   || '',
+        assignedTo:       ticket.assigned_to         || '',
+        typeId:           ticket.type_id             || '',
+        classification:   ticket.classification      || '',
+        assignmentGroup:  ticket.assignment_group    || '',
       });
       setCustomData(ticket.custom_data || {});
       setAttachments(t.data.attachments || []);
       setFields(f.data.fields || []);
       setCategories(c.data.categories || []);
       setUsers(u.data.users || []);
+      setTicketTypes(tt.data.types || []);
     }).catch(() => toast.error('Failed to load ticket'));
   }, [id]);
 
@@ -147,7 +164,15 @@ export default function EditTicket() {
     e.preventDefault();
     setLoading(true);
     try {
-      await api.put(`/tickets/${id}`, { ...form, customData });
+      const payload = {
+        ...form,
+        typeId: form.typeId || undefined,
+        classification: form.classification || undefined,
+        assignmentGroup: form.assignmentGroup || undefined,
+        ...(isAdmin ? { ticketOwner: form.ticketOwner || null, assignedTo: form.assignedTo || null } : {}),
+        customData,
+      };
+      await api.put(`/tickets/${id}`, payload);
       toast.success('Ticket updated');
       navigate(`/tickets/${id}`);
     } catch (err) {
@@ -233,21 +258,43 @@ export default function EditTicket() {
               if (!f) return null;
               return <React.Fragment key={key}>{renderSystemField(f, form, set, categories, users, isAdmin)}</React.Fragment>;
             })}
-            {/* Ticket owner row (always shown, not a ticket_field) */}
+            {/* Assigned To (ticket_owner) */}
             {isAdmin ? (
               <div className="form-group">
-                <label>Ticket Owner</label>
+                <label>Assigned To</label>
                 <select value={form.ticketOwner || ''} onChange={e => set('ticketOwner', e.target.value)}>
-                  <option value="">Select owner</option>
+                  <option value="">Unassigned</option>
                   {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
                 </select>
               </div>
             ) : (
               <div className="form-group">
-                <label>Ticket Owner</label>
-                <div className="tf-readonly-field">{form.ticketOwnerName || 'Not assigned'}</div>
+                <label>Assigned To</label>
+                <div className="tf-readonly-field">{form.ticketOwnerName || 'Unassigned'}</div>
               </div>
             )}
+            {/* Type */}
+            {ticketTypes.length > 0 && (
+              <div className="form-group">
+                <label>Type</label>
+                <select value={form.typeId || ''} onChange={e => set('typeId', e.target.value)}>
+                  <option value="">Select type</option>
+                  {ticketTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+            )}
+            {/* Classification */}
+            <div className="form-group">
+              <label>Classification</label>
+              <select value={form.classification || ''} onChange={e => set('classification', e.target.value)}>
+                {CLASSIFICATIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+            {/* Assignment Group */}
+            <div className="form-group">
+              <label>Assignment Group</label>
+              <input type="text" value={form.assignmentGroup || ''} onChange={e => set('assignmentGroup', e.target.value)} placeholder="e.g. Storage Team, Network Ops" />
+            </div>
           </div>
           {fullKeys.map(key => {
             const f = fieldByKey[key];
@@ -301,23 +348,35 @@ export default function EditTicket() {
             </div>
           )}
 
-          {attachments.map(att => (
-            <div key={att.id} className="att-row">
-              <div className="att-icon">📎</div>
-              <div className="att-info">
-                <div className="att-name">{att.file_name}</div>
-                <div className="att-meta">{fmtBytes(att.file_size)} · {fmt(att.uploaded_at)} · {att.uploader_name}</div>
+          {attachments.map(att => {
+            const isImage = att.mime_type?.startsWith('image/');
+            const isPreviewable = isImage || att.mime_type === 'application/pdf' || att.mime_type === 'text/plain';
+            return (
+              <div key={att.id} className="att-row">
+                {isImage
+                  ? <img src={`/api/attachments/${att.id}/download?preview=true`} alt={att.file_name} className="att-thumb" />
+                  : <div className="att-icon">📎</div>
+                }
+                <div className="att-info">
+                  <div className="att-name">{att.file_name}</div>
+                  <div className="att-meta">{fmtBytes(att.file_size)} · {fmt(att.uploaded_at)} · {att.uploader_name}</div>
+                </div>
+                {isPreviewable && (
+                  <a href={`/api/attachments/${att.id}/download?preview=true`} className="att-btn" title="Preview" target="_blank" rel="noreferrer">
+                    <Eye size={13} />
+                  </a>
+                )}
+                <a href={`/api/attachments/${att.id}/download`} className="att-btn" title="Download" target="_blank" rel="noreferrer">
+                  <Download size={13} />
+                </a>
+                {(isAdmin || att.uploaded_by === currentUser?.id) && (
+                  <button type="button" className="att-btn danger" onClick={() => handleDeleteAttachment(att.id)} title="Delete">
+                    <X size={13} />
+                  </button>
+                )}
               </div>
-              <a href={`/api/attachments/${att.id}/download`} className="att-btn" title="Download" target="_blank" rel="noreferrer">
-                <Download size={13} />
-              </a>
-              {(isAdmin || att.uploaded_by === currentUser?.id) && (
-                <button type="button" className="att-btn danger" onClick={() => handleDeleteAttachment(att.id)} title="Delete">
-                  <X size={13} />
-                </button>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="tf-actions">
