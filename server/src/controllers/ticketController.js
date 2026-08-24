@@ -138,6 +138,24 @@ async function create(req, res, next) {
 
     const ticket = result.rows[0];
     await logAudit(client, ticket.id, req.session.userId, 'CREATED', null, null, null, req.ip);
+
+    // Notify the assignee when a ticket is created with an immediate assignment
+    if (rawAssigned && rawAssigned !== req.session.userId) {
+      const creatorRow = await client.query('SELECT full_name FROM users WHERE id = $1', [req.session.userId]);
+      const creatorName = creatorRow.rows[0]?.full_name || 'Someone';
+      await client.query(
+        `INSERT INTO notifications (user_id, type, title, message, ticket_id, ticket_number)
+         VALUES ($1, 'TICKET_ASSIGNED', $2, $3, $4, $5)`,
+        [
+          rawAssigned,
+          `Ticket assigned to you`,
+          `${creatorName} assigned ${ticketNumber} to you — ${shortDescription || ''}`,
+          ticket.id,
+          ticketNumber,
+        ]
+      );
+    }
+
     await client.query('COMMIT');
 
     logger.info(`Ticket created: ${ticketNumber} by ${req.session.username}`);

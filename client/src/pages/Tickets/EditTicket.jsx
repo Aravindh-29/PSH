@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { Upload, Download, X, Eye, Trash2, Paperclip } from 'lucide-react';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
+import { useNotifications } from '../../context/NotificationContext';
 import { fmt } from '../../utils/dateUtils';
 import SearchSelect from '../../components/SearchSelect';
 import toast from 'react-hot-toast';
@@ -50,6 +51,7 @@ export default function EditTicket() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
+  const { refetch: refetchNotifications } = useNotifications();
   const isAdmin = currentUser?.role === 'admin';
 
   const [fields, setFields]           = useState([]);
@@ -134,6 +136,7 @@ export default function EditTicket() {
       };
       await api.put(`/tickets/${id}`, payload);
       toast.success('Ticket updated');
+      refetchNotifications();
       navigate(isAdmin ? `/tickets/${id}` : '/tickets');
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Update failed');

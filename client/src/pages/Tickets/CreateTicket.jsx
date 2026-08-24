@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Upload, X, Paperclip, Download } from 'lucide-react';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
+import { useNotifications } from '../../context/NotificationContext';
 import SearchSelect from '../../components/SearchSelect';
 import toast from 'react-hot-toast';
 import './TicketDetail.css';
@@ -47,6 +48,7 @@ export default function CreateTicket() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { refetch: refetchNotifications } = useNotifications();
   const isAdmin = user?.role === 'admin';
 
   const [fields, setFields]             = useState([]);
@@ -163,6 +165,7 @@ export default function CreateTicket() {
         toast.success(`Ticket ${ticket_number} created!`);
         navigate(`/tickets/${ticketId}`);
       }
+      refetchNotifications();
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Failed to create ticket');
       setLoading(false);
