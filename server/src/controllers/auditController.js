@@ -45,7 +45,7 @@ async function getLogs(req, res, next) {
 
     // 3. Active days in the calendar month (for dot indicators)
     const activeDaysRes = await pool.query(
-      `SELECT DISTINCT (created_at AT TIME ZONE $2)::date AS day
+      `SELECT DISTINCT to_char(created_at AT TIME ZONE $2, 'YYYY-MM-DD') AS day
        FROM ticket_audit_logs
        WHERE to_char(created_at AT TIME ZONE $2, 'YYYY-MM') = to_char($1::date, 'YYYY-MM')
        ORDER BY day`,
@@ -54,7 +54,7 @@ async function getLogs(req, res, next) {
 
     // 4. Per-day summary for sparkline (count per day in the month)
     const sparkRes = await pool.query(
-      `SELECT (created_at AT TIME ZONE $2)::date AS day, COUNT(*) AS cnt
+      `SELECT to_char(created_at AT TIME ZONE $2, 'YYYY-MM-DD') AS day, COUNT(*) AS cnt
        FROM ticket_audit_logs
        WHERE to_char(created_at AT TIME ZONE $2, 'YYYY-MM') = to_char($1::date, 'YYYY-MM')
        GROUP BY 1 ORDER BY 1`,
@@ -64,17 +64,19 @@ async function getLogs(req, res, next) {
     const total = parseInt(countRes.rows[0].count);
 
     // Build lookup maps for UUID → human-readable resolution
-    const [usersRes, catsRes] = await Promise.all([
+    const [usersRes, catsRes, typesRes] = await Promise.all([
       pool.query('SELECT id, full_name FROM users'),
       pool.query('SELECT id, name FROM categories'),
+      pool.query('SELECT id, name FROM ticket_types'),
     ]);
     const userMap = Object.fromEntries(usersRes.rows.map(u => [u.id, u.full_name]));
     const catMap  = Object.fromEntries(catsRes.rows.map(c => [c.id, c.name]));
+    const typeMap = Object.fromEntries(typesRes.rows.map(t => [t.id, t.name]));
 
     const logs = logsRes.rows.map(l => ({
       ...l,
-      old_value: resolveValue(l.field_name, l.old_value, userMap, catMap),
-      new_value: resolveValue(l.field_name, l.new_value, userMap, catMap),
+      old_value: resolveValue(l.field_name, l.old_value, userMap, catMap, typeMap),
+      new_value: resolveValue(l.field_name, l.new_value, userMap, catMap, typeMap),
     }));
 
     // Derive per-day summary
@@ -90,9 +92,9 @@ async function getLogs(req, res, next) {
         total, page: parseInt(page), limit: parseInt(limit),
         pages: Math.ceil(total / parseInt(limit)),
       },
-      activeDays: activeDaysRes.rows.map(r => r.day.toISOString().slice(0, 10)),
+      activeDays: activeDaysRes.rows.map(r => r.day),
       sparkline: sparkRes.rows.map(r => ({
-        day: r.day.toISOString().slice(0, 10),
+        day: r.day,
         count: parseInt(r.cnt),
       })),
     });
@@ -101,14 +103,13 @@ async function getLogs(req, res, next) {
 
 // Resolve a raw value to a human-readable label given the field name.
 // Uses pre-fetched lookup maps so we only query once per request.
-function resolveValue(field, rawVal, userMap, catMap) {
+function resolveValue(field, rawVal, userMap, catMap, typeMap = {}) {
   if (!rawVal || rawVal === 'null') return null;
   if (['ticket_owner','assigned_to','created_by','updated_by','deleted_by','user_id'].includes(field)) {
     return userMap[rawVal] || rawVal;
   }
-  if (field === 'category_id') {
-    return catMap[rawVal] || rawVal;
-  }
+  if (field === 'category_id') return catMap[rawVal] || rawVal;
+  if (field === 'type_id')     return typeMap[rawVal] || rawVal;
   return rawVal;
 }
 
@@ -131,12 +132,14 @@ async function getTicketHistory(req, res, next) {
     const ticket = ticketRes.rows[0];
 
     // Build lookup maps
-    const [usersRes, catsRes] = await Promise.all([
+    const [usersRes, catsRes, typesRes2] = await Promise.all([
       pool.query('SELECT id, full_name FROM users'),
       pool.query('SELECT id, name FROM categories'),
+      pool.query('SELECT id, name FROM ticket_types'),
     ]);
     const userMap = Object.fromEntries(usersRes.rows.map(u => [u.id, u.full_name]));
     const catMap  = Object.fromEntries(catsRes.rows.map(c => [c.id, c.name]));
+    const typeMap = Object.fromEntries(typesRes2.rows.map(t => [t.id, t.name]));
 
     // All audit entries for this ticket, oldest first (to show timeline)
     const logsRes = await pool.query(
@@ -152,12 +155,38 @@ async function getTicketHistory(req, res, next) {
 
     const logs = logsRes.rows.map(l => ({
       ...l,
-      old_value: resolveValue(l.field_name, l.old_value, userMap, catMap),
-      new_value: resolveValue(l.field_name, l.new_value, userMap, catMap),
+      old_value: resolveValue(l.field_name, l.old_value, userMap, catMap, typeMap),
+      new_value: resolveValue(l.field_name, l.new_value, userMap, catMap, typeMap),
     }));
 
     res.json({ success: true, ticket, logs });
   } catch (err) { next(err); }
 }
 
-module.exports = { getLogs, getTicketHistory };
+async function getRetention(req, res, next) {
+  try {
+    const row = await pool.query('SELECT * FROM audit_retention_settings WHERE id = 1');
+    res.json({ success: true, settings: row.rows[0] });
+  } catch (err) { next(err); }
+}
+
+async function updateRetention(req, res, next) {
+  try {
+    const { enabled, retention_days } = req.body;
+    if (retention_days !== undefined && (isNaN(retention_days) || retention_days < 1)) {
+      return res.status(400).json({ success: false, message: 'retention_days must be at least 1' });
+    }
+    const row = await pool.query(
+      `UPDATE audit_retention_settings
+       SET enabled        = COALESCE($1, enabled),
+           retention_days = COALESCE($2, retention_days),
+           updated_at     = NOW(),
+           updated_by     = $3
+       WHERE id = 1 RETURNING *`,
+      [enabled ?? null, retention_days ?? null, req.session.userId]
+    );
+    res.json({ success: true, settings: row.rows[0] });
+  } catch (err) { next(err); }
+}
+
+module.exports = { getLogs, getTicketHistory, getRetention, updateRetention };

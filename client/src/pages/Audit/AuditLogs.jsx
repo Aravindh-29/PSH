@@ -189,6 +189,10 @@ export default function AuditLogs() {
   const [totalPages,    setTotalPages]    = useState(1);
   const [historyTicket, setHistoryTicket] = useState(null);
   const [search, setSearch] = useState('');
+  const [retention, setRetention]           = useState({ enabled: false, retention_days: 30 });
+  const [retentionDraft, setRetentionDraft] = useState({ enabled: false, retention_days: 30 });
+  const [retentionSaving, setRetentionSaving] = useState(false);
+  const [showRetention, setShowRetention]   = useState(false);
 
   const LIMIT = 50;
 
@@ -210,6 +214,25 @@ export default function AuditLogs() {
 
   useEffect(() => { load(selectedDate, viewMonth, 1); }, [selectedDate, viewMonth]);
   useEffect(() => { setSearch(''); }, [selectedDate]);
+  useEffect(() => {
+    api.get('/audit/retention').then(r => {
+      const s = r.data.settings;
+      setRetention(s);
+      setRetentionDraft({ enabled: s.enabled, retention_days: s.retention_days });
+    }).catch(() => {});
+  }, []);
+
+  const saveRetention = async () => {
+    const days = parseInt(retentionDraft.retention_days);
+    if (isNaN(days) || days < 1) { alert('Enter a valid number of days (min 1)'); return; }
+    setRetentionSaving(true);
+    try {
+      const r = await api.put('/audit/retention', { enabled: retentionDraft.enabled, retention_days: days });
+      setRetention(r.data.settings);
+      setShowRetention(false);
+    } catch { alert('Failed to save retention settings'); }
+    finally { setRetentionSaving(false); }
+  };
 
   const displayDate = selectedDate ? format(parseISO(selectedDate), 'EEEE, MMMM d, yyyy') : '—';
 
@@ -228,7 +251,50 @@ export default function AuditLogs() {
           <h1 className="al-title">Audit Logs</h1>
           <p className="al-sub">Track every employee action — ticket created, field modified, attachment changed</p>
         </div>
+        <button className="al-retention-btn" onClick={() => { setRetentionDraft({ enabled: retention.enabled, retention_days: retention.retention_days }); setShowRetention(p => !p); }}>
+          ⚙ Retention Policy
+          {retention.enabled && <span className="al-retention-badge">{retention.retention_days}d</span>}
+        </button>
       </div>
+
+      {showRetention && (
+        <div className="al-retention-panel">
+          <div className="al-retention-title">Log Retention Policy</div>
+          <p className="al-retention-desc">Automatically delete audit logs older than the specified period. Runs daily at server startup.</p>
+          <div className="al-retention-row">
+            <label className="al-retention-toggle">
+              <input type="checkbox" checked={retentionDraft.enabled} onChange={e => setRetentionDraft(p => ({ ...p, enabled: e.target.checked }))} />
+              <span>Enable auto-deletion</span>
+            </label>
+          </div>
+          <div className="al-retention-presets">
+            {[7, 14, 30, 60, 90].map(d => (
+              <button key={d} className={`al-preset-btn${retentionDraft.retention_days === d ? ' active' : ''}`} onClick={() => setRetentionDraft(p => ({ ...p, retention_days: d }))}>
+                {d} days
+              </button>
+            ))}
+          </div>
+          <div className="al-retention-custom-row">
+            <span>Custom:</span>
+            <input
+              type="number" min="1" max="3650"
+              className="al-retention-input"
+              value={retentionDraft.retention_days}
+              onChange={e => setRetentionDraft(p => ({ ...p, retention_days: parseInt(e.target.value) || '' }))}
+            />
+            <span>days</span>
+          </div>
+          {retentionDraft.enabled && (
+            <p className="al-retention-warn">⚠ Logs older than <strong>{retentionDraft.retention_days} days</strong> will be permanently deleted daily.</p>
+          )}
+          <div className="al-retention-actions">
+            <button className="al-retention-cancel" onClick={() => setShowRetention(false)}>Cancel</button>
+            <button className="al-retention-save" onClick={saveRetention} disabled={retentionSaving}>
+              {retentionSaving ? 'Saving…' : 'Save Policy'}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="al-body">
         {/* Sidebar */}

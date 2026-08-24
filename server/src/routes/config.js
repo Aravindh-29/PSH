@@ -1,7 +1,8 @@
 const express = require('express');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const configCtrl    = require('../controllers/configController');
-const ssoConfigCtrl = require('../controllers/ssoConfigController');
+const configCtrl       = require('../controllers/configController');
+const ssoConfigCtrl    = require('../controllers/ssoConfigController');
+const emailConfigCtrl  = require('../controllers/emailConfigController');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -35,5 +36,10 @@ router.get   ('/admin/sso',      requireAdmin, ssoConfigCtrl.getSSOConfig);
 router.post  ('/admin/sso',      requireAdmin, ssoConfigCtrl.saveSSOConfig);
 router.post  ('/admin/sso/test', requireAdmin, ssoConfigCtrl.testSSOConnection);
 router.delete('/admin/sso',      requireAdmin, ssoConfigCtrl.clearSSOConfig);
+
+// Email configuration (admin only)
+router.get ('/admin/email',      requireAdmin, emailConfigCtrl.getConfig);
+router.post('/admin/email',      requireAdmin, emailConfigCtrl.saveConfig);
+router.post('/admin/email/test', requireAdmin, emailConfigCtrl.testConfig);
 
 module.exports = router;

@@ -61,6 +61,7 @@ export default function CreateTicket() {
   const [uploadProgress, setUploadProgress] = useState([]);
   const [attachOpen, setAttachOpen]     = useState(false);
   const [nextNumber, setNextNumber]     = useState('');
+  const [workNote, setWorkNote]         = useState('');
   const fileInputRef = useRef(null);
 
   const [form, setForm] = useState({
@@ -120,12 +121,17 @@ export default function CreateTicket() {
 
   const removePending = (idx) => setPendingFiles(prev => prev.filter((_, i) => i !== idx));
 
+  const noteRequired = !!form?.assignedTo;
+
   const validate = () => {
     if (!form.typeId) {
       toast.error('Please select a ticket type to continue'); return false;
     }
     if (!form.customerName || !form.moduleText || !form.categoryId || !form.shortDescription || !form.description) {
       toast.error('Please fill in all required fields'); return false;
+    }
+    if (noteRequired && !workNote.trim()) {
+      toast.error('A work note is required when assigning a ticket to someone.'); return false;
     }
     const customRequired = fields.filter(f => !SYSTEM_KEYS.includes(f.field_key) && f.is_required);
     for (const f of customRequired) {
@@ -149,6 +155,9 @@ export default function CreateTicket() {
       };
       const res = await api.post('/tickets', payload);
       const { id: ticketId, ticket_number } = res.data.ticket;
+      if (workNote.trim()) {
+        await api.post(`/tickets/${ticketId}/comments`, { body: workNote.trim(), type: 'WORK_NOTE' });
+      }
       if (pendingFiles.length > 0) {
         const initQ = pendingFiles.map((f, i) => ({ id: i, name: f.name, progress: 0, status: 'uploading' }));
         setUploadProgress(initQ);
@@ -446,6 +455,24 @@ export default function CreateTicket() {
               onChange={e => set('description', e.target.value)}
               rows={6}
               placeholder="Provide full details of the issue..."
+            />
+          </div>
+
+          {/* COMMENTS & WORK NOTES */}
+          <div className="ip-section">
+            <div className="ip-section-bar">
+              <span>Comments &amp; Work Notes</span>
+              {noteRequired
+                ? <span style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600 }}>* Required when assigning the ticket</span>
+                : <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 400 }}>Optional — saved with this ticket</span>
+              }
+            </div>
+            <textarea
+              className={`ip-note-textarea${noteRequired && !workNote.trim() ? ' ip-note-required' : ''}`}
+              value={workNote}
+              onChange={e => setWorkNote(e.target.value)}
+              placeholder={noteRequired ? 'Explain the reason for this assignment…' : 'Add a work note or comment (optional)…'}
+              rows={4}
             />
           </div>
 

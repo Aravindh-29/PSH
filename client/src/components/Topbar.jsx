@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Search, ChevronDown, LogOut, User, Loader, Bell, Sun, Moon } from 'lucide-react';
+import { Menu, Search, ChevronDown, LogOut, User, Loader, Bell } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { StatusBadge, PriorityBadge } from './Badge';
@@ -26,7 +26,7 @@ function relativeTime(ts) {
   return `${Math.floor(hr / 24)}d ago`;
 }
 
-export default function Topbar({ onMenuClick, darkMode, onThemeToggle }) {
+export default function Topbar({ onMenuClick }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { notifications, unread, markRead, markAllRead } = useNotifications();
@@ -184,15 +184,6 @@ export default function Topbar({ onMenuClick, darkMode, onThemeToggle }) {
       </div>
 
       <div className="topbar-right">
-        {/* ── Theme Toggle ── */}
-        <button
-          className="theme-toggle-btn"
-          onClick={onThemeToggle}
-          title={darkMode ? 'Switch to Light mode' : 'Switch to Dark mode'}
-        >
-          {darkMode ? <Sun size={16} /> : <Moon size={16} />}
-        </button>
-
         {/* ── Notification Bell ── */}
         <div className="notif-wrapper" ref={notifRef}>
           <button

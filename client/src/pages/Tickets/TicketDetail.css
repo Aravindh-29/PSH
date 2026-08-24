@@ -126,11 +126,26 @@
 
 .ct-work-note.ct-card,
 .ct-work-note > .ct-card { border-color: #FDE68A; }
-.ct-item.ct-work-note .ct-dot { background: #F59E0B; box-shadow: 0 0 0 2.5px #F59E0B; }
+.ct-item.ct-work-note .ct-dot { background: #3B82F6; box-shadow: 0 0 0 2.5px #3B82F6; }
 .ct-item.ct-work-note .ct-connector {
   background: repeating-linear-gradient(
     to bottom,
-    #FCD34D 0px, #FCD34D 6px,
+    #93C5FD 0px, #93C5FD 6px,
+    transparent 6px, transparent 12px
+  );
+}
+
+/* Latest comment always gets green dot + blue connector, regardless of type */
+.ct-item.ct-first .ct-dot,
+.ct-item.ct-first.ct-work-note .ct-dot {
+  background: #22C55E;
+  box-shadow: 0 0 0 2.5px #22C55E;
+}
+.ct-item.ct-first .ct-connector,
+.ct-item.ct-first.ct-work-note .ct-connector {
+  background: repeating-linear-gradient(
+    to bottom,
+    #93C5FD 0px, #93C5FD 6px,
     transparent 6px, transparent 12px
   );
 }

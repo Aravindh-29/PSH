@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { Upload, Download, X, Eye, Trash2, Paperclip } from 'lucide-react';
+import { Upload, Download, X, Trash2, Paperclip } from 'lucide-react';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
@@ -67,6 +67,7 @@ export default function EditTicket() {
   const [pendingDeletes, setPendingDeletes] = useState(new Set());
   const [saveNote, setSaveNote]       = useState('');
   const [originalAssignedTo, setOriginalAssignedTo] = useState('');
+  const [originalStatus, setOriginalStatus]         = useState('');
   const [deleteModal, setDeleteModal] = useState(false);
   const [attachOpen, setAttachOpen]   = useState(false);
   const fileInputRef = useRef(null);
@@ -98,6 +99,7 @@ export default function EditTicket() {
         assignmentGroup:  ticket.assignment_group   || '',
       });
       setOriginalAssignedTo(ticket.assigned_to ? String(ticket.assigned_to) : '');
+      setOriginalStatus(ticket.status || 'NEW');
       setCustomData(ticket.custom_data || {});
       setAttachments(t.data.attachments || []);
       setFields(f.data.fields || []);
@@ -109,11 +111,13 @@ export default function EditTicket() {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const assigneeChanged = (form?.assignedTo || '') !== originalAssignedTo;
+  const statusChanged   = (form?.status     || '') !== originalStatus;
+  const noteRequired    = assigneeChanged || statusChanged;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (assigneeChanged && !saveNote.trim()) {
-      toast.error('Please add a note explaining why you are reassigning this ticket.');
+    if (noteRequired && !saveNote.trim()) {
+      toast.error('A work note is required when changing status or reassigning.');
       return;
     }
     setLoading(true);
@@ -123,7 +127,7 @@ export default function EditTicket() {
         setPendingDeletes(new Set());
       }
       if (saveNote.trim()) {
-        await api.post(`/tickets/${id}/comments`, { body: saveNote.trim(), type: 'COMMENT' });
+        await api.post(`/tickets/${id}/comments`, { body: saveNote.trim(), type: 'WORK_NOTE' });
       }
       const payload = {
         ...form,
@@ -500,22 +504,22 @@ export default function EditTicket() {
             />
           </div>
 
-          {/* ADD A NOTE */}
+          {/* COMMENTS & WORK NOTES */}
           <div className="ip-section">
             <div className="ip-section-bar">
-              <span>Add a Note</span>
-              {assigneeChanged
-                ? <span style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600 }}>* Required when reassigning</span>
+              <span>Comments &amp; Work Notes</span>
+              {noteRequired
+                ? <span style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600 }}>* Required — explain reason for this change</span>
                 : <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 400 }}>Optional — saved with this update</span>
               }
             </div>
             <div className="ip-note-inner">
               <textarea
-                className={`ip-note-textarea${assigneeChanged && !saveNote.trim() ? ' ip-note-required' : ''}`}
+                className={`ip-note-textarea${noteRequired && !saveNote.trim() ? ' ip-note-required' : ''}`}
                 rows={5}
-                placeholder={assigneeChanged
-                  ? 'Required: explain why you are reassigning this ticket...'
-                  : 'e.g. Escalating to Bob — he handles network issues (optional)'
+                placeholder={noteRequired
+                  ? 'Required: explain the reason for this change...'
+                  : 'Add a work note or comment (optional)...'
                 }
                 value={saveNote}
                 onChange={e => setSaveNote(e.target.value)}
@@ -595,16 +599,11 @@ export default function EditTicket() {
                     </div>
                     <div className="attach-popup-item-actions">
                       {!isPending && (
-                        <>
-                          <a href={`/api/attachments/${att.id}/download?preview=true`} target="_blank" rel="noreferrer" className="ip-btn-icon" title="View"><Eye size={13} /></a>
-                          <a href={`/api/attachments/${att.id}/download`} className="ip-btn-icon" title="Download"><Download size={13} /></a>
-                        </>
+                        <a href={`/api/attachments/${att.id}/download`} className="ip-btn-icon" title="Download"><Download size={13} /></a>
                       )}
-                      {(isAdmin || att.uploaded_by === currentUser?.id) && (
-                        <button type="button" className="ip-btn-icon danger" onClick={() => markForDelete(att.id)} title={isPending ? 'Undo removal' : 'Mark for removal'}>
-                          <X size={13} />
-                        </button>
-                      )}
+                      <button type="button" className="ip-btn-icon danger" onClick={() => markForDelete(att.id)} title={isPending ? 'Undo removal' : 'Mark for removal'}>
+                        <X size={13} />
+                      </button>
                     </div>
                   </div>
                 );

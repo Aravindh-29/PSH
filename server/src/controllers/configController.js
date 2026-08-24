@@ -137,9 +137,23 @@ async function deleteTicketType(req, res, next) {
     const { adminPassword } = req.body || {};
     const valid = await verifyAdminPassword(req.session.userId, adminPassword);
     if (!valid) return res.status(403).json({ success: false, message: 'Incorrect password' });
-    const result = await pool.query('DELETE FROM ticket_types WHERE id=$1 RETURNING id', [id]);
-    if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
-    res.json({ success: true });
+
+    // Nullify FK references before delete (tickets.type_id has no ON DELETE SET NULL)
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('UPDATE tickets    SET type_id = NULL WHERE type_id = $1', [id]);
+      await client.query('UPDATE categories SET type_id = NULL WHERE type_id = $1', [id]);
+      const result = await client.query('DELETE FROM ticket_types WHERE id=$1 RETURNING id', [id]);
+      await client.query('COMMIT');
+      if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
+      res.json({ success: true });
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
   } catch (err) { next(err); }
 }
 

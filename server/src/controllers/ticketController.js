@@ -1,5 +1,10 @@
 const pool = require('../db/pool');
 const logger = require('../utils/logger');
+const emailService = require('../services/emailService');
+
+function fireEmail(fn) {
+  Promise.resolve().then(fn).catch(err => logger.error('Email notification error', err));
+}
 
 const VALID_STATUSES = ['NEW','OPEN','ASSIGNED','IN_PROGRESS','WORK_IN_PROGRESS','PENDING','ON_HOLD','RESOLVED','CLOSED','REOPENED','CANCELLED'];
 const VALID_PRIORITIES = ['LOW','MEDIUM','HIGH','CRITICAL'];
@@ -151,7 +156,25 @@ async function create(req, res, next) {
         JSON.stringify(customData)]);
 
     const ticket = result.rows[0];
-    await logAudit(client, ticket.id, req.session.userId, 'CREATED', null, null, null, req.ip);
+    await logAudit(client, ticket.id, req.session.userId, 'CREATED', null, null, ticketNumber, req.ip);
+
+    // Log each initial field value so the audit trail shows what the ticket was created with
+    const initialFields = [
+      { field: 'status',           value: status },
+      { field: 'priority',         value: priority },
+      { field: 'impact',           value: impact },
+      { field: 'urgency',          value: urgency },
+      { field: 'customer_name',    value: customerName },
+      { field: 'module_text',      value: moduleText },
+      { field: 'short_description',value: shortDescription },
+      ...(rawAssigned      ? [{ field: 'assigned_to',      value: rawAssigned }]      : []),
+      ...(assignmentGroup  ? [{ field: 'assignment_group', value: assignmentGroup }]  : []),
+      ...(classification   ? [{ field: 'classification',   value: classification }]   : []),
+      ...(typeId           ? [{ field: 'type_id',          value: typeId }]           : []),
+    ];
+    for (const { field, value } of initialFields) {
+      await logAudit(client, ticket.id, req.session.userId, 'CREATED', field, null, value, req.ip);
+    }
 
     // Notify the assignee when a ticket is created with an immediate assignment
     if (rawAssigned && rawAssigned !== req.session.userId) {
@@ -171,6 +194,23 @@ async function create(req, res, next) {
     }
 
     await client.query('COMMIT');
+
+    // Fire email notification to assignee (non-blocking)
+    if (rawAssigned) {
+      const capturedTicket = { ...ticket, ticket_number: ticketNumber };
+      const actorId = req.session.userId;
+      fireEmail(async () => {
+        const [assigneeRow, actorRow] = await Promise.all([
+          pool.query('SELECT email FROM users WHERE id = $1', [rawAssigned]),
+          pool.query('SELECT full_name FROM users WHERE id = $1', [actorId]),
+        ]);
+        await emailService.notifyTicketCreated(
+          capturedTicket,
+          actorRow.rows[0]?.full_name || 'Someone',
+          assigneeRow.rows[0]?.email
+        );
+      });
+    }
 
     logger.info(`Ticket created: ${ticketNumber} by ${req.session.username}`);
     res.status(201).json({ success: true, ticket });
@@ -361,6 +401,34 @@ async function update(req, res, next) {
     }
 
     await client.query('COMMIT');
+
+    // Fire email notifications (non-blocking)
+    const capturedTicket = ticket;
+    const capturedChanges = auditChanges;
+    const actorId = req.session.userId;
+    fireEmail(async () => {
+      const actorRow = await pool.query('SELECT full_name FROM users WHERE id = $1', [actorId]);
+      const actorName = actorRow.rows[0]?.full_name || 'Someone';
+
+      const assignChange = capturedChanges.find(c => c.field === 'assigned_to');
+      if (assignChange?.new) {
+        const assigneeRow = await pool.query('SELECT email FROM users WHERE id = $1', [assignChange.new]);
+        await emailService.notifyTicketAssigned(capturedTicket, actorName, assigneeRow.rows[0]?.email);
+      }
+
+      const statusChange = capturedChanges.find(c => c.field === 'status');
+      if (statusChange) {
+        const recipientIds = [capturedTicket.created_by, capturedTicket.assigned_to].filter(Boolean);
+        const emailsRow = await pool.query('SELECT email FROM users WHERE id = ANY($1)', [recipientIds]);
+        const emails = emailsRow.rows.map(r => r.email);
+        if (statusChange.new === 'RESOLVED' || statusChange.new === 'CLOSED') {
+          await emailService.notifyTicketResolved({ ...capturedTicket, status: statusChange.new }, actorName, emails);
+        } else {
+          await emailService.notifyStatusChanged(capturedTicket, statusChange.old, statusChange.new, actorName, emails);
+        }
+      }
+    });
+
     logger.info(`Ticket ${ticket.ticket_number} updated by ${req.session.username}`);
     res.json({ success: true, ticket: updated.rows[0] });
   } catch (err) {
@@ -412,9 +480,7 @@ async function addComment(req, res, next) {
     if (!isAdmin && t.created_by !== req.session.userId && t.assigned_to !== req.session.userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
-    if (type === 'WORK_NOTE' && !isAdmin) {
-      return res.status(403).json({ success: false, message: 'Work notes are admin only' });
-    }
+
 
     const result = await pool.query(
       `INSERT INTO ticket_comments (ticket_id, user_id, body, type) VALUES ($1,$2,$3,$4) RETURNING *`,
@@ -422,6 +488,26 @@ async function addComment(req, res, next) {
     );
     const comment = result.rows[0];
     const userResult = await pool.query('SELECT full_name FROM users WHERE id = $1', [req.session.userId]);
+
+    // Fire email to the other party (non-blocking)
+    const actorId = req.session.userId;
+    const capturedBody = body;
+    const capturedType = type;
+    const ticketId = id;
+    fireEmail(async () => {
+      const [actorRow, ticketRow] = await Promise.all([
+        pool.query('SELECT full_name FROM users WHERE id = $1', [actorId]),
+        pool.query('SELECT * FROM tickets WHERE id = $1', [ticketId]),
+      ]);
+      const tk = ticketRow.rows[0];
+      const actorName = actorRow.rows[0]?.full_name || 'Someone';
+      const recipientIds = [tk.created_by, tk.assigned_to].filter(Boolean).filter(uid => uid !== actorId);
+      if (recipientIds.length) {
+        const emailsRow = await pool.query('SELECT email FROM users WHERE id = ANY($1)', [recipientIds]);
+        await emailService.notifyCommentAdded(tk, capturedBody, actorName, capturedType, emailsRow.rows.map(r => r.email));
+      }
+    });
+
     res.status(201).json({ success: true, comment: { ...comment, author_name: userResult.rows[0].full_name } });
   } catch (err) {
     next(err);

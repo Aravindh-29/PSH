@@ -493,3 +493,61 @@
 .al-pagination button:hover:not(:disabled) { background: #e2e8f0; }
 .al-pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
 .al-pagination span { font-size: 12px; color: #64748b; }
+
+/* ── Retention Policy ──────────────────────────────────────────────────────── */
+.al-retention-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 8px; border: 1px solid #e2e8f0;
+  background: #fff; font-size: 13px; font-weight: 500; color: #334155;
+  cursor: pointer; white-space: nowrap;
+}
+.al-retention-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
+.al-retention-badge {
+  background: #E85D04; color: #fff; font-size: 10px; font-weight: 700;
+  padding: 1px 6px; border-radius: 10px;
+}
+
+.al-retention-panel {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+  padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+}
+.al-retention-title { font-size: 15px; font-weight: 700; color: #0d1b2a; }
+.al-retention-desc  { font-size: 12px; color: #64748b; margin: 0; }
+
+.al-retention-row { display: flex; align-items: center; gap: 8px; }
+.al-retention-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 500; color: #334155; }
+.al-retention-toggle input[type="checkbox"] { width: 15px; height: 15px; accent-color: #E85D04; cursor: pointer; }
+
+.al-retention-presets { display: flex; gap: 8px; flex-wrap: wrap; }
+.al-preset-btn {
+  padding: 5px 14px; border-radius: 20px; border: 1px solid #e2e8f0;
+  background: #f8fafc; font-size: 12px; font-weight: 500; color: #475569; cursor: pointer;
+}
+.al-preset-btn:hover { border-color: #E85D04; color: #E85D04; }
+.al-preset-btn.active { background: #E85D04; color: #fff; border-color: #E85D04; }
+
+.al-retention-custom-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #475569; }
+.al-retention-input {
+  width: 80px; padding: 5px 10px; border: 1px solid #e2e8f0; border-radius: 8px;
+  font-size: 13px; color: #0d1b2a; text-align: center;
+}
+.al-retention-input:focus { outline: none; border-color: #E85D04; }
+
+.al-retention-warn {
+  font-size: 12px; color: #b45309; background: #fef3c7;
+  border: 1px solid #fde68a; border-radius: 8px; padding: 8px 12px; margin: 0;
+}
+
+.al-retention-actions { display: flex; gap: 10px; justify-content: flex-end; padding-top: 4px; }
+.al-retention-cancel {
+  padding: 7px 16px; border-radius: 8px; border: 1px solid #e2e8f0;
+  background: #fff; font-size: 13px; color: #64748b; cursor: pointer;
+}
+.al-retention-cancel:hover { background: #f8fafc; }
+.al-retention-save {
+  padding: 7px 20px; border-radius: 8px; border: none;
+  background: #E85D04; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.al-retention-save:hover:not(:disabled) { background: #c44d03; }
+.al-retention-save:disabled { opacity: 0.6; cursor: not-allowed; }

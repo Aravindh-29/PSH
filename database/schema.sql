@@ -193,7 +193,7 @@ CREATE TABLE IF NOT EXISTS ticket_type_counters (
 );
 
 -- Add type and classification columns to tickets
-ALTER TABLE tickets ADD COLUMN IF NOT EXISTS type_id         UUID REFERENCES ticket_types(id);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS type_id UUID REFERENCES ticket_types(id) ON DELETE SET NULL;
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS classification  VARCHAR(100);
 
 -- Indexes
@@ -219,5 +219,15 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read, created_at DESC);
+
+-- Audit log retention policy (single-row settings table)
+CREATE TABLE IF NOT EXISTS audit_retention_settings (
+  id              INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  enabled         BOOLEAN     NOT NULL DEFAULT FALSE,
+  retention_days  INTEGER     NOT NULL DEFAULT 30,
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by      UUID        REFERENCES users(id)
+);
+INSERT INTO audit_retention_settings (id) VALUES (1) ON CONFLICT DO NOTHING;
 
 COMMIT;

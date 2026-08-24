@@ -162,11 +162,13 @@ async function getStats(req, res, next) {
     const recentResult = await pool.query(`
       SELECT t.id, t.ticket_number, t.short_description, t.status, t.priority,
              t.customer_name, t.updated_at,
+             u1.full_name AS assigned_to_name,
              u2.full_name AS created_by_name,
              u3.full_name AS ticket_owner_name
       FROM tickets t
-      LEFT JOIN users u2 ON t.created_by = u2.id
-      LEFT JOIN users u3 ON t.ticket_owner = u3.id
+      LEFT JOIN users u1 ON t.assigned_to   = u1.id
+      LEFT JOIN users u2 ON t.created_by    = u2.id
+      LEFT JOIN users u3 ON t.ticket_owner  = u3.id
       WHERE ${w5}
       ORDER BY t.updated_at DESC
       LIMIT 20

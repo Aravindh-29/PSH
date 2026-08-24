@@ -117,6 +117,36 @@ async function dbInit() {
     ON CONFLICT (type_id) DO NOTHING
   `);
 
+  // Audit retention settings table (idempotent)
+  await appClient.query(`
+    CREATE TABLE IF NOT EXISTS audit_retention_settings (
+      id              INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      enabled         BOOLEAN     NOT NULL DEFAULT FALSE,
+      retention_days  INTEGER     NOT NULL DEFAULT 30,
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by      UUID        REFERENCES users(id)
+    )
+  `);
+  await appClient.query(`INSERT INTO audit_retention_settings (id) VALUES (1) ON CONFLICT DO NOTHING`);
+
+  // Email configuration table (idempotent)
+  await appClient.query(`
+    CREATE TABLE IF NOT EXISTS email_config (
+      id           INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      smtp_host    VARCHAR(255) NOT NULL DEFAULT '',
+      smtp_port    INTEGER      NOT NULL DEFAULT 587,
+      smtp_user    VARCHAR(255) NOT NULL DEFAULT '',
+      smtp_pass    TEXT         NOT NULL DEFAULT '',
+      from_name    VARCHAR(255) NOT NULL DEFAULT 'PSH Notifications',
+      from_email   VARCHAR(255) NOT NULL DEFAULT '',
+      encryption   VARCHAR(10)  NOT NULL DEFAULT 'tls',
+      is_enabled   BOOLEAN      NOT NULL DEFAULT FALSE,
+      updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+      updated_by   UUID         REFERENCES users(id)
+    )
+  `);
+  await appClient.query(`INSERT INTO email_config (id) VALUES (1) ON CONFLICT DO NOTHING`);
+
   // Ensure admin user exists — only user created on fresh install
   const adminExists = await appClient.query(`SELECT id FROM users WHERE username = 'admin'`);
   if (adminExists.rows.length === 0) {

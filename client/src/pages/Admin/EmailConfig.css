@@ -1,0 +1,242 @@
+/* ── Page shell ──────────────────────────────────────────────── */
+.ec-page {
+  max-width: 860px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ec-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px;
+}
+
+/* ── Header ──────────────────────────────────────────────────── */
+.ec-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.ec-title { font-size: 22px; font-weight: 700; color: var(--navy, #0d1b2a); }
+.ec-sub   { font-size: 13px; color: #64748b; margin-top: 3px; }
+
+/* ── Enable toggle ───────────────────────────────────────────── */
+.ec-enable-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.ec-enable-toggle input[type="checkbox"] { display: none; }
+
+.ec-toggle-track {
+  width: 42px; height: 22px;
+  background: #e2e8f0;
+  border-radius: 11px;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.ec-enable-toggle input:checked + .ec-toggle-track { background: #E85D04; }
+.ec-toggle-thumb {
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 16px; height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  transition: left 0.2s;
+}
+.ec-enable-toggle input:checked ~ .ec-toggle-track .ec-toggle-thumb { left: 23px; }
+.ec-toggle-label { font-size: 13px; font-weight: 600; color: #334155; }
+
+/* ── Card ────────────────────────────────────────────────────── */
+.ec-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ec-card-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0d1b2a;
+}
+
+/* ── Presets ─────────────────────────────────────────────────── */
+.ec-presets { display: flex; gap: 8px; flex-wrap: wrap; }
+.ec-preset-btn {
+  padding: 6px 18px;
+  border-radius: 20px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.ec-preset-btn:hover { border-color: #E85D04; color: #E85D04; background: #fff8f5; }
+
+/* ── Form grid ───────────────────────────────────────────────── */
+.ec-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.ec-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 140px;
+  flex: 1;
+}
+.ec-field-lg { flex: 2; min-width: 220px; }
+
+.ec-field label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ec-req { color: #E85D04; }
+
+.ec-field input,
+.ec-field select {
+  padding: 9px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #0d1b2a;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.ec-field input:focus,
+.ec-field select:focus { border-color: #E85D04; }
+
+.ec-hint { font-size: 11px; color: #94a3b8; }
+
+/* ── Password field ──────────────────────────────────────────── */
+.ec-pass-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.ec-pass-wrap input { flex: 1; padding-right: 38px; }
+.ec-pass-eye {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+}
+.ec-pass-eye:hover { color: #475569; }
+
+/* ── Test email ──────────────────────────────────────────────── */
+.ec-test-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.ec-test-input {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #0d1b2a;
+  outline: none;
+  min-width: 0;
+}
+.ec-test-input:focus { border-color: #E85D04; }
+.ec-test-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 20px;
+  background: #0d1b2a;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.ec-test-btn:hover:not(:disabled) { background: #1e3a5f; }
+.ec-test-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.ec-test-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+.ec-test-result.ok   { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+.ec-test-result.fail { background: #fff5f5; color: #dc2626; border: 1px solid #fecaca; }
+
+/* ── Triggers table ──────────────────────────────────────────── */
+.ec-triggers-card { gap: 12px; }
+.ec-triggers-grid { display: flex; flex-direction: column; gap: 0; }
+.ec-trigger-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 13px;
+}
+.ec-trigger-row:last-child { border-bottom: none; }
+.ec-trigger-event { color: #334155; font-weight: 500; }
+.ec-trigger-to {
+  color: #64748b;
+  font-size: 12px;
+  background: #f1f5f9;
+  padding: 2px 10px;
+  border-radius: 10px;
+}
+
+/* ── Actions ─────────────────────────────────────────────────── */
+.ec-actions { display: flex; justify-content: flex-end; }
+.ec-save-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 28px;
+  background: #E85D04;
+  color: #fff;
+  border: none;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ec-save-btn:hover:not(:disabled) { background: #c44d03; }
+.ec-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── Spinner ─────────────────────────────────────────────────── */
+.ec-spin { animation: ec-rotate 0.8s linear infinite; }
+@keyframes ec-rotate { to { transform: rotate(360deg); } }

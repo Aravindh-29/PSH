@@ -393,8 +393,8 @@ export default function Dashboard({ personal = false }) {
                   <td><StatusBadge status={t.status} /></td>
                   <td>
                     <div className="assigned-cell">
-                      <div className="mini-avatar">{(t.ticket_owner_name || '?')[0]}</div>
-                      <span>{t.ticket_owner_name || '—'}</span>
+                      <div className="mini-avatar">{(t.assigned_to_name || '?')[0]}</div>
+                      <span>{t.assigned_to_name || '—'}</span>
                     </div>
                   </td>
                   <td>

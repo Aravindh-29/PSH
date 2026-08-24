@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Pencil, Trash2, Download, Eye, X, Clock, Paperclip } from 'lucide-react';
+import { Pencil, Trash2, Download, X, Clock, Paperclip } from 'lucide-react';
 import { StatusBadge, PriorityBadge } from '../../components/Badge';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
@@ -292,14 +292,15 @@ export default function TicketDetail() {
                 ? <p className="ip-empty-msg">No comments yet</p>
                 : (
                   <div className="ct-timeline">
-                    {comments.map((c, idx) => {
-                      const isLast = idx === comments.length - 1;
+                    {[...comments].reverse().map((c, idx, arr) => {
+                      const isFirst = idx === 0;
+                      const isLast  = idx === arr.length - 1;
                       const isWorkNote = c.type === 'WORK_NOTE';
                       const roleLabel = c.author_role === 'admin' ? 'Admin' : 'Employee';
                       return (
-                        <div key={c.id} className={`ct-item${isLast ? ' ct-last' : ''}${isWorkNote ? ' ct-work-note' : ''}`}>
+                        <div key={c.id} className={`ct-item${isLast ? ' ct-last' : ''}${isWorkNote ? ' ct-work-note' : ''}${isFirst ? ' ct-first' : ''}`}>
                           <div className="ct-gutter">
-                            <div className="ct-dot" />
+                            <div className={`ct-dot${isFirst ? ' ct-dot-latest' : ''}`} />
                             {!isLast && <div className="ct-connector" />}
                           </div>
                           <div className={`ct-card${isWorkNote ? ' ct-work-note' : ''}`}>
@@ -398,7 +399,6 @@ export default function TicketDetail() {
                       <div className="attach-popup-meta">{fmtBytes(att.file_size)} · {att.uploader_name} · {fmt(att.uploaded_at)}</div>
                     </div>
                     <div className="attach-popup-item-actions">
-                      <a href={`/api/attachments/${att.id}/download?preview=true`} target="_blank" rel="noopener noreferrer" className="ip-btn-icon" title="View"><Eye size={13} /></a>
                       <a href={`/api/attachments/${att.id}/download`} className="ip-btn-icon" title="Download"><Download size={13} /></a>
                     </div>
                   </div>

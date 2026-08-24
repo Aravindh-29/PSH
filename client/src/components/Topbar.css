@@ -135,24 +135,6 @@
 
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 
-/* ── Theme toggle ─────────────────────────────────── */
-.theme-toggle-btn {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  padding: 6px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.theme-toggle-btn:hover {
-  background: var(--bg);
-  color: var(--orange);
-  border-color: var(--orange);
-}
 
 .topbar-icon-btn {
   background: none; border: none; color: var(--text-muted);

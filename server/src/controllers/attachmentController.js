@@ -28,7 +28,7 @@ async function upload(req, res, next) {
 
     const isAdmin = req.session.role === 'admin';
     const t = ticket.rows[0];
-    if (!isAdmin && t.created_by !== req.session.userId) {
+    if (!isAdmin && t.created_by !== req.session.userId && t.assigned_to !== req.session.userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
@@ -96,14 +96,15 @@ async function remove(req, res, next) {
   try {
     const { attachmentId } = req.params;
     const result = await pool.query(
-      `SELECT ta.*, t.created_by FROM ticket_attachments ta JOIN tickets t ON ta.ticket_id = t.id WHERE ta.id = $1`,
+      `SELECT ta.*, t.created_by, t.assigned_to FROM ticket_attachments ta JOIN tickets t ON ta.ticket_id = t.id WHERE ta.id = $1`,
       [attachmentId]
     );
     if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Attachment not found' });
 
     const att = result.rows[0];
     const isAdmin = req.session.role === 'admin';
-    if (!isAdmin && att.uploaded_by !== req.session.userId) {
+    const uid = req.session.userId;
+    if (!isAdmin && att.created_by !== uid && att.assigned_to !== uid && att.uploaded_by !== uid) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 

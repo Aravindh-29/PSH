@@ -67,6 +67,21 @@ if (isProd) {
 
 app.use(errorHandler);
 
+async function runRetentionCleanup() {
+  try {
+    const { rows } = await pool.query('SELECT enabled, retention_days FROM audit_retention_settings WHERE id = 1');
+    const cfg = rows[0];
+    if (!cfg?.enabled || !cfg.retention_days) return;
+    const result = await pool.query(
+      `DELETE FROM ticket_audit_logs WHERE created_at < NOW() - ($1 || ' days')::interval`,
+      [cfg.retention_days]
+    );
+    if (result.rowCount > 0) logger.info(`Audit retention: deleted ${result.rowCount} log entries older than ${cfg.retention_days} days`);
+  } catch (err) {
+    logger.error('Audit retention cleanup failed', err);
+  }
+}
+
 async function start() {
   try {
     await pool.query('SELECT 1');
@@ -74,6 +89,12 @@ async function start() {
     await require('./dbInit')();
     logger.info('Database ready');
     app.listen(PORT, () => logger.info(`Server running on port ${PORT}`));
+
+    // Run retention cleanup once at startup, then every 24 hours
+    setTimeout(async () => {
+      await runRetentionCleanup();
+      setInterval(runRetentionCleanup, 24 * 60 * 60 * 1000);
+    }, 5000);
   } catch (err) {
     logger.error('Failed to connect to database', err);
     process.exit(1);

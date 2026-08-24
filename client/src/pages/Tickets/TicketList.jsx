@@ -251,8 +251,8 @@ export default function TicketList({ myTickets }) {
                 <td><PriorityBadge priority={t.priority} /></td>
                 <td><StatusBadge status={t.status} /></td>
                 <td>
-                  {t.ticket_owner_name
-                    ? <div className="assigned-cell"><div className="mini-av">{t.ticket_owner_name[0]}</div>{t.ticket_owner_name}</div>
+                  {t.assigned_to_name
+                    ? <div className="assigned-cell"><div className="mini-av">{t.assigned_to_name[0]}</div>{t.assigned_to_name}</div>
                     : <span style={{ color: '#94A3B8' }}>—</span>}
                 </td>
                 <td>
