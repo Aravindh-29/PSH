@@ -169,12 +169,15 @@ CREATE TABLE IF NOT EXISTS ticket_types (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Add is_system column (safe on existing installs — IF NOT EXISTS guards it)
+ALTER TABLE ticket_types ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE;
+
 -- Seed default ticket types if none exist
-INSERT INTO ticket_types (name, description) VALUES
-  ('Incident',        'Unplanned interruption or degradation of a service'),
-  ('Service Request', 'Request for information, access, or a standard change'),
-  ('Problem',         'Root cause investigation of one or more incidents'),
-  ('Change Request',  'Planned modification to the IT environment')
+INSERT INTO ticket_types (name, description, is_system) VALUES
+  ('Incident',        'Unplanned interruption or degradation of a service',      TRUE),
+  ('Service Request', 'Request for information, access, or a standard change',   TRUE),
+  ('Problem',         'Root cause investigation of one or more incidents',        TRUE),
+  ('Change Request',  'Planned modification to the IT environment',               TRUE)
 ON CONFLICT (name) DO NOTHING;
 
 -- Link categories to a ticket type (optional – used for cascading subcategory dropdown)

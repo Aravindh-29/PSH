@@ -496,6 +496,8 @@ export default function AdminModules() {
   };
 
   const toggleTicketTypeActive = async (tt) => {
+    const isLocked = tt.is_system || parseInt(tt.ticket_count || 0) > 0;
+    if (isLocked) { toast.error('This type is locked and cannot be modified.'); return; }
     try {
       await api.put(`/config/admin/ticket-types/${tt.id}`, { is_active: !tt.is_active });
       setTicketTypes(prev => prev.map(t => t.id === tt.id ? { ...t, is_active: !t.is_active } : t));
@@ -716,28 +718,50 @@ export default function AdminModules() {
                 {ticketTypes.length === 0 && (
                   <tr><td colSpan={5} className="cfg-empty-row">No ticket types yet.</td></tr>
                 )}
-                {ticketTypes.map(tt => (
-                  <tr key={tt.id} className={!tt.is_active ? 'cfg-row-inactive' : ''}>
-                    <td style={{ fontWeight: 500 }}>{tt.name}</td>
-                    <td>
-                      {tt.prefix
-                        ? <span style={{ fontFamily: 'monospace', fontWeight: 700, background: '#EFF6FF', color: '#1D4ED8', padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>{tt.prefix}</span>
-                        : <span style={{ color: '#F59E0B', fontSize: 12 }}>⚠ Not set</span>
-                      }
-                    </td>
-                    <td style={{ color: '#94a3b8', fontSize: '0.85rem' }}>{tt.description || '—'}</td>
-                    <td><span className={`cfg-status-pill ${tt.is_active ? 'active' : 'inactive'}`}>{tt.is_active ? 'Active' : 'Inactive'}</span></td>
-                    <td>
-                      <div className="cfg-actions">
-                        <button className="cfg-btn-icon" onClick={() => setTypeModal(tt)} title="Edit"><Pencil size={13} /></button>
-                        <button className="cfg-btn-icon" onClick={() => toggleTicketTypeActive(tt)} title={tt.is_active ? 'Deactivate' : 'Activate'}>
-                          {tt.is_active ? <EyeOff size={13} /> : <Eye size={13} />}
-                        </button>
-                        <button className="cfg-btn-icon cfg-btn-danger" onClick={() => deleteTicketType(tt)} title="Delete"><Trash2 size={13} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {ticketTypes.map(tt => {
+                  const isLocked = tt.is_system || parseInt(tt.ticket_count || 0) > 0;
+                  const lockReason = tt.is_system
+                    ? 'Built-in system type — permanently fixed'
+                    : `In use by ${tt.ticket_count} ticket${tt.ticket_count > 1 ? 's' : ''} — now locked`;
+                  return (
+                    <tr key={tt.id} className={!tt.is_active ? 'cfg-row-inactive' : ''}>
+                      <td style={{ fontWeight: 500 }}>
+                        {tt.name}
+                        {isLocked && (
+                          <Lock size={12} style={{ marginLeft: 6, color: '#94A3B8', verticalAlign: 'middle' }} title={lockReason} />
+                        )}
+                      </td>
+                      <td>
+                        {tt.prefix
+                          ? <span style={{ fontFamily: 'monospace', fontWeight: 700, background: '#EFF6FF', color: '#1D4ED8', padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>{tt.prefix}</span>
+                          : <span style={{ color: '#F59E0B', fontSize: 12 }}>⚠ Not set</span>
+                        }
+                      </td>
+                      <td style={{ color: '#94a3b8', fontSize: '0.85rem' }}>{tt.description || '—'}</td>
+                      <td><span className={`cfg-status-pill ${tt.is_active ? 'active' : 'inactive'}`}>{tt.is_active ? 'Active' : 'Inactive'}</span></td>
+                      <td>
+                        {isLocked ? (
+                          <div className="cfg-actions">
+                            <span
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94A3B8', padding: '4px 8px', background: '#F8FAFC', borderRadius: 5, border: '1px solid #E2E8F0' }}
+                              title={lockReason}
+                            >
+                              <Lock size={11} /> Locked
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="cfg-actions">
+                            <button className="cfg-btn-icon" onClick={() => setTypeModal(tt)} title="Edit"><Pencil size={13} /></button>
+                            <button className="cfg-btn-icon" onClick={() => toggleTicketTypeActive(tt)} title={tt.is_active ? 'Deactivate' : 'Activate'}>
+                              {tt.is_active ? <EyeOff size={13} /> : <Eye size={13} />}
+                            </button>
+                            <button className="cfg-btn-icon cfg-btn-danger" onClick={() => deleteTicketType(tt)} title="Delete"><Trash2 size={13} /></button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

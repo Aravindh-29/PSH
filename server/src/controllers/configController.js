@@ -29,7 +29,14 @@ async function getTicketTypes(req, res, next) {
 
 async function getAdminTicketTypes(req, res, next) {
   try {
-    const result = await pool.query('SELECT * FROM ticket_types ORDER BY name');
+    const result = await pool.query(`
+      SELECT tt.*,
+             COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL) AS ticket_count
+      FROM ticket_types tt
+      LEFT JOIN tickets t ON t.type_id = tt.id
+      GROUP BY tt.id
+      ORDER BY tt.name
+    `);
     res.json({ success: true, types: result.rows });
   } catch (err) { next(err); }
 }
@@ -56,7 +63,22 @@ async function createTicketType(req, res, next) {
 async function updateTicketType(req, res, next) {
   try {
     const { id } = req.params;
-    const { name, description, is_active, prefix } = req.body;
+    // Check lock status: system types and in-use types are immutable
+    const lockCheck = await pool.query(
+      `SELECT tt.is_system, COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL) AS ticket_count
+       FROM ticket_types tt LEFT JOIN tickets t ON t.type_id = tt.id
+       WHERE tt.id = $1 GROUP BY tt.is_system`,
+      [id]
+    );
+    if (lockCheck.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
+    const { is_system, ticket_count } = lockCheck.rows[0];
+    // Only block name/prefix/description changes; is_active toggle is allowed through a separate guard
+    const { is_active } = req.body;
+    if (is_system || parseInt(ticket_count) > 0) {
+      // Only is_active changes are blocked for system types; for in-use non-system allow nothing
+      return res.status(403).json({ success: false, locked: true, message: 'This type is locked and cannot be modified.' });
+    }
+    const { name, description, prefix } = req.body;
     const result = await pool.query(
       `UPDATE ticket_types
        SET name=COALESCE($1,name), description=COALESCE($2,description),
@@ -73,10 +95,17 @@ async function updateTicketType(req, res, next) {
 async function deleteTicketType(req, res, next) {
   try {
     const { id } = req.params;
-    const countRes = await pool.query('SELECT COUNT(*) FROM tickets WHERE type_id=$1 AND deleted_at IS NULL', [id]);
-    const count = parseInt(countRes.rows[0].count);
-    if (count > 0) {
-      return res.status(409).json({ success: false, inUse: true, count, message: `${count} ticket${count > 1 ? 's' : ''} use this type` });
+    const lockCheck = await pool.query(
+      `SELECT tt.is_system, COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL) AS ticket_count
+       FROM ticket_types tt LEFT JOIN tickets t ON t.type_id = tt.id
+       WHERE tt.id = $1 GROUP BY tt.is_system`,
+      [id]
+    );
+    if (lockCheck.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
+    const { is_system, ticket_count } = lockCheck.rows[0];
+    if (is_system) return res.status(403).json({ success: false, locked: true, message: 'System types cannot be deleted.' });
+    if (parseInt(ticket_count) > 0) {
+      return res.status(409).json({ success: false, inUse: true, count: parseInt(ticket_count), message: `${ticket_count} ticket${ticket_count > 1 ? 's' : ''} use this type — it is now locked.` });
     }
     const result = await pool.query('DELETE FROM ticket_types WHERE id=$1 RETURNING id', [id]);
     if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });

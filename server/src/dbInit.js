@@ -80,6 +80,13 @@ async function dbInit() {
     WHERE field_key = 'assignment_group' AND options = '[]'::jsonb;
   `);
 
+  // ── Mark built-in types as system (idempotent) ──
+  await appClient.query(`ALTER TABLE ticket_types ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE`);
+  await appClient.query(`
+    UPDATE ticket_types SET is_system = TRUE
+    WHERE name IN ('Incident','Service Request','Problem','Change Request') AND is_system = FALSE;
+  `);
+
   // ── Ticket-type prefix & per-type counters (idempotent) ──
   // Add prefix column if missing (schema.sql already does this via ALTER, but safe to repeat)
   await appClient.query(`ALTER TABLE ticket_types ADD COLUMN IF NOT EXISTS prefix VARCHAR(10)`);
