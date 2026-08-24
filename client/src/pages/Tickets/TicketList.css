@@ -36,10 +36,10 @@
 .tl-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tl-table th {
   text-align: left; font-size: 11px; font-weight: 600; color: var(--text-muted);
-  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  padding: 10px 10px; border-bottom: 1px solid var(--border);
   text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; background: #FAFBFC;
 }
-.tl-table td { padding: 13px 14px; border-bottom: 1px solid #F8FAFC; vertical-align: middle; }
+.tl-table td { padding: 11px 10px; border-bottom: 1px solid #F8FAFC; vertical-align: middle; }
 .tl-table tr:last-child td { border-bottom: none; }
 .tl-table tr:hover td { background: #FAFBFC; }
 .tl-empty { text-align: center; padding: 40px !important; color: #94A3B8; }

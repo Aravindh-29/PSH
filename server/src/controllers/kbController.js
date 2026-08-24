@@ -2,6 +2,204 @@ const pool = require('../db/pool');
 
 const SEED_ARTICLES = [
   {
+    slug: 'email-configuration',
+    title: 'How to Configure Email Notifications (SMTP)',
+    category: 'How-To Guide',
+    content: `# Email Configuration in PSH
+
+This article explains how to set up SMTP so PSH can send automatic notifications for ticket events.
+
+## What You Need Before Starting
+
+- SMTP server address from your email provider (e.g. smtp.office365.com)
+- Port number (usually 587 for TLS or 465 for SSL)
+- Email account username and an App Password
+- The "from" email address notifications will be sent from
+
+## How to Open Email Configuration
+
+- Log in as an **Administrator**
+- In the left sidebar, click **Email Config** under Admin
+- The Email Configuration page opens
+
+## Quick Setup with Presets
+
+Click one of the preset buttons to auto-fill the server and port:
+- **Office 365** — smtp.office365.com, port 587, TLS
+- **Outlook.com** — smtp-mail.outlook.com, port 587, TLS
+- **Gmail** — smtp.gmail.com, port 587, TLS
+- **Generic SMTP** — enter your own details manually
+
+## SMTP Server Settings
+
+**SMTP Host** — the server address (e.g. smtp.office365.com). Required.
+
+**Port** — 587 for TLS (recommended), 465 for SSL, or 25 for no encryption.
+
+**Encryption** — choose TLS for Office 365 and Gmail. Choose SSL for port 465. Choose None only for internal mail servers.
+
+## Authentication
+
+**Username** — the full email address of the sending account (e.g. notifications@company.com).
+
+**Password** — for Office 365 and Gmail, use an **App Password** not your regular password.
+
+## Getting an App Password for Office 365
+
+- Sign in to portal.microsoft.com with the notification account
+- Go to Security settings and find App passwords
+- Create a new app password, copy the long generated string
+- Paste it into the PSH Password field
+
+Note: App passwords require Multi-Factor Authentication on the account. The Microsoft 365 global admin must also enable SMTP AUTH under Settings → Org settings → Modern authentication.
+
+## Getting an App Password for Gmail
+
+- Sign in to myaccount.google.com
+- Go to Security → 2-Step Verification (must be turned on first)
+- Scroll down to App passwords
+- Select Mail and Windows Computer, click Generate
+- Copy the 16-character password and paste it into PSH
+
+## Sender Identity
+
+**From Name** — what recipients see as the sender name (e.g. PSH Notifications).
+
+**From Email** — the email address in the From field. For Office 365 this must exactly match the SMTP Username.
+
+## Send a Test Email
+
+Before enabling, always test first:
+- Enter a recipient email in the test field (leave blank to send to the SMTP username)
+- Click **Send Test Email**
+- Check the inbox — the email should arrive within a few minutes
+- A green result means success. A red result shows the error.
+
+## Email Triggers
+
+Once enabled, PSH sends emails automatically for:
+- **Ticket Created** — assignee is notified when a ticket is created with them assigned
+- **Ticket Reassigned** — new assignee is notified when assignment changes
+- **Status Changed** — creator and assignee notified on status change
+- **Ticket Resolved** — creator and assignee notified when resolved
+- **Comment Added** — the other party is notified (not the person who commented)
+- **Work Note Added** — the other party is notified when a work note is posted
+
+Emails are fire-and-forget. A failed email never delays the ticket save.
+
+## Enable Email Notifications
+
+- Toggle the **Enabled / Disabled** switch in the page header to Enabled
+- Click **Save Configuration**
+
+## Common Problems
+
+**Authentication failed** — Username or password is wrong. For Office 365 use an App Password and confirm SMTP AUTH is enabled on the account.
+
+**Connection timed out** — SMTP host address has a typo, or port 587 is blocked by a firewall. Ask your network admin to allow outbound TCP on port 587.
+
+**From email not permitted** — Office 365 requires From Email to exactly match the SMTP username. Gmail requires an App Password or "Less secure app access".
+
+**Test email goes to spam** — Add the from address to your email whitelist. Ask your admin to configure SPF/DKIM records for the domain.`,
+  },
+  {
+    slug: 'sso-configuration',
+    title: 'How to Configure Single Sign-On (SSO)',
+    category: 'How-To Guide',
+    content: `# Single Sign-On (SSO) Configuration
+
+This article explains how to connect an identity provider so employees can sign in to PSH with their company account.
+
+## What is SSO?
+
+SSO (Single Sign-On) adds a button on the login page that lets users sign in with their existing company account — Microsoft, Google, Okta, or Auth0 — without needing a separate PSH password.
+
+PSH uses the **OpenID Connect (OIDC)** standard supported by all major identity providers. PSH never sees the user's company password.
+
+## What You Need Before Starting
+
+- Admin access to your identity provider (Azure AD, Google Workspace, Okta, or Auth0)
+- The **Redirect URI** from the PSH SSO settings page (copy it using the Copy button)
+- After registering, you will get a **Client ID** and **Client Secret** to paste into PSH
+
+## How to Open SSO Configuration
+
+- Log in as an **Administrator**
+- In the left sidebar, click **SSO** under Admin
+- The SSO Configuration page opens
+
+## Quick Setup Presets
+
+Click a preset button to auto-fill the Issuer URL for that provider:
+- **Microsoft Azure AD** — fills Azure issuer URL, replace YOUR_TENANT_ID with your tenant ID
+- **Google Workspace** — fills Google issuer URL (ready to use)
+- **Okta** — fills Okta URL, replace YOUR_ORG with your Okta subdomain
+- **Auth0** — fills Auth0 URL, replace YOUR_TENANT with your Auth0 domain
+
+## Registering PSH in Microsoft Azure AD
+
+- Go to portal.azure.com → App registrations → New registration
+- Name: Pure Storage Horizon, Account type: Single tenant
+- Redirect URI: select Web, paste the Redirect URI from PSH
+- Click Register
+- Copy the **Application (client) ID** — this is your Client ID for PSH
+- Copy the **Directory (tenant) ID** — replace YOUR_TENANT_ID in the Issuer URL with this value
+- Go to Certificates & secrets → New client secret → copy the Value immediately
+
+## Registering PSH in Google Workspace
+
+- Go to console.cloud.google.com → APIs & Services → Credentials
+- Create credentials → OAuth client ID → Web application
+- Under Authorised redirect URIs, add the Redirect URI from PSH
+- Copy the Client ID and Client Secret shown in the popup
+
+## Registering PSH in Okta
+
+- In Okta admin: Applications → Create App Integration → OIDC → Web Application
+- Add the Redirect URI under Sign-in redirect URIs
+- Copy the Client ID and Client secret from the app's settings page
+
+## Registering PSH in Auth0
+
+- Go to Applications → Create Application → Regular Web Applications
+- Under Settings → Allowed Callback URLs, paste the Redirect URI from PSH
+- Save, then copy the Domain, Client ID, and Client Secret from Settings
+
+## Filling in the PSH SSO Form
+
+- **Provider Display Name** — what users see on the login button (e.g. Microsoft, Google)
+- **Issuer URL** — set by preset, but replace placeholder text with your actual tenant or org ID
+- **Client ID** — paste from your identity provider
+- **Client Secret** — paste from your identity provider; once saved shows as "Secret saved securely"
+- **Redirect URI** — read-only; copy it and paste it into the provider's allowed callback URL setting
+
+## Auto-Provision Users
+
+When **Auto-provision users** is ON, PSH automatically creates an Employee account the first time a user signs in with SSO. If OFF, the admin must create the account manually before the user can sign in.
+
+Recommendation: turn ON for most organisations.
+
+## Test and Enable SSO
+
+- Click **Test Connection** to verify the Issuer URL is reachable
+- A green result means the provider is accessible
+- Toggle **Enable SSO** to ON and click **Save Configuration**
+- Open a private browser window, go to the PSH login page, and test the SSO button
+
+## Common Problems
+
+**"Could not reach issuer"** — Issuer URL has a typo. For Azure AD, confirm YOUR_TENANT_ID is replaced with the actual tenant ID.
+
+**"redirect_uri_mismatch"** — The Redirect URI in the provider does not exactly match the PSH one. Use the Copy button and paste it fresh into the provider.
+
+**SSO button not on login page** — Make sure Enable SSO is ON and you clicked Save Configuration. Hard-refresh the browser (Ctrl+Shift+R).
+
+**"User not found" after login** — Auto-provision is OFF. Either enable it or create the user in Admin → Users before they try again.
+
+**Locked out** — You can always log in with your admin username and password. The SSO button is an addition to the regular login, not a replacement.`,
+  },
+
+  {
     title: 'Getting Started with PSH Ticketing System',
     category: 'General',
     content: `# Welcome to Pure Storage Horizon
@@ -234,12 +432,18 @@ async function initTable() {
       deleted_by UUID REFERENCES users(id) ON DELETE SET NULL
     )
   `);
+  await pool.query(`ALTER TABLE kb_articles ADD COLUMN IF NOT EXISTS slug VARCHAR(100) UNIQUE`);
   for (const art of SEED_ARTICLES) {
     const { rows } = await pool.query('SELECT id FROM kb_articles WHERE title = $1 LIMIT 1', [art.title]);
     if (!rows.length) {
       await pool.query(
-        'INSERT INTO kb_articles (title, content, category, status) VALUES ($1, $2, $3, $4)',
-        [art.title, art.content, art.category, 'PUBLISHED']
+        'INSERT INTO kb_articles (title, content, category, status, slug) VALUES ($1, $2, $3, $4, $5)',
+        [art.title, art.content, art.category, 'PUBLISHED', art.slug || null]
+      );
+    } else if (art.slug) {
+      await pool.query(
+        'UPDATE kb_articles SET slug = $1 WHERE id = $2 AND slug IS NULL',
+        [art.slug, rows[0].id]
       );
     }
   }
@@ -339,6 +543,25 @@ async function getOne(req, res, next) {
   }
 }
 
+async function getBySlug(req, res, next) {
+  try {
+    const { slug } = req.params;
+    const { rows } = await pool.query(`
+      SELECT a.*, u.full_name AS author_name
+      FROM kb_articles a
+      LEFT JOIN users u ON a.author_id = u.id
+      WHERE a.slug = $1 AND a.deleted_at IS NULL AND a.status = 'PUBLISHED'
+    `, [slug]);
+
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Article not found' });
+
+    await pool.query('UPDATE kb_articles SET views = views + 1 WHERE id = $1', [rows[0].id]);
+    res.json({ success: true, article: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function create(req, res, next) {
   try {
     const { title, content, category, status = 'PUBLISHED' } = req.body;
@@ -393,4 +616,4 @@ async function remove(req, res, next) {
   }
 }
 
-module.exports = { list, listAdmin, getOne, create, update, remove };
+module.exports = { list, listAdmin, getOne, getBySlug, create, update, remove };

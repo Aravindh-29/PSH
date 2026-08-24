@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Server, Lock, User, Send, CheckCircle, AlertCircle, Eye, EyeOff, Loader } from 'lucide-react';
+import { Mail, Server, Lock, User, Send, CheckCircle, AlertCircle, Eye, EyeOff, Loader, BookOpen } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import './EmailConfig.css';
@@ -18,6 +19,7 @@ const DEFAULT = {
 };
 
 export default function EmailConfig() {
+  const navigate = useNavigate();
   const [form, setForm]           = useState(DEFAULT);
   const [loaded, setLoaded]       = useState(false);
   const [saving, setSaving]       = useState(false);
@@ -25,6 +27,15 @@ export default function EmailConfig() {
   const [testTo, setTestTo]       = useState('');
   const [testing, setTesting]     = useState(false);
   const [testResult, setTestResult] = useState(null); // { ok, msg }
+
+  const openDocs = async () => {
+    try {
+      const r = await api.get('/kb/slug/email-configuration');
+      navigate(`/knowledge-base/${r.data.article.id}`);
+    } catch {
+      navigate('/knowledge-base');
+    }
+  };
 
   useEffect(() => {
     api.get('/config/admin/email')
@@ -80,6 +91,9 @@ export default function EmailConfig() {
         <div>
           <div className="ec-title">Email Configuration</div>
           <div className="ec-sub">Configure SMTP to enable email notifications for all ticket actions</div>
+          <button className="ec-doc-link" onClick={openDocs}>
+            <BookOpen size={13} /> View Documentation
+          </button>
         </div>
         <label className="ec-enable-toggle">
           <input

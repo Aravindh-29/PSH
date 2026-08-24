@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, CheckCircle, XCircle, Loader, Trash2, Save,
-         ChevronDown, Eye, EyeOff, AlertTriangle, Info } from 'lucide-react';
+         ChevronDown, Eye, EyeOff, AlertTriangle, Info, BookOpen } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import './SSOConfig.css';
@@ -49,6 +50,7 @@ const EMPTY = {
 };
 
 export default function SSOConfig() {
+  const navigate = useNavigate();
   const [config, setConfig]           = useState(EMPTY);
   const [secretSet, setSecretSet]     = useState(false);   // server already has a secret
   const [changeSecret, setChangeSecret] = useState(false); // user wants to enter new secret
@@ -140,6 +142,15 @@ export default function SSOConfig() {
     } catch { toast.error('Failed to clear configuration'); }
   };
 
+  const openDocs = async () => {
+    try {
+      const r = await api.get('/kb/slug/sso-configuration');
+      navigate(`/knowledge-base/${r.data.article.id}`);
+    } catch {
+      navigate('/knowledge-base');
+    }
+  };
+
   // Status pill
   const status = !config.issuerUrl
     ? { label: 'Not Configured', cls: 'sso-status-none' }
@@ -156,6 +167,9 @@ export default function SSOConfig() {
         <div>
           <h1 className="sso-title">SSO Configuration</h1>
           <p className="sso-sub">Connect an identity provider so users can sign in with their organisation account</p>
+          <button className="ec-doc-link" onClick={openDocs}>
+            <BookOpen size={13} /> View Documentation
+          </button>
         </div>
         <span className={`sso-status-pill ${status.cls}`}>
           {status.cls === 'sso-status-active'
