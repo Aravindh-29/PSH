@@ -495,27 +495,42 @@ export default function AdminModules() {
     }
   };
 
-  const toggleTicketTypeActive = async (tt) => {
-    const isLocked = tt.is_system || parseInt(tt.ticket_count || 0) > 0;
-    if (isLocked) { toast.error('This type is locked and cannot be modified.'); return; }
-    try {
-      await api.put(`/config/admin/ticket-types/${tt.id}`, { is_active: !tt.is_active });
-      setTicketTypes(prev => prev.map(t => t.id === tt.id ? { ...t, is_active: !t.is_active } : t));
-    } catch { toast.error('Update failed'); }
+  const deactivateTicketType = (tt) => {
+    setConfirmModal({
+      title: 'Deactivate Ticket Type',
+      message: `Deactivate "${tt.name}"? This removes it from the New Ticket form immediately. Existing tickets using this type are unaffected. This action cannot be undone — once deactivated, the type can only be deleted.`,
+      confirmLabel: 'Deactivate',
+      onConfirm: async () => {
+        try {
+          await api.put(`/config/admin/ticket-types/${tt.id}`, { is_active: false });
+          setTicketTypes(prev => prev.map(t => t.id === tt.id ? { ...t, is_active: false } : t));
+          toast.success(`"${tt.name}" deactivated`);
+        } catch (err) {
+          toast.error(err?.response?.data?.message || 'Update failed');
+        }
+      },
+    });
   };
 
   const deleteTicketType = (tt) => {
+    const hasTickets = parseInt(tt.ticket_count || 0) > 0;
     setConfirmModal({
-      title: 'Delete Ticket Type',
-      message: `Delete type "${tt.name}"? Tickets using this type will lose their type reference.`,
-      confirmLabel: 'Delete',
+      title: 'Permanently Delete Ticket Type',
+      message: hasTickets
+        ? `Permanently delete "${tt.name}"? This type has ${tt.ticket_count} existing ticket${tt.ticket_count > 1 ? 's' : ''} — they will lose their type reference but remain intact. This cannot be undone.`
+        : `Delete type "${tt.name}"? This cannot be undone.`,
+      confirmLabel: 'Delete Permanently',
       onConfirm: async () => {
         try {
           await api.delete(`/config/admin/ticket-types/${tt.id}`);
-          toast.success('Ticket type deleted');
+          toast.success('Ticket type permanently deleted');
           setTicketTypes(prev => prev.filter(t => t.id !== tt.id));
         } catch (err) {
-          toast.error(err?.response?.data?.message || 'Delete failed');
+          if (err?.response?.data?.deactivateFirst) {
+            toast.error('Deactivate this type before deleting it.');
+          } else {
+            toast.error(err?.response?.data?.message || 'Delete failed');
+          }
         }
       },
     });
@@ -719,16 +734,19 @@ export default function AdminModules() {
                   <tr><td colSpan={5} className="cfg-empty-row">No ticket types yet.</td></tr>
                 )}
                 {ticketTypes.map(tt => {
-                  const isLocked = tt.is_system || parseInt(tt.ticket_count || 0) > 0;
-                  const lockReason = tt.is_system
-                    ? 'Built-in system type — permanently fixed'
-                    : `In use by ${tt.ticket_count} ticket${tt.ticket_count > 1 ? 's' : ''} — now locked`;
+                  const count = parseInt(tt.ticket_count || 0);
+                  // state: 'system' | 'free' | 'active-inuse' | 'inactive-inuse'
+                  const state = tt.is_system ? 'system'
+                    : count === 0 ? 'free'
+                    : tt.is_active ? 'active-inuse'
+                    : 'inactive-inuse';
+
                   return (
                     <tr key={tt.id} className={!tt.is_active ? 'cfg-row-inactive' : ''}>
                       <td style={{ fontWeight: 500 }}>
                         {tt.name}
-                        {isLocked && (
-                          <Lock size={12} style={{ marginLeft: 6, color: '#94A3B8', verticalAlign: 'middle' }} title={lockReason} />
+                        {(state === 'system') && (
+                          <Lock size={12} style={{ marginLeft: 6, color: '#94A3B8', verticalAlign: 'middle' }} title="Built-in system type — permanently fixed" />
                         )}
                       </td>
                       <td>
@@ -740,24 +758,39 @@ export default function AdminModules() {
                       <td style={{ color: '#94a3b8', fontSize: '0.85rem' }}>{tt.description || '—'}</td>
                       <td><span className={`cfg-status-pill ${tt.is_active ? 'active' : 'inactive'}`}>{tt.is_active ? 'Active' : 'Inactive'}</span></td>
                       <td>
-                        {isLocked ? (
-                          <div className="cfg-actions">
-                            <span
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94A3B8', padding: '4px 8px', background: '#F8FAFC', borderRadius: 5, border: '1px solid #E2E8F0' }}
-                              title={lockReason}
-                            >
-                              <Lock size={11} /> Locked
+                        <div className="cfg-actions">
+                          {state === 'system' && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94A3B8', padding: '4px 8px', background: '#F8FAFC', borderRadius: 5, border: '1px solid #E2E8F0' }}>
+                              <Lock size={11} /> System
                             </span>
-                          </div>
-                        ) : (
-                          <div className="cfg-actions">
-                            <button className="cfg-btn-icon" onClick={() => setTypeModal(tt)} title="Edit"><Pencil size={13} /></button>
-                            <button className="cfg-btn-icon" onClick={() => toggleTicketTypeActive(tt)} title={tt.is_active ? 'Deactivate' : 'Activate'}>
-                              {tt.is_active ? <EyeOff size={13} /> : <Eye size={13} />}
+                          )}
+                          {state === 'free' && (
+                            <>
+                              <button className="cfg-btn-icon" onClick={() => setTypeModal(tt)} title="Edit"><Pencil size={13} /></button>
+                              <button className="cfg-btn-icon" onClick={() => deactivateTicketType(tt)} title="Deactivate"><EyeOff size={13} /></button>
+                              <button className="cfg-btn-icon cfg-btn-danger" onClick={() => deleteTicketType(tt)} title="Delete"><Trash2 size={13} /></button>
+                            </>
+                          )}
+                          {state === 'active-inuse' && (
+                            <button
+                              className="cfg-btn-icon"
+                              onClick={() => deactivateTicketType(tt)}
+                              title={`Deactivate — removes from new tickets (${count} existing ticket${count > 1 ? 's' : ''} unaffected)`}
+                              style={{ color: '#F59E0B' }}
+                            >
+                              <EyeOff size={13} />
                             </button>
-                            <button className="cfg-btn-icon cfg-btn-danger" onClick={() => deleteTicketType(tt)} title="Delete"><Trash2 size={13} /></button>
-                          </div>
-                        )}
+                          )}
+                          {state === 'inactive-inuse' && (
+                            <button
+                              className="cfg-btn-icon cfg-btn-danger"
+                              onClick={() => deleteTicketType(tt)}
+                              title={`Delete permanently (${count} existing ticket${count > 1 ? 's' : ''} will lose type reference)`}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

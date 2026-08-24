@@ -63,22 +63,38 @@ async function createTicketType(req, res, next) {
 async function updateTicketType(req, res, next) {
   try {
     const { id } = req.params;
-    // Check lock status: system types and in-use types are immutable
-    const lockCheck = await pool.query(
-      `SELECT tt.is_system, COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL) AS ticket_count
+    const typeRow = await pool.query(
+      `SELECT tt.*, COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL) AS ticket_count
        FROM ticket_types tt LEFT JOIN tickets t ON t.type_id = tt.id
-       WHERE tt.id = $1 GROUP BY tt.is_system`,
+       WHERE tt.id = $1 GROUP BY tt.id`,
       [id]
     );
-    if (lockCheck.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
-    const { is_system, ticket_count } = lockCheck.rows[0];
-    // Only block name/prefix/description changes; is_active toggle is allowed through a separate guard
-    const { is_active } = req.body;
-    if (is_system || parseInt(ticket_count) > 0) {
-      // Only is_active changes are blocked for system types; for in-use non-system allow nothing
-      return res.status(403).json({ success: false, locked: true, message: 'This type is locked and cannot be modified.' });
+    if (typeRow.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
+    const type = typeRow.rows[0];
+    const ticketCount = parseInt(type.ticket_count);
+
+    // System types: completely immutable
+    if (type.is_system) {
+      return res.status(403).json({ success: false, locked: true, message: 'System types cannot be modified.' });
     }
-    const { name, description, prefix } = req.body;
+
+    // Custom type with existing tickets: only allow deactivation (one-way)
+    if (ticketCount > 0) {
+      const { is_active } = req.body;
+      if (is_active === false && type.is_active) {
+        const result = await pool.query('UPDATE ticket_types SET is_active=FALSE WHERE id=$1 RETURNING *', [id]);
+        return res.json({ success: true, type: result.rows[0] });
+      }
+      return res.status(403).json({
+        success: false, locked: true,
+        message: type.is_active
+          ? 'This type has tickets — only deactivation is allowed.'
+          : 'This type is inactive and cannot be modified. You may delete it.'
+      });
+    }
+
+    // Custom type with 0 tickets: full update allowed
+    const { name, description, prefix, is_active } = req.body;
     const result = await pool.query(
       `UPDATE ticket_types
        SET name=COALESCE($1,name), description=COALESCE($2,description),
@@ -95,18 +111,22 @@ async function updateTicketType(req, res, next) {
 async function deleteTicketType(req, res, next) {
   try {
     const { id } = req.params;
-    const lockCheck = await pool.query(
-      `SELECT tt.is_system, COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL) AS ticket_count
+    const typeRow = await pool.query(
+      `SELECT tt.is_system, tt.is_active, COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL) AS ticket_count
        FROM ticket_types tt LEFT JOIN tickets t ON t.type_id = tt.id
-       WHERE tt.id = $1 GROUP BY tt.is_system`,
+       WHERE tt.id = $1 GROUP BY tt.is_system, tt.is_active`,
       [id]
     );
-    if (lockCheck.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
-    const { is_system, ticket_count } = lockCheck.rows[0];
+    if (typeRow.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
+    const { is_system, is_active, ticket_count } = typeRow.rows[0];
+    const count = parseInt(ticket_count);
+
     if (is_system) return res.status(403).json({ success: false, locked: true, message: 'System types cannot be deleted.' });
-    if (parseInt(ticket_count) > 0) {
-      return res.status(409).json({ success: false, inUse: true, count: parseInt(ticket_count), message: `${ticket_count} ticket${ticket_count > 1 ? 's' : ''} use this type — it is now locked.` });
+    // Active type with tickets: must deactivate first
+    if (is_active && count > 0) {
+      return res.status(409).json({ success: false, deactivateFirst: true, count, message: `Deactivate this type before deleting it.` });
     }
+    // Inactive OR 0-ticket custom types: allow permanent deletion
     const result = await pool.query('DELETE FROM ticket_types WHERE id=$1 RETURNING id', [id]);
     if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
     res.json({ success: true });
