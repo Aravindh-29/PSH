@@ -16,6 +16,7 @@ export default function TicketDetail() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deleteModal, setDeleteModal] = useState(false);
+  const [attachOpen, setAttachOpen] = useState(false);
   const [customFieldDefs, setCustomFieldDefs] = useState([]);
   const [fieldByKey, setFieldByKey] = useState({});
 
@@ -124,6 +125,13 @@ export default function TicketDetail() {
           <div className="ip-short-desc-head">{ticket.short_description}</div>
         </div>
         <div className="ip-header-actions">
+          {attachments.length > 0 && (
+            <button type="button" className="ip-btn" onClick={() => setAttachOpen(true)}>
+              <Paperclip size={14} />
+              Attachments
+              <span className="ip-attach-count-badge">{attachments.length}</span>
+            </button>
+          )}
           {canEdit && (
             <>
               <Link to={`/tickets/${id}/edit`} className="ip-btn">
@@ -273,41 +281,6 @@ export default function TicketDetail() {
           </div>
         </div>
 
-        {/* ── Attachments (view-only) ── */}
-        {attachments.length > 0 && (
-          <div className="ip-section">
-            <div className="ip-section-bar">
-              <span><Paperclip size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Attachments ({attachments.length})</span>
-              <div className="ip-section-bar-right">
-                <button className="ip-section-bar-btn" onClick={handleDownloadZip}>
-                  <Download size={13} /> Download All as ZIP
-                </button>
-              </div>
-            </div>
-            <div className="td-attach-list">
-              {attachments.map(att => {
-                const isImage = att.mime_type?.startsWith('image/');
-                return (
-                  <div key={att.id} className="td-attach-item">
-                    {isImage
-                      ? <img src={`/api/attachments/${att.id}/download?preview=true`} alt={att.file_name} className="td-attach-thumb" />
-                      : <div className="td-attach-icon"><Paperclip size={18} strokeWidth={1.5} /></div>
-                    }
-                    <div className="td-attach-info">
-                      <div className="td-attach-name">{att.file_name}</div>
-                      <div className="td-attach-meta">{fmtBytes(att.file_size)} · {att.uploader_name} · {fmt(att.uploaded_at)}</div>
-                    </div>
-                    <div className="td-attach-actions">
-                      <a href={`/api/attachments/${att.id}/download?preview=true`} target="_blank" rel="noopener noreferrer" className="ip-btn-icon" title="View"><Eye size={13} /></a>
-                      <a href={`/api/attachments/${att.id}/download`} className="ip-btn-icon" title="Download"><Download size={13} /></a>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {/* COMMENTS + ACTIVITY */}
         <div className="ip-bottom">
           <div className="ip-bottom-left">
@@ -387,6 +360,54 @@ export default function TicketDetail() {
         </div>
 
       </div>
+
+      {/* ATTACHMENT POPUP (view-only: no upload, no delete) */}
+      {attachOpen && (
+        <div className="attach-popup-overlay" onClick={() => setAttachOpen(false)}>
+          <div className="attach-popup" onClick={e => e.stopPropagation()}>
+            <div className="attach-popup-header">
+              <span className="attach-popup-title">
+                Attachments {attachments.length > 0 && `(${attachments.length})`}
+              </span>
+              <div className="attach-popup-actions">
+                {attachments.length > 0 && (
+                  <button className="ip-btn" style={{ fontSize: 12, padding: '6px 12px' }} onClick={handleDownloadZip} title="Download all as ZIP">
+                    <Download size={13} /> Download All
+                  </button>
+                )}
+                <button className="ip-btn-icon" onClick={() => setAttachOpen(false)} title="Close"><X size={14} /></button>
+              </div>
+            </div>
+            <div className="attach-popup-body">
+              {attachments.length === 0 && (
+                <div className="attach-popup-empty">
+                  <Paperclip size={24} strokeWidth={1.5} />
+                  <span>No attachments.</span>
+                </div>
+              )}
+              {attachments.map(att => {
+                const isImage = att.mime_type?.startsWith('image/');
+                return (
+                  <div key={att.id} className="attach-popup-item">
+                    {isImage
+                      ? <img src={`/api/attachments/${att.id}/download?preview=true`} alt={att.file_name} className="attach-popup-thumb" />
+                      : <div className="attach-popup-icon">📎</div>
+                    }
+                    <div className="attach-popup-info">
+                      <div className="attach-popup-name">{att.file_name}</div>
+                      <div className="attach-popup-meta">{fmtBytes(att.file_size)} · {att.uploader_name} · {fmt(att.uploaded_at)}</div>
+                    </div>
+                    <div className="attach-popup-item-actions">
+                      <a href={`/api/attachments/${att.id}/download?preview=true`} target="_blank" rel="noopener noreferrer" className="ip-btn-icon" title="View"><Eye size={13} /></a>
+                      <a href={`/api/attachments/${att.id}/download`} className="ip-btn-icon" title="Download"><Download size={13} /></a>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Modal */}
       {deleteModal && (

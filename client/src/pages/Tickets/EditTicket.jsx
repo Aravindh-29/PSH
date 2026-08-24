@@ -202,12 +202,12 @@ export default function EditTicket() {
   };
 
   const handleDownloadAll = () => {
-    attachments.forEach(att => {
-      const a = document.createElement('a');
-      a.href = `/api/attachments/${att.id}/download`;
-      a.download = att.file_name;
-      a.click();
-    });
+    const a = document.createElement('a');
+    a.href = `/api/tickets/${id}/attachments/zip`;
+    a.download = `${ticketNumber}-attachments.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const fmtBytes = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KB` : `${(n/1048576).toFixed(1)} MB`;
