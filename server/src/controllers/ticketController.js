@@ -119,8 +119,22 @@ async function create(req, res, next) {
       return res.status(400).json({ success: false, message: 'Invalid priority' });
     }
 
-    const seqResult = await client.query(`SELECT nextval('ticket_number_seq') AS seq`);
-    const ticketNumber = `PSH${String(seqResult.rows[0].seq).padStart(6, '0')}`;
+    let ticketNumber;
+    if (typeId) {
+      const typeRow = await client.query('SELECT prefix FROM ticket_types WHERE id = $1', [typeId]);
+      const prefix = typeRow.rows[0]?.prefix || 'TKT';
+      // Single atomic upsert — safe under any level of concurrency; no advisory lock needed
+      const ctrRes = await client.query(
+        `INSERT INTO ticket_type_counters (type_id, counter) VALUES ($1, 1)
+         ON CONFLICT (type_id) DO UPDATE SET counter = ticket_type_counters.counter + 1
+         RETURNING counter`,
+        [typeId]
+      );
+      ticketNumber = `${prefix}${String(ctrRes.rows[0].counter).padStart(6, '0')}`;
+    } else {
+      const seqResult = await client.query(`SELECT nextval('ticket_number_seq') AS seq`);
+      ticketNumber = `PSH${String(seqResult.rows[0].seq).padStart(6, '0')}`;
+    }
 
     const result = await client.query(`
       INSERT INTO tickets (ticket_number, customer_name, module_text, category_id, short_description,
@@ -416,12 +430,23 @@ async function addComment(req, res, next) {
 
 async function nextNumber(req, res, next) {
   try {
+    const { typeId } = req.query;
+    if (typeId) {
+      const row = await pool.query(
+        `SELECT tt.prefix, COALESCE(tc.counter, 0) AS counter
+         FROM ticket_types tt
+         LEFT JOIN ticket_type_counters tc ON tc.type_id = tt.id
+         WHERE tt.id = $1`,
+        [typeId]
+      );
+      if (row.rows.length === 0) return res.json({ number: 'TKT000001' });
+      const { prefix, counter } = row.rows[0];
+      return res.json({ number: `${prefix || 'TKT'}${String(Number(counter) + 1).padStart(6, '0')}` });
+    }
     const result = await pool.query(
-      `SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END AS next
-       FROM ticket_number_seq`
+      `SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END AS next FROM ticket_number_seq`
     );
-    const next = result.rows[0].next;
-    res.json({ number: `PSH${String(next).padStart(6, '0')}` });
+    res.json({ number: `PSH${String(result.rows[0].next).padStart(6, '0')}` });
   } catch (err) {
     next(err);
   }

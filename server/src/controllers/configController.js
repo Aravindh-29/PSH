@@ -36,24 +36,34 @@ async function getAdminTicketTypes(req, res, next) {
 
 async function createTicketType(req, res, next) {
   try {
-    const { name, description } = req.body;
+    const { name, description, prefix } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ success: false, message: 'name is required' });
     const result = await pool.query(
-      'INSERT INTO ticket_types (name, description) VALUES ($1,$2) ON CONFLICT (name) DO NOTHING RETURNING *',
-      [name.trim(), description || null]
+      'INSERT INTO ticket_types (name, description, prefix) VALUES ($1,$2,$3) ON CONFLICT (name) DO NOTHING RETURNING *',
+      [name.trim(), description || null, (prefix || '').toUpperCase().trim() || null]
     );
     if (result.rows.length === 0) return res.status(400).json({ success: false, message: 'Type already exists' });
-    res.status(201).json({ success: true, type: result.rows[0] });
+    const newType = result.rows[0];
+    // Seed counter row for the new type so nextNumber preview works immediately
+    await pool.query(
+      'INSERT INTO ticket_type_counters (type_id, counter) VALUES ($1, 0) ON CONFLICT DO NOTHING',
+      [newType.id]
+    );
+    res.status(201).json({ success: true, type: newType });
   } catch (err) { next(err); }
 }
 
 async function updateTicketType(req, res, next) {
   try {
     const { id } = req.params;
-    const { name, description, is_active } = req.body;
+    const { name, description, is_active, prefix } = req.body;
     const result = await pool.query(
-      'UPDATE ticket_types SET name=COALESCE($1,name), description=COALESCE($2,description), is_active=COALESCE($3,is_active) WHERE id=$4 RETURNING *',
-      [name || null, description !== undefined ? description : null, is_active ?? null, id]
+      `UPDATE ticket_types
+       SET name=COALESCE($1,name), description=COALESCE($2,description),
+           is_active=COALESCE($3,is_active),
+           prefix=CASE WHEN $4::text IS NOT NULL THEN UPPER(TRIM($4::text)) ELSE prefix END
+       WHERE id=$5 RETURNING *`,
+      [name || null, description !== undefined ? description : null, is_active ?? null, prefix !== undefined ? prefix : null, id]
     );
     if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
     res.json({ success: true, type: result.rows[0] });

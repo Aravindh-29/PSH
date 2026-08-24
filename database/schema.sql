@@ -180,6 +180,15 @@ ON CONFLICT (name) DO NOTHING;
 -- Link categories to a ticket type (optional – used for cascading subcategory dropdown)
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS type_id UUID REFERENCES ticket_types(id);
 
+-- Prefix column for ticket numbering (INC, CHG, PRB, SR, etc.)
+ALTER TABLE ticket_types ADD COLUMN IF NOT EXISTS prefix VARCHAR(10);
+
+-- Per-type atomic counter — avoids global sequence contention and supports per-prefix numbering
+CREATE TABLE IF NOT EXISTS ticket_type_counters (
+  type_id UUID PRIMARY KEY REFERENCES ticket_types(id) ON DELETE CASCADE,
+  counter INTEGER NOT NULL DEFAULT 0
+);
+
 -- Add type and classification columns to tickets
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS type_id         UUID REFERENCES ticket_types(id);
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS classification  VARCHAR(100);

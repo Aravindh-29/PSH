@@ -101,6 +101,9 @@ export default function CreateTicket() {
         return p;
       });
     }
+    // Re-fetch the ticket number preview whenever type changes
+    const url = form.typeId ? `/tickets/next-number?typeId=${form.typeId}` : '/tickets/next-number';
+    api.get(url).then(r => setNextNumber(r.data.number || '')).catch(() => {});
   }, [form.typeId, allCategories]);
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));

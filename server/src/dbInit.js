@@ -80,6 +80,36 @@ async function dbInit() {
     WHERE field_key = 'assignment_group' AND options = '[]'::jsonb;
   `);
 
+  // ── Ticket-type prefix & per-type counters (idempotent) ──
+  // Add prefix column if missing (schema.sql already does this via ALTER, but safe to repeat)
+  await appClient.query(`ALTER TABLE ticket_types ADD COLUMN IF NOT EXISTS prefix VARCHAR(10)`);
+
+  // Seed well-known prefixes — only fills NULLs, never overwrites admin customisations
+  await appClient.query(`
+    UPDATE ticket_types SET prefix = 'INC' WHERE name = 'Incident'        AND (prefix IS NULL OR prefix = '');
+    UPDATE ticket_types SET prefix = 'SR'  WHERE name = 'Service Request' AND (prefix IS NULL OR prefix = '');
+    UPDATE ticket_types SET prefix = 'PRB' WHERE name = 'Problem'         AND (prefix IS NULL OR prefix = '');
+    UPDATE ticket_types SET prefix = 'CHG' WHERE name = 'Change Request'  AND (prefix IS NULL OR prefix = '');
+  `);
+
+  // Create counter table if not present
+  await appClient.query(`
+    CREATE TABLE IF NOT EXISTS ticket_type_counters (
+      type_id UUID PRIMARY KEY REFERENCES ticket_types(id) ON DELETE CASCADE,
+      counter INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
+  // Seed counters from existing ticket counts — ON CONFLICT DO NOTHING is safe for re-runs
+  await appClient.query(`
+    INSERT INTO ticket_type_counters (type_id, counter)
+    SELECT tt.id, COUNT(t.id)::int
+    FROM ticket_types tt
+    LEFT JOIN tickets t ON t.type_id = tt.id AND t.deleted_at IS NULL
+    GROUP BY tt.id
+    ON CONFLICT (type_id) DO NOTHING
+  `);
+
   // Ensure admin user exists — only user created on fresh install
   const adminExists = await appClient.query(`SELECT id FROM users WHERE username = 'admin'`);
   if (adminExists.rows.length === 0) {

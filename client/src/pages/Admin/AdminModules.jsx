@@ -275,11 +275,13 @@ function CategoryModal({ category, onSave, onClose }) {
 function TicketTypeModal({ ticketType, onSave, onClose }) {
   const [name, setName]         = useState(ticketType?.name || '');
   const [description, setDesc]  = useState(ticketType?.description || '');
+  const [prefix, setPrefix]     = useState(ticketType?.prefix || '');
   const [saving, setSaving]     = useState(false);
   const handleSave = async () => {
     if (!name.trim()) { toast.error('Type name is required'); return; }
+    if (!prefix.trim()) { toast.error('Prefix is required (e.g. INC, CHG)'); return; }
     setSaving(true);
-    try { await onSave(name.trim(), description.trim()); onClose(); } catch {} finally { setSaving(false); }
+    try { await onSave(name.trim(), description.trim(), prefix.trim().toUpperCase()); onClose(); } catch {} finally { setSaving(false); }
   };
   return (
     <div className="cfg-modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -291,7 +293,21 @@ function TicketTypeModal({ ticketType, onSave, onClose }) {
         <div className="cfg-modal-body">
           <div className="cfg-form-row">
             <label>Type Name <span className="req">*</span></label>
-            <input value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSave()} placeholder="e.g. Incident" autoFocus />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Incident" autoFocus />
+          </div>
+          <div className="cfg-form-row">
+            <label>Prefix <span className="req">*</span></label>
+            <input
+              value={prefix}
+              onChange={e => setPrefix(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+              onKeyDown={e => e.key === 'Enter' && handleSave()}
+              placeholder="e.g. INC, CHG, PRB, SR"
+              style={{ textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600 }}
+              maxLength={6}
+            />
+            <span style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, display: 'block' }}>
+              Ticket numbers will be formatted as {prefix || 'XXX'}000001, {prefix || 'XXX'}000002, …
+            </span>
           </div>
           <div className="cfg-form-row">
             <label>Description</label>
@@ -463,13 +479,13 @@ export default function AdminModules() {
   };
 
   // ── Ticket Type operations ──
-  const saveTicketType = async (name, description) => {
+  const saveTicketType = async (name, description, prefix) => {
     try {
       if (typeModal === 'new') {
-        await api.post('/config/admin/ticket-types', { name, description });
+        await api.post('/config/admin/ticket-types', { name, description, prefix });
         toast.success('Ticket type added');
       } else {
-        await api.put(`/config/admin/ticket-types/${typeModal.id}`, { name, description });
+        await api.put(`/config/admin/ticket-types/${typeModal.id}`, { name, description, prefix });
         toast.success('Ticket type updated');
       }
       await loadAll();
@@ -690,6 +706,7 @@ export default function AdminModules() {
               <thead>
                 <tr>
                   <th>Type Name</th>
+                  <th>Prefix</th>
                   <th>Description</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -697,11 +714,17 @@ export default function AdminModules() {
               </thead>
               <tbody>
                 {ticketTypes.length === 0 && (
-                  <tr><td colSpan={4} className="cfg-empty-row">No ticket types yet.</td></tr>
+                  <tr><td colSpan={5} className="cfg-empty-row">No ticket types yet.</td></tr>
                 )}
                 {ticketTypes.map(tt => (
                   <tr key={tt.id} className={!tt.is_active ? 'cfg-row-inactive' : ''}>
                     <td style={{ fontWeight: 500 }}>{tt.name}</td>
+                    <td>
+                      {tt.prefix
+                        ? <span style={{ fontFamily: 'monospace', fontWeight: 700, background: '#EFF6FF', color: '#1D4ED8', padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>{tt.prefix}</span>
+                        : <span style={{ color: '#F59E0B', fontSize: 12 }}>⚠ Not set</span>
+                      }
+                    </td>
                     <td style={{ color: '#94a3b8', fontSize: '0.85rem' }}>{tt.description || '—'}</td>
                     <td><span className={`cfg-status-pill ${tt.is_active ? 'active' : 'inactive'}`}>{tt.is_active ? 'Active' : 'Inactive'}</span></td>
                     <td>
