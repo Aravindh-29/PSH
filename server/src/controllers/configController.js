@@ -1,6 +1,13 @@
 const pool = require('../db/pool');
 const argon2 = require('argon2');
 
+async function verifyAdminPassword(userId, plainPassword) {
+  if (!plainPassword) return false;
+  const row = await pool.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+  if (!row.rows.length) return false;
+  return argon2.verify(row.rows[0].password_hash, plainPassword);
+}
+
 async function getModules(req, res, next) {
   try {
     const result = await pool.query('SELECT * FROM modules WHERE is_active = true ORDER BY name');
@@ -78,18 +85,18 @@ async function updateTicketType(req, res, next) {
       return res.status(403).json({ success: false, locked: true, message: 'System types cannot be modified.' });
     }
 
-    // Custom type with existing tickets: only allow deactivation (one-way)
+    // Custom type with existing tickets: allow is_active toggle only (both directions), requires password
     if (ticketCount > 0) {
-      const { is_active } = req.body;
-      if (is_active === false && type.is_active) {
-        const result = await pool.query('UPDATE ticket_types SET is_active=FALSE WHERE id=$1 RETURNING *', [id]);
+      const { is_active, adminPassword } = req.body;
+      if (is_active === false || is_active === true) {
+        const valid = await verifyAdminPassword(req.session.userId, adminPassword);
+        if (!valid) return res.status(403).json({ success: false, message: 'Incorrect password' });
+        const result = await pool.query('UPDATE ticket_types SET is_active=$1 WHERE id=$2 RETURNING *', [is_active, id]);
         return res.json({ success: true, type: result.rows[0] });
       }
       return res.status(403).json({
         success: false, locked: true,
-        message: type.is_active
-          ? 'This type has tickets — only deactivation is allowed.'
-          : 'This type is inactive and cannot be modified. You may delete it.'
+        message: 'This type has tickets — only activate/deactivate is allowed.'
       });
     }
 
@@ -126,7 +133,10 @@ async function deleteTicketType(req, res, next) {
     if (is_active && count > 0) {
       return res.status(409).json({ success: false, deactivateFirst: true, count, message: `Deactivate this type before deleting it.` });
     }
-    // Inactive OR 0-ticket custom types: allow permanent deletion
+    // Inactive OR 0-ticket custom types: require password then permanently delete
+    const { adminPassword } = req.body || {};
+    const valid = await verifyAdminPassword(req.session.userId, adminPassword);
+    if (!valid) return res.status(403).json({ success: false, message: 'Incorrect password' });
     const result = await pool.query('DELETE FROM ticket_types WHERE id=$1 RETURNING id', [id]);
     if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
     res.json({ success: true });

@@ -272,6 +272,62 @@ function CategoryModal({ category, onSave, onClose }) {
   );
 }
 
+function PasswordConfirmModal({ title, message, confirmLabel = 'Confirm', onConfirm, onClose }) {
+  const [password, setPassword] = useState('');
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
+
+  const handleSubmit = async () => {
+    if (!password.trim()) { setError('Password is required'); return; }
+    setLoading(true); setError('');
+    try {
+      await onConfirm(password);
+      onClose();
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Incorrect password');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="cfg-modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="cfg-modal cfg-modal-sm">
+        <div className="cfg-modal-header">
+          <h3>{title}</h3>
+          <button className="cfg-modal-close" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="cfg-modal-body">
+          <p style={{ fontSize: 13, color: '#475569', marginBottom: 16, lineHeight: 1.6 }}>{message}</p>
+          <div className="cfg-form-row">
+            <label>Confirm with your admin password <span className="req">*</span></label>
+            <input
+              type="password"
+              value={password}
+              onChange={e => { setPassword(e.target.value); setError(''); }}
+              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+              placeholder="Enter your password"
+              autoFocus
+            />
+            {error && <span style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4, display: 'block' }}>{error}</span>}
+          </div>
+        </div>
+        <div className="cfg-modal-footer">
+          <button className="cfg-btn-cancel" onClick={onClose}>Cancel</button>
+          <button
+            className="cfg-btn-save"
+            style={{ background: confirmLabel.toLowerCase().includes('delete') ? 'var(--danger)' : undefined }}
+            onClick={handleSubmit}
+            disabled={loading}
+          >
+            {loading ? 'Verifying…' : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TicketTypeModal({ ticketType, onSave, onClose }) {
   const [name, setName]         = useState(ticketType?.name || '');
   const [description, setDesc]  = useState(ticketType?.description || '');
@@ -333,6 +389,7 @@ export default function AdminModules() {
   const [catModal, setCatModal]   = useState(null);   // null | 'new' | category object
   const [typeModal, setTypeModal] = useState(null);   // null | 'new' | type object
   const [confirmModal, setConfirmModal] = useState(null); // null | { title, message, onConfirm }
+  const [pwdModal, setPwdModal]         = useState(null); // null | { title, message, confirmLabel, onConfirm }
   const [showResetModal, setShowResetModal] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
@@ -496,42 +553,43 @@ export default function AdminModules() {
   };
 
   const deactivateTicketType = (tt) => {
-    setConfirmModal({
+    setPwdModal({
       title: 'Deactivate Ticket Type',
-      message: `Deactivate "${tt.name}"? This removes it from the New Ticket form immediately. Existing tickets using this type are unaffected. This action cannot be undone — once deactivated, the type can only be deleted.`,
+      message: `You are about to deactivate "${tt.name}". It will be removed from the New Ticket form immediately. Existing tickets are unaffected. You can re-activate it later with your password.`,
       confirmLabel: 'Deactivate',
-      onConfirm: async () => {
-        try {
-          await api.put(`/config/admin/ticket-types/${tt.id}`, { is_active: false });
-          setTicketTypes(prev => prev.map(t => t.id === tt.id ? { ...t, is_active: false } : t));
-          toast.success(`"${tt.name}" deactivated`);
-        } catch (err) {
-          toast.error(err?.response?.data?.message || 'Update failed');
-        }
+      onConfirm: async (password) => {
+        await api.put(`/config/admin/ticket-types/${tt.id}`, { is_active: false, adminPassword: password });
+        setTicketTypes(prev => prev.map(t => t.id === tt.id ? { ...t, is_active: false } : t));
+        toast.success(`"${tt.name}" deactivated`);
+      },
+    });
+  };
+
+  const reactivateTicketType = (tt) => {
+    setPwdModal({
+      title: 'Re-activate Ticket Type',
+      message: `Re-activate "${tt.name}"? It will appear again in the New Ticket form and new tickets can be created with this type.`,
+      confirmLabel: 'Re-activate',
+      onConfirm: async (password) => {
+        await api.put(`/config/admin/ticket-types/${tt.id}`, { is_active: true, adminPassword: password });
+        setTicketTypes(prev => prev.map(t => t.id === tt.id ? { ...t, is_active: true } : t));
+        toast.success(`"${tt.name}" re-activated`);
       },
     });
   };
 
   const deleteTicketType = (tt) => {
     const hasTickets = parseInt(tt.ticket_count || 0) > 0;
-    setConfirmModal({
+    setPwdModal({
       title: 'Permanently Delete Ticket Type',
       message: hasTickets
-        ? `Permanently delete "${tt.name}"? This type has ${tt.ticket_count} existing ticket${tt.ticket_count > 1 ? 's' : ''} — they will lose their type reference but remain intact. This cannot be undone.`
-        : `Delete type "${tt.name}"? This cannot be undone.`,
+        ? `You are about to permanently delete "${tt.name}". This type has ${tt.ticket_count} existing ticket${tt.ticket_count > 1 ? 's' : ''} — they will lose their type reference but remain intact. This cannot be undone.`
+        : `You are about to permanently delete type "${tt.name}". This cannot be undone.`,
       confirmLabel: 'Delete Permanently',
-      onConfirm: async () => {
-        try {
-          await api.delete(`/config/admin/ticket-types/${tt.id}`);
-          toast.success('Ticket type permanently deleted');
-          setTicketTypes(prev => prev.filter(t => t.id !== tt.id));
-        } catch (err) {
-          if (err?.response?.data?.deactivateFirst) {
-            toast.error('Deactivate this type before deleting it.');
-          } else {
-            toast.error(err?.response?.data?.message || 'Delete failed');
-          }
-        }
+      onConfirm: async (password) => {
+        await api.delete(`/config/admin/ticket-types/${tt.id}`, { data: { adminPassword: password } });
+        toast.success('Ticket type permanently deleted');
+        setTicketTypes(prev => prev.filter(t => t.id !== tt.id));
       },
     });
   };
@@ -782,13 +840,23 @@ export default function AdminModules() {
                             </button>
                           )}
                           {state === 'inactive-inuse' && (
-                            <button
-                              className="cfg-btn-icon cfg-btn-danger"
-                              onClick={() => deleteTicketType(tt)}
-                              title={`Delete permanently (${count} existing ticket${count > 1 ? 's' : ''} will lose type reference)`}
-                            >
-                              <Trash2 size={13} />
-                            </button>
+                            <>
+                              <button
+                                className="cfg-btn-icon"
+                                onClick={() => reactivateTicketType(tt)}
+                                title="Re-activate — requires admin password"
+                                style={{ color: '#22C55E' }}
+                              >
+                                <Eye size={13} />
+                              </button>
+                              <button
+                                className="cfg-btn-icon cfg-btn-danger"
+                                onClick={() => deleteTicketType(tt)}
+                                title={`Delete permanently (${count} existing ticket${count > 1 ? 's' : ''} will lose type reference)`}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -838,6 +906,15 @@ export default function AdminModules() {
         <ResetModal
           onClose={() => setShowResetModal(false)}
           onSuccess={loadAll}
+        />
+      )}
+      {pwdModal !== null && (
+        <PasswordConfirmModal
+          title={pwdModal.title}
+          message={pwdModal.message}
+          confirmLabel={pwdModal.confirmLabel}
+          onConfirm={pwdModal.onConfirm}
+          onClose={() => setPwdModal(null)}
         />
       )}
     </div>
