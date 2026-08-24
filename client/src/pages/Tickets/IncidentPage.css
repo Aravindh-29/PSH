@@ -29,6 +29,13 @@
   padding: 3px 10px;
   letter-spacing: 0.5px;
 }
+.ip-ticket-num-preview.ip-ticket-num-pending {
+  color: #94A3B8;
+  background: #F8FAFC;
+  border-color: #E2E8F0;
+  font-weight: 500;
+  letter-spacing: 0;
+}
 .ip-header-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
 
 /* Attachment badge on button */

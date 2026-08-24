@@ -76,14 +76,13 @@ export default function CreateTicket() {
       api.get('/config/categories'),
       api.get('/config/ticket-types'),
       api.get('/config/users'),
-      api.get('/tickets/next-number'),
-    ]).then(([f, c, tt, u, nn]) => {
+    ]).then(([f, c, tt, u]) => {
       setFields(f.data.fields || []);
       setAllCategories(c.data.categories || []);
       setCategories(c.data.categories || []);
       setTicketTypes(tt.data.types || []);
       setUsers(u.data.users || []);
-      setNextNumber(nn.data.number || '');
+      setNextNumber(''); // cleared until user selects a type
     }).catch(() => {});
   }, [location.key]); // re-fetch on every navigation to this page so config changes reflect immediately
 
@@ -101,9 +100,14 @@ export default function CreateTicket() {
         return p;
       });
     }
-    // Re-fetch the ticket number preview whenever type changes
-    const url = form.typeId ? `/tickets/next-number?typeId=${form.typeId}` : '/tickets/next-number';
-    api.get(url).then(r => setNextNumber(r.data.number || '')).catch(() => {});
+    // Number preview only makes sense once a type is chosen
+    if (form.typeId) {
+      api.get(`/tickets/next-number?typeId=${form.typeId}`)
+        .then(r => setNextNumber(r.data.number || ''))
+        .catch(() => {});
+    } else {
+      setNextNumber('');
+    }
   }, [form.typeId, allCategories]);
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -117,6 +121,9 @@ export default function CreateTicket() {
   const removePending = (idx) => setPendingFiles(prev => prev.filter((_, i) => i !== idx));
 
   const validate = () => {
+    if (!form.typeId) {
+      toast.error('Please select a ticket type to continue'); return false;
+    }
     if (!form.customerName || !form.moduleText || !form.categoryId || !form.shortDescription || !form.description) {
       toast.error('Please fill in all required fields'); return false;
     }
@@ -230,7 +237,10 @@ export default function CreateTicket() {
           <div className="ip-breadcrumb">New Incident</div>
           <div className="ip-title-row">
             <h1 className="ip-title">New Incident</h1>
-            {nextNumber && <span className="ip-ticket-num-preview">{nextNumber}</span>}
+            {nextNumber
+              ? <span className="ip-ticket-num-preview">{nextNumber}</span>
+              : <span className="ip-ticket-num-preview ip-ticket-num-pending">Select type…</span>
+            }
           </div>
         </div>
         <div className="ip-header-actions">
