@@ -230,4 +230,20 @@ CREATE TABLE IF NOT EXISTS audit_retention_settings (
 );
 INSERT INTO audit_retention_settings (id) VALUES (1) ON CONFLICT DO NOTHING;
 
+-- Email SMTP configuration (single-row settings table)
+CREATE TABLE IF NOT EXISTS email_config (
+  id           INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  smtp_host    VARCHAR(255) NOT NULL DEFAULT '',
+  smtp_port    INTEGER      NOT NULL DEFAULT 587,
+  smtp_user    VARCHAR(255) NOT NULL DEFAULT '',
+  smtp_pass    TEXT         NOT NULL DEFAULT '',
+  from_name    VARCHAR(255) NOT NULL DEFAULT 'PSH Notifications',
+  from_email   VARCHAR(255) NOT NULL DEFAULT '',
+  encryption   VARCHAR(10)  NOT NULL DEFAULT 'tls',
+  is_enabled   BOOLEAN      NOT NULL DEFAULT FALSE,
+  updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_by   UUID         REFERENCES users(id)
+);
+INSERT INTO email_config (id) VALUES (1) ON CONFLICT DO NOTHING;
+
 COMMIT;
