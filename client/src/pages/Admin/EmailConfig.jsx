@@ -33,7 +33,12 @@ export default function EmailConfig() {
       const r = await api.get('/kb/slug/email-configuration');
       navigate(`/knowledge-base/${r.data.article.id}`);
     } catch {
-      navigate('/knowledge-base');
+      try {
+        const r = await api.get('/kb?search=Email+Notifications');
+        const match = r.data.articles?.find(a => a.title.toLowerCase().includes('email'));
+        if (match) { navigate(`/knowledge-base/${match.id}`); return; }
+      } catch { /* ignore */ }
+      toast.error('Documentation article not found. Restart the server once to seed it.');
     }
   };
 

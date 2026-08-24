@@ -147,7 +147,12 @@ export default function SSOConfig() {
       const r = await api.get('/kb/slug/sso-configuration');
       navigate(`/knowledge-base/${r.data.article.id}`);
     } catch {
-      navigate('/knowledge-base');
+      try {
+        const r = await api.get('/kb?search=Single+Sign-On');
+        const match = r.data.articles?.find(a => a.title.toLowerCase().includes('sso') || a.title.toLowerCase().includes('sign-on'));
+        if (match) { navigate(`/knowledge-base/${match.id}`); return; }
+      } catch { /* ignore */ }
+      toast.error('Documentation article not found. Restart the server once to seed it.');
     }
   };
 
