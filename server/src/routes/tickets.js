@@ -27,5 +27,6 @@ router.put('/:id', ticketCtrl.update);
 router.delete('/:id', ticketCtrl.remove);
 router.post('/:id/comments', ticketCtrl.addComment);
 router.post('/:id/attachments', handleMulterError, attachCtrl.upload);
+router.get('/:id/attachments/zip', attachCtrl.downloadZip);
 
 module.exports = router;

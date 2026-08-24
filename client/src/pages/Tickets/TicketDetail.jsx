@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Pencil, Trash2, Download, Upload, Eye, X, Clock, Paperclip } from 'lucide-react';
+import { Pencil, Trash2, Download, Eye, X, Clock, Paperclip } from 'lucide-react';
 import { StatusBadge, PriorityBadge } from '../../components/Badge';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
@@ -16,9 +16,6 @@ export default function TicketDetail() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deleteModal, setDeleteModal] = useState(false);
-  const [uploadQueue, setUploadQueue] = useState([]);
-  const [attachOpen, setAttachOpen] = useState(false);
-  const fileInputRef = useRef(null);
   const [customFieldDefs, setCustomFieldDefs] = useState([]);
   const [fieldByKey, setFieldByKey] = useState({});
 
@@ -51,53 +48,6 @@ export default function TicketDetail() {
     }
   };
 
-  const handleUpload = async (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    const queue = files.map((f, i) => ({ id: i, name: f.name, progress: 0, status: 'uploading' }));
-    setUploadQueue(queue);
-    const fd = new FormData();
-    files.forEach(f => fd.append('files', f));
-    try {
-      const res = await api.post(`/tickets/${id}/attachments`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: (evt) => {
-          if (evt.total) {
-            const pct = Math.round((evt.loaded * 100) / evt.total);
-            setUploadQueue(prev => prev.map(q => ({ ...q, progress: pct, status: pct < 100 ? 'uploading' : 'processing' })));
-          }
-        },
-      });
-      const errors = res.data.errors || [];
-      const uploaded = res.data.attachments || [];
-      setUploadQueue(prev => prev.map(q => {
-        const hasError = errors.find(e => e.startsWith(q.name));
-        return { ...q, progress: 100, status: hasError ? 'error' : 'done' };
-      }));
-      if (errors.length) errors.forEach(e => toast.error(e));
-      if (uploaded.length) toast.success(`${uploaded.length} file${uploaded.length > 1 ? 's' : ''} uploaded`);
-      const fresh = await api.get(`/tickets/${id}`);
-      setData(prev => ({ ...prev, attachments: fresh.data.attachments, audit: fresh.data.audit }));
-    } catch (err) {
-      setUploadQueue(prev => prev.map(q => ({ ...q, status: 'error' })));
-      toast.error(err?.response?.data?.message || 'Upload failed');
-    } finally {
-      setTimeout(() => setUploadQueue([]), 3000);
-    }
-  };
-
-  const handleDeleteAttachment = async (attId) => {
-    try {
-      await api.delete(`/attachments/${attId}`);
-      toast.success('Attachment deleted');
-      setData(prev => ({ ...prev, attachments: prev.attachments.filter(a => a.id !== attId) }));
-      const fresh = await api.get(`/tickets/${id}`);
-      setData(prev => ({ ...prev, audit: fresh.data.audit }));
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to delete');
-    }
-  };
 
   if (loading) return <div style={{ padding: 48, textAlign: 'center', color: '#64748b' }}>Loading ticket...</div>;
   if (!data) return <div style={{ padding: 48, textAlign: 'center', color: '#64748b' }}>Ticket not found.</div>;
@@ -108,13 +58,13 @@ export default function TicketDetail() {
 
   const fmtBytes = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KB` : `${(n/1048576).toFixed(1)} MB`;
 
-  const handleDownloadAll = () => {
-    attachments.forEach(att => {
-      const a = document.createElement('a');
-      a.href = `/api/attachments/${att.id}/download`;
-      a.download = att.file_name;
-      a.click();
-    });
+  const handleDownloadZip = () => {
+    const a = document.createElement('a');
+    a.href = `/api/tickets/${id}/attachments/zip`;
+    a.download = `${ticket.ticket_number}-attachments.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const FIELD_LABELS = {
@@ -174,11 +124,6 @@ export default function TicketDetail() {
           <div className="ip-short-desc-head">{ticket.short_description}</div>
         </div>
         <div className="ip-header-actions">
-          <button type="button" className="ip-btn" onClick={() => setAttachOpen(true)}>
-            <Paperclip size={14} />
-            Attachments
-            {attachments.length > 0 && <span className="ip-attach-count-badge">{attachments.length}</span>}
-          </button>
           {canEdit && (
             <>
               <Link to={`/tickets/${id}/edit`} className="ip-btn">
@@ -328,6 +273,41 @@ export default function TicketDetail() {
           </div>
         </div>
 
+        {/* ── Attachments (view-only) ── */}
+        {attachments.length > 0 && (
+          <div className="ip-section">
+            <div className="ip-section-bar">
+              <span><Paperclip size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Attachments ({attachments.length})</span>
+              <div className="ip-section-bar-right">
+                <button className="ip-section-bar-btn" onClick={handleDownloadZip}>
+                  <Download size={13} /> Download All as ZIP
+                </button>
+              </div>
+            </div>
+            <div className="td-attach-list">
+              {attachments.map(att => {
+                const isImage = att.mime_type?.startsWith('image/');
+                return (
+                  <div key={att.id} className="td-attach-item">
+                    {isImage
+                      ? <img src={`/api/attachments/${att.id}/download?preview=true`} alt={att.file_name} className="td-attach-thumb" />
+                      : <div className="td-attach-icon"><Paperclip size={18} strokeWidth={1.5} /></div>
+                    }
+                    <div className="td-attach-info">
+                      <div className="td-attach-name">{att.file_name}</div>
+                      <div className="td-attach-meta">{fmtBytes(att.file_size)} · {att.uploader_name} · {fmt(att.uploaded_at)}</div>
+                    </div>
+                    <div className="td-attach-actions">
+                      <a href={`/api/attachments/${att.id}/download?preview=true`} target="_blank" rel="noopener noreferrer" className="ip-btn-icon" title="View"><Eye size={13} /></a>
+                      <a href={`/api/attachments/${att.id}/download`} className="ip-btn-icon" title="Download"><Download size={13} /></a>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* COMMENTS + ACTIVITY */}
         <div className="ip-bottom">
           <div className="ip-bottom-left">
@@ -407,78 +387,6 @@ export default function TicketDetail() {
         </div>
 
       </div>
-
-      {/* ATTACHMENT POPUP */}
-      {attachOpen && (
-        <div className="attach-popup-overlay" onClick={() => setAttachOpen(false)}>
-          <div className="attach-popup" onClick={e => e.stopPropagation()}>
-            <div className="attach-popup-header">
-              <span className="attach-popup-title">
-                Attachments {attachments.length > 0 && `(${attachments.length})`}
-              </span>
-              <div className="attach-popup-actions">
-                {attachments.length > 0 && (
-                  <button className="ip-btn" style={{ fontSize: 12, padding: '6px 12px' }} onClick={handleDownloadAll} title="Download all">
-                    <Download size={13} /> Download All
-                  </button>
-                )}
-                <label className="ip-btn" style={{ cursor: 'pointer', fontSize: 12, padding: '6px 12px' }}>
-                  <Upload size={13} /> Upload
-                  <input ref={fileInputRef} type="file" multiple hidden onChange={handleUpload} />
-                </label>
-                <button className="ip-btn-icon" onClick={() => setAttachOpen(false)} title="Close"><X size={14} /></button>
-              </div>
-            </div>
-
-            {uploadQueue.length > 0 && (
-              <div className="attach-popup-queue">
-                {uploadQueue.map(item => (
-                  <div key={item.id} className={`upload-item upload-${item.status}`}>
-                    <div className="upload-item-name">
-                      <span className="upload-icon">{item.status === 'done' ? '✓' : item.status === 'error' ? '✗' : '↑'}</span>
-                      <span>{item.name}</span>
-                    </div>
-                    <div className="upload-bar-wrap"><div className="upload-bar" style={{ width: `${item.progress}%` }} /></div>
-                    <span className="upload-pct">{item.status === 'done' ? 'Done' : item.status === 'error' ? 'Failed' : `${item.progress}%`}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="attach-popup-body">
-              {attachments.length === 0 && uploadQueue.length === 0 && (
-                <div className="attach-popup-empty">
-                  <Paperclip size={24} strokeWidth={1.5} />
-                  <span>No attachments yet.</span>
-                  <span style={{ fontSize: 12 }}>Click Upload to attach files.</span>
-                </div>
-              )}
-              {attachments.map(att => {
-                const isImage = att.mime_type?.startsWith('image/');
-                return (
-                  <div key={att.id} className="attach-popup-item">
-                    {isImage
-                      ? <img src={`/api/attachments/${att.id}/download?preview=true`} alt={att.file_name} className="attach-popup-thumb" />
-                      : <div className="attach-popup-icon">📎</div>
-                    }
-                    <div className="attach-popup-info">
-                      <div className="attach-popup-name">{att.file_name}</div>
-                      <div className="attach-popup-meta">{fmtBytes(att.file_size)} · {att.uploader_name} · {fmt(att.uploaded_at)}</div>
-                    </div>
-                    <div className="attach-popup-item-actions">
-                      <a href={`/api/attachments/${att.id}/download?preview=true`} target="_blank" rel="noopener noreferrer" className="ip-btn-icon" title="View"><Eye size={13} /></a>
-                      <a href={`/api/attachments/${att.id}/download`} className="ip-btn-icon" title="Download"><Download size={13} /></a>
-                      {isAdmin && (
-                        <button className="ip-btn-icon danger" onClick={() => handleDeleteAttachment(att.id)} title="Delete"><X size={13} /></button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Delete Modal */}
       {deleteModal && (

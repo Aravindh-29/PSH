@@ -338,3 +338,20 @@
 }
 .upload-done .upload-pct { color: #22C55E; }
 .upload-error .upload-pct { color: var(--danger); }
+
+/* ── Inline attachment list (view-only in TicketDetail) ── */
+.td-attach-list { display: flex; flex-direction: column; gap: 0; padding: 4px 0; }
+.td-attach-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; border-bottom: 1px solid #F1F5F9;
+}
+.td-attach-item:last-child { border-bottom: none; }
+.td-attach-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; border: 1px solid #E2E8F0; flex-shrink: 0; }
+.td-attach-icon {
+  width: 40px; height: 40px; border-radius: 6px; background: #F1F5F9;
+  display: flex; align-items: center; justify-content: center; color: #64748B; flex-shrink: 0;
+}
+.td-attach-info { flex: 1; min-width: 0; }
+.td-attach-name { font-size: 13px; font-weight: 500; color: #1E293B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.td-attach-meta { font-size: 11px; color: #94A3B8; margin-top: 2px; }
+.td-attach-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }

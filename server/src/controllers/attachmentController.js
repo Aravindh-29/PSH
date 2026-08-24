@@ -1,6 +1,7 @@
 const pool = require('../db/pool');
 const logger = require('../utils/logger');
 const path = require('path');
+const archiver = require('archiver');
 
 const ALLOWED_MIME_TYPES = [
   'image/jpeg','image/png','image/gif','image/webp','image/svg+xml',
@@ -120,4 +121,51 @@ async function remove(req, res, next) {
   }
 }
 
-module.exports = { upload, download, remove };
+async function downloadZip(req, res, next) {
+  try {
+    const { id: ticketId } = req.params;
+
+    const ticketRow = await pool.query(
+      'SELECT ticket_number, created_by, assigned_to FROM tickets WHERE id = $1 AND deleted_at IS NULL',
+      [ticketId]
+    );
+    if (ticketRow.rows.length === 0) return res.status(404).json({ success: false, message: 'Ticket not found' });
+
+    const ticket = ticketRow.rows[0];
+    const isAdmin = req.session.role === 'admin';
+    if (!isAdmin && ticket.created_by !== req.session.userId && ticket.assigned_to !== req.session.userId) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    const files = await pool.query(
+      'SELECT id, file_name, mime_type, file_size, file_data FROM ticket_attachments WHERE ticket_id = $1 ORDER BY uploaded_at ASC',
+      [ticketId]
+    );
+
+    if (files.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'No attachments found' });
+    }
+
+    const zipName = `${ticket.ticket_number}-attachments.zip`;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
+
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    archive.on('error', err => { logger.error('Zip error', err); });
+    archive.pipe(res);
+
+    // Deduplicate file names within the zip
+    const seen = {};
+    for (const f of files.rows) {
+      const ext  = path.extname(f.file_name);
+      const base = path.basename(f.file_name, ext);
+      const count = seen[f.file_name] = (seen[f.file_name] || 0) + 1;
+      const zipEntry = count > 1 ? `${base}(${count})${ext}` : f.file_name;
+      archive.append(f.file_data, { name: zipEntry });
+    }
+
+    await archive.finalize();
+  } catch (err) { next(err); }
+}
+
+module.exports = { upload, download, remove, downloadZip };
