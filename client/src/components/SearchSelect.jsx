@@ -36,7 +36,11 @@ export default function SearchSelect({
   }, []);
 
   const filtered = query
-    ? options.filter(o => o.label.toLowerCase().includes(query.toLowerCase()))
+    ? options.filter(o => {
+        const q = query.toLowerCase();
+        return o.label.toLowerCase().includes(q) ||
+          (o.searchExtra && o.searchExtra.toLowerCase().includes(q));
+      })
     : options;
 
   // ── Free-text / combobox mode ─────────────────────────────────────────────
@@ -143,7 +147,7 @@ export default function SearchSelect({
             : filtered.map(o => (
               <div
                 key={o.value}
-                className={`ss-option${String(o.value) === String(value) ? ' ss-active' : ''}`}
+                className={`ss-option${String(o.value) === String(value) ? ' ss-active' : ''}${o.sublabel ? ' ss-option-has-sub' : ''}`}
                 onMouseDown={e => {
                   e.preventDefault();
                   onChange(o.value);
@@ -151,7 +155,8 @@ export default function SearchSelect({
                   setQuery('');
                 }}
               >
-                {o.label}
+                <span className="ss-option-label">{o.label}</span>
+                {o.sublabel && <span className="ss-option-sublabel">{o.sublabel}</span>}
               </div>
             ))
           }

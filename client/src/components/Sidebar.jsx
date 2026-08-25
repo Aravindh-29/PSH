@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, ClipboardList, PlusCircle, BookOpen,
-  BarChart2, Users, Settings, ShieldCheck, LogOut, ChevronLeft, LayoutList, KeyRound, Mail
+  BarChart2, Users, Users2, Settings, ShieldCheck, LogOut, ChevronLeft, LayoutList, KeyRound, Mail, Search
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -21,18 +21,20 @@ const ADMIN_MAIN = [
 ];
 
 const NAV_COMMON = [
-  { to: '/my-tickets', icon: ClipboardList, label: 'My Tickets' },
-  { to: '/tickets/new', icon: PlusCircle, label: 'Create Ticket' },
-  { to: '/knowledge-base', icon: BookOpen, label: 'Knowledge Base' },
-  { to: '/reports', icon: BarChart2, label: 'Reports' },
+  { to: '/my-tickets',    icon: ClipboardList, label: 'My Tickets'    },
+  { to: '/my-query',      icon: Search,        label: 'My Query'      },
+  { to: '/tickets/new',   icon: PlusCircle,    label: 'Create Ticket' },
+  { to: '/knowledge-base',icon: BookOpen,      label: 'Knowledge Base'},
+  { to: '/reports',       icon: BarChart2,     label: 'Reports'       },
 ];
 
 const ADMIN_NAV = [
-  { to: '/admin/users',   icon: Users,      label: 'Users'         },
-  { to: '/admin/modules', icon: Settings,   label: 'Configuration' },
-  { to: '/admin/sso',     icon: KeyRound,   label: 'SSO'           },
-  { to: '/admin/email',   icon: Mail,       label: 'Email Config'  },
-  { to: '/audit-logs',    icon: ShieldCheck, label: 'Audit Logs'   },
+  { to: '/admin/users',          icon: Users,       label: 'Users'          },
+  { to: '/admin/groups',         icon: Users2,      label: 'Groups'         },
+  { to: '/admin/modules',        icon: Settings,    label: 'Configuration'  },
+  { to: '/admin/sso',            icon: KeyRound,    label: 'SSO'            },
+  { to: '/admin/email',          icon: Mail,        label: 'Email Config'   },
+  { to: '/audit-logs',           icon: ShieldCheck, label: 'Audit Logs'     },
 ];
 
 function NavItem({ to, icon: Icon, label, exact, disabled, collapsed }) {

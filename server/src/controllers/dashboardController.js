@@ -224,4 +224,37 @@ async function getStats(req, res, next) {
   }
 }
 
-module.exports = { getStats };
+// GET /api/dashboard/query — per-status ticket counts for the current user
+async function getQueryStats(req, res, next) {
+  try {
+    const userId = req.session.userId;
+    const { startDate, endDate } = req.query;
+
+    const params = [userId];
+    let dateCond = '';
+    if (startDate && endDate) {
+      params.push(startDate, endDate);
+      dateCond = `AND t.created_at >= $2::date AND t.created_at < ($3::date + INTERVAL '1 day')`;
+    }
+
+    const result = await pool.query(`
+      SELECT t.status, COUNT(*)::int AS count
+      FROM tickets t
+      WHERE t.deleted_at IS NULL
+        AND (t.assigned_to = $1 OR (t.assigned_to IS NULL AND t.created_by = $1))
+        ${dateCond}
+      GROUP BY t.status
+    `, params);
+
+    const counts = {};
+    let total = 0;
+    for (const row of result.rows) {
+      const n = parseInt(row.count, 10);
+      counts[row.status] = n;
+      total += n;
+    }
+    res.json({ success: true, counts, total });
+  } catch (err) { next(err); }
+}
+
+module.exports = { getStats, getQueryStats };

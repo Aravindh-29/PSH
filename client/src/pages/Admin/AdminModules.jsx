@@ -242,30 +242,213 @@ function FieldModal({ field, onSave, onClose }) {
   );
 }
 
-function CategoryModal({ category, onSave, onClose }) {
-  const [name, setName] = useState(category?.name || '');
-  const [saving, setSaving] = useState(false);
+function CategoryModal({ category, onSaved, onClose }) {
+  const isNew = !category;
+  const [name, setName]         = useState(category?.name || '');
+  const [saving, setSaving]     = useState(false);
+  const [subcats, setSubcats]   = useState([]);
+  const [subLoading, setSubLoading] = useState(false);
+  const [newSub, setNewSub]     = useState('');
+  const [addingSub, setAddingSub] = useState(false);
+  const [editSubId, setEditSubId] = useState(null);
+  const [editSubName, setEditSubName] = useState('');
+
+  useEffect(() => {
+    if (!isNew) {
+      setSubLoading(true);
+      api.get('/subcategories/admin/all', { params: { categoryId: category.id } })
+        .then(r => setSubcats(r.data.subcategories || []))
+        .catch(() => toast.error('Failed to load subcategories'))
+        .finally(() => setSubLoading(false));
+    }
+  }, []);
+
+  const handleAddSub = async () => {
+    const n = newSub.trim();
+    if (!n) return;
+    if (subcats.find(s => s.name.toLowerCase() === n.toLowerCase())) {
+      toast.error('Subcategory already exists'); return;
+    }
+    if (isNew) {
+      setSubcats(p => [...p, { _local: true, _key: Date.now(), name: n, is_active: true }]);
+      setNewSub('');
+      return;
+    }
+    setAddingSub(true);
+    try {
+      const r = await api.post('/subcategories', { name: n, categoryId: category.id });
+      const sub = r.data.subcategory || r.data;
+      setSubcats(p => [...p, { id: sub.id, name: n, is_active: true }]);
+      setNewSub('');
+      toast.success('Subcategory added');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to add');
+    } finally { setAddingSub(false); }
+  };
+
+  const handleDeleteSub = async (sub, idx) => {
+    if (isNew || sub._local) { setSubcats(p => p.filter((_, i) => i !== idx)); return; }
+    try {
+      await api.delete(`/subcategories/${sub.id}`);
+      setSubcats(p => p.filter(s => s.id !== sub.id));
+    } catch { toast.error('Failed to delete'); }
+  };
+
+  const handleToggleSub = async (sub) => {
+    if (isNew || sub._local) return;
+    try {
+      await api.put(`/subcategories/${sub.id}`, { is_active: !sub.is_active });
+      setSubcats(p => p.map(s => s.id === sub.id ? { ...s, is_active: !s.is_active } : s));
+    } catch { toast.error('Update failed'); }
+  };
+
+  const handleSaveEdit = async (sub, idx) => {
+    const n = editSubName.trim();
+    if (!n) { setEditSubId(null); return; }
+    if (isNew || sub._local) {
+      setSubcats(p => p.map((s, i) => i === idx ? { ...s, name: n } : s));
+      setEditSubId(null); return;
+    }
+    try {
+      await api.put(`/subcategories/${sub.id}`, { name: n });
+      setSubcats(p => p.map(s => s.id === sub.id ? { ...s, name: n } : s));
+      setEditSubId(null);
+    } catch { toast.error('Update failed'); }
+  };
+
   const handleSave = async () => {
     if (!name.trim()) { toast.error('Category name is required'); return; }
     setSaving(true);
-    try { await onSave(name.trim()); onClose(); } catch {} finally { setSaving(false); }
+    try {
+      if (isNew) {
+        const r = await api.post('/config/admin/categories', { name: name.trim() });
+        const newId = r.data.category?.id || r.data.id;
+        for (const sub of subcats) {
+          await api.post('/subcategories', { name: sub.name, categoryId: newId });
+        }
+        toast.success('Category added');
+      } else {
+        if (name.trim() !== category.name) {
+          await api.put(`/config/admin/categories/${category.id}`, { name: name.trim() });
+          toast.success('Category updated');
+        }
+      }
+      onSaved();
+      onClose();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Save failed');
+    } finally { setSaving(false); }
   };
+
   return (
     <div className="cfg-modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="cfg-modal cfg-modal-sm">
+      <div className="cfg-modal cfg-cat-modal">
         <div className="cfg-modal-header">
-          <h3>{category ? 'Rename Category' : 'Add Category'}</h3>
+          <h3>{isNew ? 'Add Category' : `Edit Category`}</h3>
           <button className="cfg-modal-close" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="cfg-modal-body">
+          {/* Category name */}
           <div className="cfg-form-row">
             <label>Category Name <span className="req">*</span></label>
-            <input value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSave()} placeholder="e.g. Incident" autoFocus />
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSave()}
+              placeholder="e.g. Incident"
+              autoFocus
+            />
+          </div>
+
+          {/* Subcategories section */}
+          <div className="cfg-subcat-section">
+            <div className="cfg-subcat-header">
+              <span>Subcategories</span>
+              <span className="cfg-subcat-count">{subcats.length}</span>
+            </div>
+
+            {subLoading ? (
+              <p style={{ fontSize: 13, color: '#94a3b8', margin: '8px 0' }}>Loading…</p>
+            ) : (
+              <>
+                {/* Existing subcats list */}
+                {subcats.length > 0 && (
+                  <div className="cfg-subcat-list">
+                    {subcats.map((s, idx) => (
+                      <div key={s.id || s._key || idx} className={`cfg-subcat-row ${!s.is_active ? 'cfg-subcat-inactive' : ''}`}>
+                        {editSubId === (s.id || s._key) ? (
+                          <input
+                            className="cfg-subcat-edit-input"
+                            value={editSubName}
+                            onChange={e => setEditSubName(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleSaveEdit(s, idx);
+                              if (e.key === 'Escape') setEditSubId(null);
+                            }}
+                            autoFocus
+                          />
+                        ) : (
+                          <span className="cfg-subcat-name">{s.name}</span>
+                        )}
+                        <div className="cfg-subcat-actions">
+                          {editSubId === (s.id || s._key) ? (
+                            <>
+                              <button className="cfg-subcat-btn cfg-subcat-save" onClick={() => handleSaveEdit(s, idx)} title="Save">✓</button>
+                              <button className="cfg-subcat-btn" onClick={() => setEditSubId(null)} title="Cancel"><X size={12} /></button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                className="cfg-subcat-btn"
+                                onClick={() => { setEditSubId(s.id || s._key); setEditSubName(s.name); }}
+                                title="Rename"
+                              ><Pencil size={12} /></button>
+                              {!isNew && !s._local && (
+                                <button
+                                  className={`cfg-subcat-btn ${s.is_active ? 'cfg-subcat-toggle-on' : 'cfg-subcat-toggle-off'}`}
+                                  onClick={() => handleToggleSub(s)}
+                                  title={s.is_active ? 'Deactivate' : 'Activate'}
+                                >
+                                  {s.is_active ? <Eye size={12} /> : <EyeOff size={12} />}
+                                </button>
+                              )}
+                              <button className="cfg-subcat-btn cfg-subcat-del" onClick={() => handleDeleteSub(s, idx)} title="Delete">
+                                <Trash2 size={12} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add subcategory row */}
+                <div className="cfg-subcat-add-row">
+                  <input
+                    className="cfg-subcat-add-input"
+                    value={newSub}
+                    onChange={e => setNewSub(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddSub())}
+                    placeholder="New subcategory name…"
+                  />
+                  <button
+                    className="cfg-subcat-add-btn"
+                    onClick={handleAddSub}
+                    disabled={!newSub.trim() || addingSub}
+                  >
+                    <Plus size={13} /> Add
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
         <div className="cfg-modal-footer">
           <button className="cfg-btn-cancel" onClick={onClose}>Cancel</button>
-          <button className="cfg-btn-save" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
+          <button className="cfg-btn-save" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving...' : 'Save'}
+          </button>
         </div>
       </div>
     </div>
@@ -482,21 +665,8 @@ export default function AdminModules() {
   };
 
   // ── Category operations ──
-  const saveCategory = async (name) => {
-    try {
-      if (catModal === 'new') {
-        await api.post('/config/admin/categories', { name });
-        toast.success('Category added');
-      } else {
-        await api.put(`/config/admin/categories/${catModal.id}`, { name });
-        toast.success('Category updated');
-      }
-      await loadAll();
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'Save failed');
-      throw err;
-    }
-  };
+  // saveCategory is now handled inside CategoryModal itself; this just reloads.
+  const reloadAfterCategorySave = () => loadAll();
 
   const deleteCategory = (cat) => {
     setConfirmModal({
@@ -880,7 +1050,7 @@ export default function AdminModules() {
       {catModal !== null && (
         <CategoryModal
           category={catModal === 'new' ? null : catModal}
-          onSave={saveCategory}
+          onSaved={reloadAfterCategorySave}
           onClose={() => setCatModal(null)}
         />
       )}

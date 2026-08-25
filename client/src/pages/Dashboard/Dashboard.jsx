@@ -367,8 +367,8 @@ export default function Dashboard({ personal = false }) {
       {/* Recent Tickets */}
       <div className="dash-recent">
         <div className="dash-card-header">
-          <h3>{isAdmin ? 'Recent Tickets (All Users)' : 'My Recent Tickets'}</h3>
-          <Link to="/my-tickets" className="view-all">View all →</Link>
+          <h3>{isAdmin && !isPersonal ? 'Recent Tickets (All Users)' : isAdmin ? 'Recent Tickets' : 'My Recent Tickets'}</h3>
+          <Link to={isAdmin && !isPersonal ? '/tickets' : '/my-tickets'} className="view-all">View all →</Link>
         </div>
         <div className="recent-table-wrap">
           <table className="recent-table">

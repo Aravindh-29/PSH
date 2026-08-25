@@ -503,3 +503,137 @@
 
 /* Req asterisk */
 .req { color: #e85d04; }
+
+/* ── Category modal with subcategory panel ─────────────────── */
+.cfg-cat-modal { max-width: 520px; }
+
+.cfg-subcat-section {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--cfg-modal-border);
+}
+
+.cfg-subcat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cfg-text-muted);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+
+.cfg-subcat-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(232,93,4,.1);
+  color: #e85d04;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cfg-subcat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.cfg-subcat-list::-webkit-scrollbar { width: 4px; }
+.cfg-subcat-list::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 99px; }
+
+.cfg-subcat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--cfg-modal-border);
+  border-radius: 7px;
+  background: var(--cfg-cancel-btn-bg);
+}
+.cfg-subcat-inactive { opacity: .55; }
+
+.cfg-subcat-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--cfg-text);
+}
+
+.cfg-subcat-edit-input {
+  flex: 1;
+  padding: 3px 7px;
+  border: 1px solid #e85d04;
+  border-radius: 5px;
+  font-size: 13px;
+  outline: none;
+  background: white;
+  color: #0d1b2a;
+}
+
+.cfg-subcat-actions { display: flex; gap: 3px; }
+
+.cfg-subcat-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--cfg-icon-btn-border);
+  border-radius: 5px;
+  background: var(--cfg-cancel-btn-bg);
+  color: var(--cfg-text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  transition: all .12s;
+}
+.cfg-subcat-btn:hover         { background: var(--cfg-icon-btn-hover-bg); color: var(--cfg-text); }
+.cfg-subcat-save              { border-color: #22c55e; color: #16a34a; }
+.cfg-subcat-save:hover        { background: #f0fdf4; }
+.cfg-subcat-del:hover         { background: #fee2e2; border-color: #fca5a5; color: #dc2626; }
+.cfg-subcat-toggle-on:hover   { background: #fff7ed; color: #e85d04; }
+.cfg-subcat-toggle-off:hover  { background: #f0fdf4; color: #16a34a; }
+
+.cfg-subcat-add-row {
+  display: flex;
+  gap: 8px;
+}
+
+.cfg-subcat-add-input {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--cfg-input-border, #e2e8f0);
+  border-radius: 7px;
+  font-size: 13px;
+  outline: none;
+  background: white;
+  color: #0d1b2a;
+  transition: border-color .15s;
+}
+.cfg-subcat-add-input:focus { border-color: #e85d04; }
+.cfg-subcat-add-input::placeholder { color: #b0b8c4; }
+
+.cfg-subcat-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border-radius: 7px;
+  border: none;
+  background: #0d1b2a;
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s;
+}
+.cfg-subcat-add-btn:hover:not(:disabled) { background: #1e3a5f; }
+.cfg-subcat-add-btn:disabled { opacity: .45; cursor: not-allowed; }

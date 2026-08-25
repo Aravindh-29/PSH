@@ -48,6 +48,7 @@ app.get('/api/health', async (req, res) => {
 });
 
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/mfa',  require('./routes/mfa'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/tickets', require('./routes/tickets'));
 app.use('/api/attachments', require('./routes/attachments'));
@@ -55,8 +56,11 @@ app.use('/api/users', require('./routes/users'));
 app.use('/api/config', require('./routes/config'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/kb',      require('./routes/kb'));
-app.use('/api/audit',   require('./routes/audit'));
+app.use('/api/audit',        require('./routes/audit'));
+app.use('/api/admin-audit',  require('./routes/adminAudit'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/groups',        require('./routes/groups'));
+app.use('/api/subcategories', require('./routes/subcategories'));
 
 if (isProd) {
   app.use(express.static(path.join(__dirname, '../../client/dist')));

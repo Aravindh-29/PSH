@@ -1,6 +1,7 @@
 const { Issuer } = require('openid-client');
 const pool = require('../db/pool');
 const { invalidateClient } = require('./ssoController');
+const { logAdminAudit } = require('./adminAuditController');
 
 async function getSSOConfig(req, res, next) {
   try {
@@ -56,6 +57,7 @@ async function saveSSOConfig(req, res, next) {
     );
 
     invalidateClient();
+    logAdminAudit(req.session?.userId, 'SSO_CONFIG_UPDATED', 'sso_config', '1', 'SSO Configuration', { providerName, issuerUrl, isEnabled }, req.ip);
     res.json({ success: true, message: 'SSO configuration saved successfully.' });
   } catch (err) { next(err); }
 }

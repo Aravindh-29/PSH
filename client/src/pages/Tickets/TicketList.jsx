@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, ChevronDown, ChevronsUpDown, Calendar, ChevronDown as ChevDown } from 'lucide-react';
 import { StatusBadge, PriorityBadge } from '../../components/Badge';
 import api from '../../api/axios';
@@ -44,19 +44,29 @@ function SortIcon({ field, sort }) {
 }
 
 export default function TicketList({ myTickets }) {
+  const [urlParams] = useSearchParams();
+
+  // Initialise from URL params so dashboard Quick Access links auto-filter
+  const initStatus = urlParams.get('status') || '';
+  const initStartDate = urlParams.get('startDate');
+  const initEndDate   = urlParams.get('endDate');
+  const initDateRange = initStartDate && initEndDate
+    ? { start: new Date(initStartDate + 'T00:00:00'), end: new Date(initEndDate + 'T23:59:59') }
+    : null;
+
   const [tickets, setTickets]       = useState([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, pages: 1 });
   const [loading, setLoading]       = useState(true);
   const [search, setSearch]         = useState('');
-  const [filters, setFilters]       = useState({ status: '', priority: '' });
+  const [filters, setFilters]       = useState({ status: initStatus, priority: '' });
   const [sort, setSort]             = useState({ field: 'updated_at', dir: 'desc' });
   const [page, setPage]             = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
   const [deleteId, setDeleteId]     = useState(null);
-  const [dateRange, setDateRange]   = useState(null); // null = All Tickets
+  const [dateRange, setDateRange]   = useState(initDateRange);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd]     = useState('');
+  const [customStart, setCustomStart] = useState(initStartDate || '');
+  const [customEnd, setCustomEnd]     = useState(initEndDate   || '');
   const datePickerRef = useRef(null);
 
   useEffect(() => {

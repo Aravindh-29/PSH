@@ -1,0 +1,62 @@
+.myquery-page {
+  padding: 28px 32px;
+  max-width: 1400px;
+}
+
+.myquery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.myquery-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.myquery-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fff0e3, #fff8f2);
+  border: 1px solid rgba(232, 93, 4, 0.2);
+  color: #E85D04;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(232, 93, 4, 0.12);
+}
+
+.myquery-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1E293B;
+  margin: 0 0 2px;
+  letter-spacing: -0.02em;
+}
+
+.myquery-sub {
+  font-size: 13px;
+  color: #94A3B8;
+  margin: 0;
+}
+
+.myquery-card {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+}
+
+.myquery-empty {
+  text-align: center;
+  padding: 32px;
+  color: #94A3B8;
+  font-size: 14px;
+}

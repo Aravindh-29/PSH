@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const argon2 = require('argon2');
+const { logAdminAudit } = require('./adminAuditController');
 
 async function verifyAdminPassword(userId, plainPassword) {
   if (!plainPassword) return false;
@@ -63,6 +64,7 @@ async function createTicketType(req, res, next) {
       'INSERT INTO ticket_type_counters (type_id, counter) VALUES ($1, 0) ON CONFLICT DO NOTHING',
       [newType.id]
     );
+    logAdminAudit(req.session?.userId, 'TICKET_TYPE_CREATED', 'ticket_type', newType.id, newType.name, { prefix: newType.prefix }, req.ip);
     res.status(201).json({ success: true, type: newType });
   } catch (err) { next(err); }
 }
@@ -111,6 +113,7 @@ async function updateTicketType(req, res, next) {
       [name || null, description !== undefined ? description : null, is_active ?? null, prefix !== undefined ? prefix : null, id]
     );
     if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
+    logAdminAudit(req.session?.userId, 'TICKET_TYPE_UPDATED', 'ticket_type', id, result.rows[0].name, { name, is_active, prefix }, req.ip);
     res.json({ success: true, type: result.rows[0] });
   } catch (err) { next(err); }
 }
@@ -119,13 +122,13 @@ async function deleteTicketType(req, res, next) {
   try {
     const { id } = req.params;
     const typeRow = await pool.query(
-      `SELECT tt.is_system, tt.is_active, COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL) AS ticket_count
+      `SELECT tt.is_system, tt.is_active, tt.name, COUNT(t.id) FILTER (WHERE t.deleted_at IS NULL) AS ticket_count
        FROM ticket_types tt LEFT JOIN tickets t ON t.type_id = tt.id
-       WHERE tt.id = $1 GROUP BY tt.is_system, tt.is_active`,
+       WHERE tt.id = $1 GROUP BY tt.is_system, tt.is_active, tt.name`,
       [id]
     );
     if (typeRow.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
-    const { is_system, is_active, ticket_count } = typeRow.rows[0];
+    const { is_system, is_active, ticket_count, name: typeName } = typeRow.rows[0];
     const count = parseInt(ticket_count);
 
     if (is_system) return res.status(403).json({ success: false, locked: true, message: 'System types cannot be deleted.' });
@@ -147,6 +150,7 @@ async function deleteTicketType(req, res, next) {
       const result = await client.query('DELETE FROM ticket_types WHERE id=$1 RETURNING id', [id]);
       await client.query('COMMIT');
       if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Type not found' });
+      logAdminAudit(req.session?.userId, 'TICKET_TYPE_DELETED', 'ticket_type', id, typeName, {}, req.ip);
       res.json({ success: true });
     } catch (txErr) {
       await client.query('ROLLBACK');
@@ -159,7 +163,7 @@ async function deleteTicketType(req, res, next) {
 
 async function getUsers(req, res, next) {
   try {
-    const result = await pool.query('SELECT id, full_name, username, role FROM users WHERE is_active = true ORDER BY full_name');
+    const result = await pool.query('SELECT id, full_name, username, email, role FROM users WHERE is_active = true ORDER BY full_name');
     res.json({ success: true, users: result.rows });
   } catch (err) { next(err); }
 }
@@ -196,6 +200,7 @@ async function createField(req, res, next) {
        VALUES ($1,$2,$3,$4,false,true,$5,$6,$7) RETURNING *`,
       [field_key, label.trim(), field_type, is_required, field_order, placeholder, JSON.stringify(options)]
     );
+    logAdminAudit(req.session?.userId, 'TICKET_FIELD_CREATED', 'ticket_field', result.rows[0].id, label, { field_type, is_required }, req.ip);
     res.status(201).json({ success: true, field: result.rows[0] });
   } catch (err) { next(err); }
 }
@@ -225,6 +230,7 @@ async function updateField(req, res, next) {
         id,
       ]
     );
+    logAdminAudit(req.session?.userId, 'TICKET_FIELD_UPDATED', 'ticket_field', id, result.rows[0].label, { is_active, is_required, field_order }, req.ip);
     res.json({ success: true, field: result.rows[0] });
   } catch (err) { next(err); }
 }
@@ -236,6 +242,7 @@ async function deleteField(req, res, next) {
     if (existing.rows.length === 0) return res.status(404).json({ success: false, message: 'Field not found' });
     if (existing.rows[0].is_system) return res.status(400).json({ success: false, message: 'Field is locked. Unlock it first to delete.' });
     await pool.query('DELETE FROM ticket_fields WHERE id = $1', [id]);
+    logAdminAudit(req.session?.userId, 'TICKET_FIELD_DELETED', 'ticket_field', id, existing.rows[0].label, {}, req.ip);
     res.json({ success: true });
   } catch (err) { next(err); }
 }
@@ -249,6 +256,7 @@ async function createCategory(req, res, next) {
       [name.trim(), description || null, type_id || null]
     );
     if (result.rows.length === 0) return res.status(400).json({ success: false, message: 'Category already exists' });
+    logAdminAudit(req.session?.userId, 'CATEGORY_CREATED', 'category', result.rows[0].id, name, {}, req.ip);
     res.status(201).json({ success: true, category: result.rows[0] });
   } catch (err) { next(err); }
 }
@@ -262,6 +270,7 @@ async function updateCategory(req, res, next) {
       [name || null, is_active ?? null, type_id || null, id]
     );
     if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Category not found' });
+    logAdminAudit(req.session?.userId, 'CATEGORY_UPDATED', 'category', id, result.rows[0].name, { name, is_active }, req.ip);
     res.json({ success: true, category: result.rows[0] });
   } catch (err) { next(err); }
 }
@@ -275,8 +284,9 @@ async function deleteCategory(req, res, next) {
     if (count > 0 && force !== 'true') {
       return res.status(409).json({ success: false, inUse: true, count, message: `${count} ticket${count > 1 ? 's' : ''} use this category` });
     }
-    const result = await pool.query('DELETE FROM categories WHERE id=$1 RETURNING id', [id]);
+    const result = await pool.query('DELETE FROM categories WHERE id=$1 RETURNING id, name', [id]);
     if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Category not found' });
+    logAdminAudit(req.session?.userId, 'CATEGORY_DELETED', 'category', id, result.rows[0].name, {}, req.ip);
     res.json({ success: true });
   } catch (err) { next(err); }
 }

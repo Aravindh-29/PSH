@@ -10,7 +10,7 @@ async function login(req, res, next) {
     }
 
     const result = await pool.query(
-      'SELECT id, username, email, full_name, role, password_hash, is_active FROM users WHERE (username = $1 OR email = $1) AND is_active = true AND deleted_at IS NULL',
+      'SELECT id, username, email, full_name, role, password_hash, is_active, mfa_enabled, mfa_required FROM users WHERE (username = $1 OR email = $1) AND is_active = true AND deleted_at IS NULL',
       [username.toLowerCase().trim()]
     );
 
@@ -27,22 +27,27 @@ async function login(req, res, next) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    req.session.userId = user.id;
-    req.session.username = user.username;
-    req.session.role = user.role;
-    req.session.fullName = user.full_name;
+    // If MFA not required for this user → create full session immediately
+    if (!user.mfa_required) {
+      req.session.userId   = user.id;
+      req.session.username = user.username;
+      req.session.role     = user.role;
+      req.session.fullName = user.full_name;
+      logger.info(`Login success (no MFA): ${user.username}`);
+      return res.json({
+        success: true,
+        user: { id: user.id, username: user.username, email: user.email, fullName: user.full_name, role: user.role },
+      });
+    }
 
-    logger.info(`User logged in: ${user.username} (${user.role})`);
+    // Password verified — set pending MFA state (not a full session yet)
+    req.session.mfaPendingUserId = user.id;
+    logger.info(`Password verified for: ${user.username} — awaiting MFA`);
 
     res.json({
       success: true,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        fullName: user.full_name,
-        role: user.role,
-      },
+      mfaRequired: true,
+      mfaSetup: !user.mfa_enabled,  // true = needs setup, false = just enter code
     });
   } catch (err) {
     next(err);

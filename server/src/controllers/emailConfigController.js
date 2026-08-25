@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 const pool = require('../db/pool');
+const { logAdminAudit } = require('./adminAuditController');
 
 const MASKED = '••••••••';
 
@@ -45,6 +46,7 @@ async function saveConfig(req, res, next) {
         from_name || '', from_email || '', encryption || 'tls', is_enabled !== false,
         req.session.userId]);
 
+    logAdminAudit(req.session?.userId, 'EMAIL_CONFIG_UPDATED', 'email_config', '1', 'Email Configuration', { smtp_host, smtp_port, from_email, is_enabled }, req.ip);
     res.json({ success: true, message: 'Email configuration saved' });
   } catch (err) { next(err); }
 }

@@ -95,9 +95,9 @@ export default function TicketDetail() {
     return raw !== undefined && raw !== null && raw !== '';
   });
 
-  const customTriples = [];
-  for (let i = 0; i < customVisible.length; i += 3) {
-    customTriples.push([customVisible[i], customVisible[i+1] || null, customVisible[i+2] || null]);
+  const customPairs = [];
+  for (let i = 0; i < customVisible.length; i += 2) {
+    customPairs.push([customVisible[i], customVisible[i+1] || null]);
   }
 
   const renderCustomValue = (f) => {
@@ -192,6 +192,15 @@ export default function TicketDetail() {
                 <span className="ip-vc"><Val v={ticket.urgency} /></span>
               </div>
             </div>
+            {ticket.subcategory_name && (
+              <div className="ip-row">
+                <div className="ip-pair">
+                  <span className="ip-lc">Subcategory</span>
+                  <span className="ip-vc"><Val v={ticket.subcategory_name} /></span>
+                </div>
+                <div className="ip-pair" />
+              </div>
+            )}
             <div className="ip-row">
               <div className="ip-pair">
                 <span className="ip-lc">Type</span>
@@ -250,10 +259,10 @@ export default function TicketDetail() {
         {customVisible.length > 0 && (
           <div className="ip-section">
             <div className="ip-section-bar"><span>Additional Fields</span></div>
-            <div className="ip-fields ip-fields-3col ip-view-mode">
-              {customTriples.map((triple, ri) => (
+            <div className="ip-fields ip-view-mode">
+              {customPairs.map((pair, ri) => (
                 <div className="ip-row" key={`cf-${ri}`}>
-                  {triple.map((f, fi) => f ? (
+                  {pair.map((f, fi) => f ? (
                     <div className="ip-pair" key={fi}>
                       <span className="ip-lc">{f.label}</span>
                       <span className="ip-vc">{renderCustomValue(f)}</span>
@@ -349,7 +358,9 @@ export default function TicketDetail() {
                               <a href={`/api/attachments/${a.new_value}/download?preview=true`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--orange)' }}>{a.new_value}</a>
                             </div>
                           )}
-                          <div className="audit-meta">{a.user_name} · {fmt(a.created_at)}</div>
+                          <div className="audit-meta">
+                            {a.user_name}{a.user_username ? <span style={{ color: '#94A3B8', marginLeft: 3 }}>@{a.user_username}</span> : ''} · {fmt(a.created_at)}
+                          </div>
                         </div>
                       </div>
                     ))}

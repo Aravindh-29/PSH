@@ -58,6 +58,8 @@ export default function EditTicket() {
   const [categories, setCategories]   = useState([]);
   const [ticketTypes, setTicketTypes] = useState([]);
   const [users, setUsers]             = useState([]);
+  const [groups, setGroups]           = useState([]);
+  const [subcategories, setSubcategories] = useState([]);
   const [loading, setLoading]         = useState(false);
   const [form, setForm]               = useState(null);
   const [ticketNumber, setTicketNumber] = useState('');
@@ -79,24 +81,28 @@ export default function EditTicket() {
       api.get('/config/categories'),
       api.get('/config/users'),
       api.get('/config/ticket-types'),
-    ]).then(([t, f, c, u, tt]) => {
+      api.get('/groups/with-members'),
+    ]).then(([t, f, c, u, tt, g]) => {
       const ticket = t.data.ticket;
       setTicketNumber(ticket.ticket_number);
+      const catId = ticket.category_id ? String(ticket.category_id) : '';
       setForm({
-        customerName:     ticket.customer_name     || '',
-        moduleText:       ticket.module_name        || '',
-        categoryId:       ticket.category_id        ? String(ticket.category_id) : '',
-        shortDescription: ticket.short_description  || '',
-        description:      ticket.description        || '',
-        status:           ticket.status             || 'NEW',
-        priority:         ticket.priority           || 'MEDIUM',
-        impact:           ticket.impact             || 'MEDIUM',
-        urgency:          ticket.urgency            || 'MEDIUM',
-        ticketOwner:      ticket.ticket_owner       ? String(ticket.ticket_owner) : '',
-        assignedTo:       ticket.assigned_to        ? String(ticket.assigned_to) : '',
-        typeId:           ticket.type_id            ? String(ticket.type_id) : '',
-        classification:   ticket.classification     || '',
-        assignmentGroup:  ticket.assignment_group   || '',
+        customerName:      ticket.customer_name     || '',
+        moduleText:        ticket.module_name        || '',
+        categoryId:        catId,
+        subcategoryId:     ticket.subcategory_id     ? String(ticket.subcategory_id) : '',
+        shortDescription:  ticket.short_description  || '',
+        description:       ticket.description        || '',
+        status:            ticket.status             || 'NEW',
+        priority:          ticket.priority           || 'MEDIUM',
+        impact:            ticket.impact             || 'MEDIUM',
+        urgency:           ticket.urgency            || 'MEDIUM',
+        ticketOwner:       ticket.ticket_owner       ? String(ticket.ticket_owner) : '',
+        assignedTo:        ticket.assigned_to        ? String(ticket.assigned_to) : '',
+        typeId:            ticket.type_id            ? String(ticket.type_id) : '',
+        classification:    ticket.classification     || '',
+        assignmentGroup:   ticket.assignment_group   || '',
+        assignmentGroupId: ticket.assignment_group_id ? String(ticket.assignment_group_id) : '',
       });
       setOriginalAssignedTo(ticket.assigned_to ? String(ticket.assigned_to) : '');
       setOriginalStatus(ticket.status || 'NEW');
@@ -106,10 +112,34 @@ export default function EditTicket() {
       setCategories(c.data.categories || []);
       setUsers(u.data.users || []);
       setTicketTypes(tt.data.types || []);
+      setGroups((g.data.groups || []).filter(gr => gr.is_active));
+      // Pre-load subcategories for the existing category
+      if (catId) {
+        api.get(`/subcategories?categoryId=${catId}`)
+          .then(r => setSubcategories(r.data.subcategories || []))
+          .catch(() => {});
+      }
     }).catch(() => toast.error('Failed to load ticket'));
   }, [id]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const initialCatId = useRef(null);
+  // Reload subcategories when categoryId changes; preserve subcategoryId on initial load
+  useEffect(() => {
+    if (!form?.categoryId) { setSubcategories([]); return; }
+    if (initialCatId.current === null) {
+      // First time — keep the existing subcategoryId (pre-loaded in Promise.all)
+      initialCatId.current = form.categoryId;
+      return;
+    }
+    // User changed category — reset subcategoryId and reload
+    setForm(f => f ? { ...f, subcategoryId: '' } : f);
+    api.get(`/subcategories?categoryId=${form.categoryId}`)
+      .then(r => setSubcategories(r.data.subcategories || []))
+      .catch(() => setSubcategories([]));
+  }, [form?.categoryId]);
+
   const assigneeChanged = (form?.assignedTo || '') !== originalAssignedTo;
   const statusChanged   = (form?.status     || '') !== originalStatus;
   const noteRequired    = assigneeChanged || statusChanged;
@@ -119,6 +149,9 @@ export default function EditTicket() {
     if (noteRequired && !saveNote.trim()) {
       toast.error('A work note is required when changing status or reassigning.');
       return;
+    }
+    if (subcategories.length > 0 && !form.subcategoryId) {
+      toast.error('Please select a subcategory'); return;
     }
     setLoading(true);
     try {
@@ -131,10 +164,12 @@ export default function EditTicket() {
       }
       const payload = {
         ...form,
-        typeId:          form.typeId          || undefined,
-        classification:  form.classification  || undefined,
-        assignmentGroup: form.assignmentGroup || undefined,
-        assignedTo:      form.assignedTo      || null,
+        typeId:            form.typeId            || undefined,
+        classification:    form.classification    || undefined,
+        assignmentGroup:   form.assignmentGroup   || undefined,
+        assignmentGroupId: form.assignmentGroupId || undefined,
+        subcategoryId:     form.subcategoryId     || undefined,
+        assignedTo:        form.assignedTo        || null,
         ...(isAdmin ? { ticketOwner: form.ticketOwner || null } : {}),
         customData,
       };
@@ -228,17 +263,24 @@ export default function EditTicket() {
   const customerOpts    = parseOpts(fieldByKey['customer_name']?.options);
   const moduleOpts      = parseOpts(fieldByKey['module_text']?.options).length
     ? parseOpts(fieldByKey['module_text'].options) : MODULE_DEFAULTS;
-  const assignGroupOpts = parseOpts(fieldByKey['assignment_group']?.options).length
-    ? parseOpts(fieldByKey['assignment_group']?.options) : ASSIGN_GROUP_DEFAULTS;
+  const assignGroupOpts = groups.length
+    ? groups.map(g => ({ value: g.id, label: g.name }))
+    : parseOpts(fieldByKey['assignment_group']?.options).length
+      ? parseOpts(fieldByKey['assignment_group']?.options) : ASSIGN_GROUP_DEFAULTS;
+
+  const selectedGroup  = form.assignmentGroupId ? groups.find(g => g.id === form.assignmentGroupId) : null;
+  const groupMemberIds = selectedGroup ? new Set((selectedGroup.members || []).map(m => String(m.id))) : null;
 
   const categoryOpts    = categories.map(c => ({ value: String(c.id), label: c.name }));
   const typeOpts        = ticketTypes.map(t => ({ value: String(t.id), label: t.name }));
   const classOpts       = CLASSIFICATIONS.filter(Boolean).map(c => ({ value: c, label: c }));
-  const userOpts        = users.map(u => ({ value: String(u.id), label: u.full_name }));
+  const userOpts        = users
+    .filter(u => !groupMemberIds || groupMemberIds.has(String(u.id)))
+    .map(u => ({ value: String(u.id), label: u.full_name, sublabel: `@${u.username} · ${u.email}`, searchExtra: `${u.username} ${u.email}` }));
 
-  const customTriples = [];
-  for (let i = 0; i < customFields.length; i += 3) {
-    customTriples.push([customFields[i], customFields[i+1] || null, customFields[i+2] || null]);
+  const customPairs = [];
+  for (let i = 0; i < customFields.length; i += 2) {
+    customPairs.push([customFields[i], customFields[i+1] || null]);
   }
 
   const renderCustomInput = (f) => {
@@ -390,14 +432,20 @@ export default function EditTicket() {
               </div>
               <div className="ip-row">
                 <div className="ip-pair">
-                  <span className="ip-lc">Type</span>
+                  <span className="ip-lc">Subcategory{subcategories.length > 0 && <span className="ip-req"> *</span>}</span>
                   <span className="ip-vc ip-input-cell">
-                    <SearchSelect
-                      value={form.typeId}
-                      onChange={v => set('typeId', v)}
-                      options={typeOpts}
-                      placeholder="Select type"
-                    />
+                    {!form.categoryId ? (
+                      <input readOnly value="" placeholder="" />
+                    ) : subcategories.length > 0 ? (
+                      <SearchSelect
+                        value={form.subcategoryId}
+                        onChange={v => set('subcategoryId', v)}
+                        options={subcategories.map(s => ({ value: String(s.id), label: s.name }))}
+                        placeholder="Select subcategory"
+                      />
+                    ) : (
+                      <input readOnly value="" placeholder="" />
+                    )}
                   </span>
                 </div>
                 <div className="ip-pair">
@@ -414,7 +462,39 @@ export default function EditTicket() {
               </div>
               <div className="ip-row">
                 <div className="ip-pair">
-                  <span className="ip-lc">Assigned To</span>
+                  <span className="ip-lc">Type</span>
+                  <span className="ip-vc ip-input-cell">
+                    <SearchSelect
+                      value={form.typeId}
+                      onChange={v => set('typeId', v)}
+                      options={typeOpts}
+                      placeholder="Select type"
+                    />
+                  </span>
+                </div>
+                <div className="ip-pair">
+                  <span className="ip-lc">{fieldByKey['assignment_group']?.label || 'Assignment Group'}</span>
+                  <span className="ip-vc ip-input-cell">
+                    <SearchSelect
+                      value={form.assignmentGroupId || form.assignmentGroup}
+                      onChange={v => {
+                        const grp = groups.find(g => g.id === v);
+                        if (grp) {
+                          setForm(f => ({ ...f, assignmentGroup: grp.name, assignmentGroupId: grp.id, assignedTo: '' }));
+                        } else {
+                          setForm(f => ({ ...f, assignmentGroup: v, assignmentGroupId: '', assignedTo: '' }));
+                        }
+                      }}
+                      options={assignGroupOpts}
+                      placeholder="Select group"
+                      searchPlaceholder="Search group..."
+                    />
+                  </span>
+                </div>
+              </div>
+              <div className="ip-row">
+                <div className="ip-pair">
+                  <span className="ip-lc">Assign to</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
                       value={form.assignedTo}
@@ -425,21 +505,7 @@ export default function EditTicket() {
                     />
                   </span>
                 </div>
-                <div className="ip-pair">
-                  <span className="ip-lc">{fieldByKey['assignment_group']?.label || 'Assignment Group'}</span>
-                  <span className="ip-vc ip-input-cell">
-                    <SearchSelect
-                      value={form.assignmentGroup}
-                      onChange={v => set('assignmentGroup', v)}
-                      options={assignGroupOpts}
-                      placeholder="Select group"
-                      searchPlaceholder="Search group..."
-                    />
-                  </span>
-                </div>
-              </div>
-              {isAdmin && (
-                <div className="ip-row">
+                {isAdmin ? (
                   <div className="ip-pair">
                     <span className="ip-lc">Ticket Owner</span>
                     <span className="ip-vc ip-input-cell">
@@ -451,9 +517,8 @@ export default function EditTicket() {
                       />
                     </span>
                   </div>
-                  <div className="ip-pair" />
-                </div>
-              )}
+                ) : <div className="ip-pair" />}
+              </div>
             </div>
           </div>
 
@@ -461,10 +526,10 @@ export default function EditTicket() {
           {customFields.length > 0 && (
             <div className="ip-section">
               <div className="ip-section-bar"><span>Additional Fields</span></div>
-              <div className="ip-fields ip-fields-3col">
-                {customTriples.map((triple, ri) => (
+              <div className="ip-fields">
+                {customPairs.map((pair, ri) => (
                   <div className="ip-row" key={`cf-${ri}`}>
-                    {triple.map((f, fi) => f ? (
+                    {pair.map((f, fi) => f ? (
                       <div className="ip-pair" key={fi}>
                         <span className="ip-lc">{f.label}{f.is_required && <span className="ip-req"> *</span>}</span>
                         <span className="ip-vc ip-input-cell">{renderCustomInput(f)}</span>

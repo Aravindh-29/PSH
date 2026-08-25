@@ -6,7 +6,7 @@
 .profile-body { display: flex; gap: 24px; align-items: flex-start; }
 
 .profile-avatar-card {
-  background: var(--surface);
+  background: #FFFFFF;
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 28px 24px;
@@ -17,20 +17,20 @@
 .profile-avatar-circle {
   width: 72px; height: 72px;
   border-radius: 50%;
-  background: var(--primary);
+  background: var(--orange);
   color: #fff;
   font-size: 28px; font-weight: 700;
   display: flex; align-items: center; justify-content: center;
   margin: 0 auto 14px;
 }
 .profile-avatar-name { font-size: 15px; font-weight: 600; color: var(--text); }
-.profile-avatar-role { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--primary); margin: 4px 0; font-weight: 600; }
+.profile-avatar-role { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--orange); margin: 4px 0; font-weight: 600; }
 .profile-avatar-user { font-size: 12.5px; color: var(--text-muted); }
 
 .profile-forms { flex: 1; display: flex; flex-direction: column; gap: 20px; }
 
 .profile-card {
-  background: var(--surface);
+  background: #FFFFFF;
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 22px 24px;
@@ -54,21 +54,30 @@
   font-family: inherit;
   transition: border-color .15s;
 }
-.profile-field input:focus { outline: none; border-color: var(--primary); }
-.profile-field input:disabled { opacity: .6; cursor: not-allowed; }
+.profile-field input:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 3px rgba(232,93,4,0.08); }
+
+.profile-pw-wrap { position: relative; display: flex; align-items: center; }
+.profile-pw-wrap input { padding-right: 38px; }
+.profile-pw-eye {
+  position: absolute; right: 10px;
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); display: flex; align-items: center; padding: 0;
+  transition: color .15s;
+}
+.profile-pw-eye:hover { color: var(--text); }
 
 .profile-save-btn {
   align-self: flex-start;
   display: flex; align-items: center; gap: 7px;
   padding: 9px 20px;
-  background: var(--primary);
+  background: var(--orange);
   color: #fff;
   border: none; border-radius: 8px;
   font-size: 13.5px; font-weight: 600;
   cursor: pointer;
-  transition: opacity .15s;
+  transition: background .15s;
 }
-.profile-save-btn:hover { opacity: .85; }
+.profile-save-btn:hover:not(:disabled) { background: var(--orange-hover); }
 .profile-save-btn:disabled { opacity: .6; cursor: not-allowed; }
 
 @media (max-width: 640px) {

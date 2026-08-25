@@ -30,19 +30,6 @@ const MODULE_DEFAULTS = [
   { value: 'General',                 label: 'General' },
 ];
 
-const ASSIGN_GROUP_DEFAULTS = [
-  { value: 'Storage Team',       label: 'Storage Team' },
-  { value: 'Network Team',       label: 'Network Team' },
-  { value: 'Cloud Team',         label: 'Cloud Team' },
-  { value: 'Hardware Support',   label: 'Hardware Support' },
-  { value: 'Software Support',   label: 'Software Support' },
-  { value: 'Access Management',  label: 'Access Management' },
-  { value: 'DevOps Team',        label: 'DevOps Team' },
-  { value: 'Security Team',      label: 'Security Team' },
-  { value: 'L1 Support',         label: 'L1 Support' },
-  { value: 'L2 Support',         label: 'L2 Support' },
-  { value: 'L3 Support',         label: 'L3 Support' },
-];
 
 export default function CreateTicket() {
   const navigate = useNavigate();
@@ -56,6 +43,8 @@ export default function CreateTicket() {
   const [allCategories, setAllCategories] = useState([]);
   const [ticketTypes, setTicketTypes]   = useState([]);
   const [users, setUsers]               = useState([]);
+  const [groups, setGroups]             = useState([]);
+  const [subcategories, setSubcategories] = useState([]);
   const [loading, setLoading]           = useState(false);
   const [pendingFiles, setPendingFiles] = useState([]);
   const [uploadProgress, setUploadProgress] = useState([]);
@@ -65,9 +54,10 @@ export default function CreateTicket() {
   const fileInputRef = useRef(null);
 
   const [form, setForm] = useState({
-    customerName: '', moduleText: '', categoryId: '', shortDescription: '',
-    description: '', priority: 'MEDIUM', impact: 'MEDIUM', urgency: 'MEDIUM',
-    typeId: '', classification: '', assignedTo: '', assignmentGroup: '',
+    customerName: '', moduleText: '', categoryId: '', subcategoryId: '',
+    shortDescription: '', description: '', priority: 'MEDIUM', impact: 'MEDIUM',
+    urgency: 'MEDIUM', typeId: '', classification: '', assignedTo: '',
+    assignmentGroup: '', assignmentGroupId: '',
   });
   const [customData, setCustomData] = useState({});
 
@@ -77,12 +67,14 @@ export default function CreateTicket() {
       api.get('/config/categories'),
       api.get('/config/ticket-types'),
       api.get('/config/users'),
-    ]).then(([f, c, tt, u]) => {
+      api.get('/groups/with-members'),
+    ]).then(([f, c, tt, u, g]) => {
       setFields(f.data.fields || []);
       setAllCategories(c.data.categories || []);
       setCategories(c.data.categories || []);
       setTicketTypes(tt.data.types || []);
       setUsers(u.data.users || []);
+      setGroups((g.data.groups || []).filter(gr => gr.is_active));
       setNextNumber(''); // cleared until user selects a type
     }).catch(() => {});
   }, [location.key]); // re-fetch on every navigation to this page so config changes reflect immediately
@@ -111,6 +103,14 @@ export default function CreateTicket() {
     }
   }, [form.typeId, allCategories]);
 
+  useEffect(() => {
+    if (!form.categoryId) { setSubcategories([]); setForm(p => ({ ...p, subcategoryId: '' })); return; }
+    api.get(`/subcategories?categoryId=${form.categoryId}`)
+      .then(r => setSubcategories(r.data.subcategories || []))
+      .catch(() => setSubcategories([]));
+    setForm(p => ({ ...p, subcategoryId: '' }));
+  }, [form.categoryId]);
+
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const handleFileSelect = (e) => {
@@ -129,6 +129,9 @@ export default function CreateTicket() {
     }
     if (!form.customerName || !form.moduleText || !form.categoryId || !form.shortDescription || !form.description) {
       toast.error('Please fill in all required fields'); return false;
+    }
+    if (subcategories.length > 0 && !form.subcategoryId) {
+      toast.error('Please select a subcategory'); return false;
     }
     if (noteRequired && !workNote.trim()) {
       toast.error('A work note is required when assigning a ticket to someone.'); return false;
@@ -151,6 +154,8 @@ export default function CreateTicket() {
         classification: form.classification || undefined,
         assignedTo: form.assignedTo || undefined,
         assignmentGroup: form.assignmentGroup || undefined,
+        assignmentGroupId: form.assignmentGroupId || undefined,
+        subcategoryId: form.subcategoryId || undefined,
         customData,
       };
       const res = await api.post('/tickets', payload);
@@ -200,18 +205,23 @@ export default function CreateTicket() {
   const customerOpts    = parseOpts(fieldByKey['customer_name']?.options);
   const moduleOpts      = parseOpts(fieldByKey['module_text']?.options).length
     ? parseOpts(fieldByKey['module_text'].options) : MODULE_DEFAULTS;
-  const assignGroupOpts = parseOpts(fieldByKey['assignment_group']?.options).length
-    ? parseOpts(fieldByKey['assignment_group']?.options) : ASSIGN_GROUP_DEFAULTS;
+  const assignGroupOpts = groups.length
+    ? groups.map(g => ({ value: g.id, label: g.name }))
+    : parseOpts(fieldByKey['assignment_group']?.options);
 
-  const userOpts = users.map(u => ({ value: String(u.id), label: u.full_name }));
+  const selectedGroup = form.assignmentGroupId ? groups.find(g => g.id === form.assignmentGroupId) : null;
+  const groupMemberIds = selectedGroup ? new Set((selectedGroup.members || []).map(m => String(m.id))) : null;
+  const userOpts = users
+    .filter(u => !groupMemberIds || groupMemberIds.has(String(u.id)))
+    .map(u => ({ value: String(u.id), label: u.full_name, sublabel: `@${u.username} · ${u.email}`, searchExtra: `${u.username} ${u.email}` }));
 
   const categoryOpts = categories.map(c => ({ value: String(c.id), label: c.name }));
   const typeOpts     = ticketTypes.map(t => ({ value: String(t.id), label: t.name }));
   const classOpts    = CLASSIFICATIONS.filter(Boolean).map(c => ({ value: c, label: c }));
 
-  const customTriples = [];
-  for (let i = 0; i < customFields.length; i += 3) {
-    customTriples.push([customFields[i], customFields[i+1] || null, customFields[i+2] || null]);
+  const customPairs = [];
+  for (let i = 0; i < customFields.length; i += 2) {
+    customPairs.push([customFields[i], customFields[i+1] || null]);
   }
 
   const renderCustomInput = (f) => {
@@ -339,16 +349,23 @@ export default function CreateTicket() {
                   </span>
                 </div>
               </div>
+              {/* Subcategory always visible; paired with Urgency to avoid an empty right column */}
               <div className="ip-row">
                 <div className="ip-pair">
-                  <span className="ip-lc">Type</span>
+                  <span className="ip-lc">Subcategory{subcategories.length > 0 && <span className="ip-req"> *</span>}</span>
                   <span className="ip-vc ip-input-cell">
-                    <SearchSelect
-                      value={form.typeId}
-                      onChange={v => set('typeId', v)}
-                      options={typeOpts}
-                      placeholder="Select type"
-                    />
+                    {!form.categoryId ? (
+                      <input readOnly value="" placeholder="" />
+                    ) : subcategories.length > 0 ? (
+                      <SearchSelect
+                        value={form.subcategoryId}
+                        onChange={v => set('subcategoryId', v)}
+                        options={subcategories.map(s => ({ value: String(s.id), label: s.name }))}
+                        placeholder="Select subcategory"
+                      />
+                    ) : (
+                      <input readOnly value="" placeholder="" />
+                    )}
                   </span>
                 </div>
                 <div className="ip-pair">
@@ -365,6 +382,17 @@ export default function CreateTicket() {
               </div>
               <div className="ip-row">
                 <div className="ip-pair">
+                  <span className="ip-lc">Type</span>
+                  <span className="ip-vc ip-input-cell">
+                    <SearchSelect
+                      value={form.typeId}
+                      onChange={v => set('typeId', v)}
+                      options={typeOpts}
+                      placeholder="Select type"
+                    />
+                  </span>
+                </div>
+                <div className="ip-pair">
                   <span className="ip-lc">Classification</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
@@ -372,18 +400,6 @@ export default function CreateTicket() {
                       onChange={v => set('classification', v)}
                       options={classOpts}
                       placeholder="Select…"
-                    />
-                  </span>
-                </div>
-                <div className="ip-pair">
-                  <span className="ip-lc">{fieldByKey['assignment_group']?.label || 'Assignment Group'}</span>
-                  <span className="ip-vc ip-input-cell">
-                    <SearchSelect
-                      value={form.assignmentGroup}
-                      onChange={v => set('assignmentGroup', v)}
-                      options={assignGroupOpts}
-                      placeholder="Select group"
-                      searchPlaceholder="Search group..."
                     />
                   </span>
                 </div>
@@ -395,6 +411,28 @@ export default function CreateTicket() {
                     <input readOnly value={user?.fullName || user?.username || ''} />
                   </span>
                 </div>
+                <div className="ip-pair">
+                  <span className="ip-lc">{fieldByKey['assignment_group']?.label || 'Assignment Group'}</span>
+                  <span className="ip-vc ip-input-cell">
+                    <SearchSelect
+                      value={form.assignmentGroupId || form.assignmentGroup}
+                      onChange={v => {
+                        const grp = groups.find(g => g.id === v);
+                        if (grp) {
+                          setForm(p => ({ ...p, assignmentGroup: grp.name, assignmentGroupId: grp.id, assignedTo: '' }));
+                        } else {
+                          setForm(p => ({ ...p, assignmentGroup: v, assignmentGroupId: '', assignedTo: '' }));
+                        }
+                      }}
+                      options={assignGroupOpts}
+                      placeholder="Select group"
+                      searchPlaceholder="Search group..."
+                    />
+                  </span>
+                </div>
+              </div>
+              <div className="ip-row">
+                <div className="ip-pair" />
                 <div className="ip-pair">
                   <span className="ip-lc">Assign to</span>
                   <span className="ip-vc ip-input-cell">
@@ -415,10 +453,10 @@ export default function CreateTicket() {
           {customFields.length > 0 && (
             <div className="ip-section">
               <div className="ip-section-bar"><span>Additional Fields</span></div>
-              <div className="ip-fields ip-fields-3col">
-                {customTriples.map((triple, ri) => (
+              <div className="ip-fields">
+                {customPairs.map((pair, ri) => (
                   <div className="ip-row" key={`cf-${ri}`}>
-                    {triple.map((f, fi) => f ? (
+                    {pair.map((f, fi) => f ? (
                       <div className="ip-pair" key={fi}>
                         <span className="ip-lc">{f.label}{f.is_required && <span className="ip-req"> *</span>}</span>
                         <span className="ip-vc ip-input-cell">{renderCustomInput(f)}</span>

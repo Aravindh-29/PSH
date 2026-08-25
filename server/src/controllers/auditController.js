@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const { logAdminAudit } = require('./adminAuditController');
 
 async function getLogs(req, res, next) {
   try {
@@ -185,6 +186,7 @@ async function updateRetention(req, res, next) {
        WHERE id = 1 RETURNING *`,
       [enabled ?? null, retention_days ?? null, req.session.userId]
     );
+    logAdminAudit(req.session?.userId, 'RETENTION_UPDATED', 'retention_settings', '1', 'Audit Retention Policy', { enabled, retention_days }, req.ip);
     res.json({ success: true, settings: row.rows[0] });
   } catch (err) { next(err); }
 }

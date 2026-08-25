@@ -21,3 +21,97 @@
   padding: 24px;
   background: var(--bg);
 }
+
+/* ── Idle timeout warning modal ─────────────────────────────────────── */
+.idle-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  backdrop-filter: blur(3px);
+}
+
+.idle-modal {
+  background: #fff;
+  border-radius: 18px;
+  padding: 36px 32px 28px;
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.3);
+}
+
+.idle-icon-wrap {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #FFF7ED;
+  border: 2px solid #FED7AA;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 18px;
+  color: #E85D04;
+}
+
+.idle-title {
+  font-size: 19px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 10px;
+}
+
+.idle-msg {
+  font-size: 13.5px;
+  color: #475569;
+  line-height: 1.6;
+  margin: 0 0 24px;
+}
+
+.idle-countdown {
+  font-size: 15px;
+  font-weight: 700;
+  color: #E85D04;
+  font-variant-numeric: tabular-nums;
+}
+
+.idle-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.idle-btn-stay {
+  width: 100%;
+  padding: 12px;
+  background: #E85D04;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.idle-btn-stay:hover { background: #c44d03; }
+
+.idle-btn-logout {
+  width: 100%;
+  padding: 10px;
+  background: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.12s;
+}
+.idle-btn-logout:hover { background: #f8fafc; color: #dc2626; border-color: #fecaca; }

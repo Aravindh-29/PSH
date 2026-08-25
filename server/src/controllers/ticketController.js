@@ -102,10 +102,11 @@ async function create(req, res, next) {
     await client.query('BEGIN');
     const isAdmin = req.session.role === 'admin';
     const {
-      customerName, moduleText, categoryId, shortDescription, description,
+      customerName, moduleText, categoryId, subcategoryId = null, shortDescription, description,
       priority = 'MEDIUM', impact = 'MEDIUM', urgency = 'MEDIUM',
       customData = {},
       assignmentGroup = null,
+      assignmentGroupId = null,
       typeId = null,
       classification = null,
     } = req.body;
@@ -141,16 +142,26 @@ async function create(req, res, next) {
       ticketNumber = `PSH${String(seqResult.rows[0].seq).padStart(6, '0')}`;
     }
 
+    // Resolve assignment group name from assignmentGroupId if provided
+    let resolvedGroupName = assignmentGroup || null;
+    if (assignmentGroupId) {
+      const gr = await client.query('SELECT name FROM assignment_groups WHERE id = $1', [assignmentGroupId]);
+      if (gr.rows[0]) resolvedGroupName = gr.rows[0].name;
+    }
+
     const result = await client.query(`
-      INSERT INTO tickets (ticket_number, customer_name, module_text, category_id, short_description,
-        description, status, priority, impact, urgency, assigned_to, assignment_group,
-        ticket_owner, created_by, updated_by, type_id, classification, custom_data)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13,$13,$14,$15,$16)
+      INSERT INTO tickets (ticket_number, customer_name, module_text, category_id, subcategory_id,
+        short_description, description, status, priority, impact, urgency, assigned_to,
+        assignment_group, assignment_group_id, ticket_owner, created_by, updated_by,
+        type_id, classification, custom_data)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15,$15,$16,$17,$18)
       RETURNING *
-    `, [ticketNumber, customerName, moduleText, categoryId, shortDescription, description,
+    `, [ticketNumber, customerName, moduleText, categoryId, subcategoryId || null,
+        shortDescription, description,
         status, priority, impact, urgency,
         rawAssigned || null,
-        assignmentGroup || null,
+        resolvedGroupName || null,
+        assignmentGroupId || null,
         req.session.userId,
         typeId || null, classification || null,
         JSON.stringify(customData)]);
@@ -228,6 +239,7 @@ async function getOne(req, res, next) {
     const result = await pool.query(`
       SELECT t.*,
              COALESCE(t.module_text, m.name) AS module_name, c.name AS category_name,
+             sc.name AS subcategory_name, ag.name AS assignment_group_name,
              tt.name AS type_name,
              u1.full_name AS assigned_to_name, u1.id AS assigned_to_id,
              u2.full_name AS created_by_name,
@@ -236,6 +248,8 @@ async function getOne(req, res, next) {
       FROM tickets t
       LEFT JOIN modules m ON t.module_id = m.id
       LEFT JOIN categories c ON t.category_id = c.id
+      LEFT JOIN subcategories sc ON t.subcategory_id = sc.id
+      LEFT JOIN assignment_groups ag ON t.assignment_group_id = ag.id
       LEFT JOIN ticket_types tt ON t.type_id = tt.id
       LEFT JOIN users u1 ON t.assigned_to = u1.id
       LEFT JOIN users u2 ON t.created_by = u2.id
@@ -257,7 +271,7 @@ async function getOne(req, res, next) {
     const [attachments, comments, auditRaw] = await Promise.all([
       pool.query('SELECT id, file_name, mime_type, file_size, uploaded_by, uploaded_at, (SELECT full_name FROM users WHERE id = uploaded_by) AS uploader_name FROM ticket_attachments WHERE ticket_id = $1 ORDER BY uploaded_at DESC', [id]),
       pool.query('SELECT tc.*, u.full_name AS author_name, u.role AS author_role FROM ticket_comments tc JOIN users u ON tc.user_id = u.id WHERE tc.ticket_id = $1 ORDER BY tc.created_at ASC', [id]),
-      pool.query('SELECT tal.*, u.full_name AS user_name FROM ticket_audit_logs tal LEFT JOIN users u ON tal.user_id = u.id WHERE tal.ticket_id = $1 ORDER BY tal.created_at ASC', [id]),
+      pool.query('SELECT tal.*, u.full_name AS user_name, u.username AS user_username FROM ticket_audit_logs tal LEFT JOIN users u ON tal.user_id = u.id WHERE tal.ticket_id = $1 ORDER BY tal.created_at ASC', [id]),
     ]);
 
     // Resolve UUID values in audit log to human-readable names
@@ -323,12 +337,14 @@ async function update(req, res, next) {
     }
 
     // Employees can update ticket fields but never ownership — only admins may change ticket_owner
-    const UUID_COLS = new Set(['ticket_owner', 'assigned_to', 'category_id', 'type_id']);
+    const UUID_COLS = new Set(['ticket_owner', 'assigned_to', 'category_id', 'type_id', 'subcategory_id', 'assignment_group_id']);
     const fieldMap = {
       customerName: 'customer_name', moduleText: 'module_text', categoryId: 'category_id',
+      subcategoryId: 'subcategory_id',
       shortDescription: 'short_description', description: 'description', status: 'status',
       priority: 'priority', impact: 'impact', urgency: 'urgency',
-      assignmentGroup: 'assignment_group', classification: 'classification', typeId: 'type_id',
+      assignmentGroup: 'assignment_group', assignmentGroupId: 'assignment_group_id',
+      classification: 'classification', typeId: 'type_id',
       assignedTo: 'assigned_to',
       ...(isAdmin ? { ticketOwner: 'ticket_owner' } : {}),
     };

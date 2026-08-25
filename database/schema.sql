@@ -20,10 +20,16 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- SSO columns (safe to re-run on existing installs)
-ALTER TABLE users ADD COLUMN IF NOT EXISTS sso_sub      TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS sso_provider VARCHAR(50);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS sso_sub       TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS sso_provider  VARCHAR(50);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ALTER COLUMN password_hash SET DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at   TIMESTAMPTZ DEFAULT NULL;
+
+-- MFA columns (safe on existing installs)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_secret   TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_enabled  BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_required BOOLEAN NOT NULL DEFAULT TRUE;
 
 -- Replace full-table UNIQUE constraints with partial indexes so that
 -- soft-deleted users do not block re-creation with the same username/email.
@@ -245,5 +251,49 @@ CREATE TABLE IF NOT EXISTS email_config (
   updated_by   UUID         REFERENCES users(id)
 );
 INSERT INTO email_config (id) VALUES (1) ON CONFLICT DO NOTHING;
+
+-- Assignment Groups (dynamic, admin-managed)
+CREATE TABLE IF NOT EXISTS assignment_groups (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        VARCHAR(100) UNIQUE NOT NULL,
+  description TEXT,
+  is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Many-to-many: users ↔ assignment_groups
+CREATE TABLE IF NOT EXISTS user_groups (
+  user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  group_id UUID NOT NULL REFERENCES assignment_groups(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, group_id)
+);
+
+-- Subcategories — child of categories
+CREATE TABLE IF NOT EXISTS subcategories (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        VARCHAR(100) NOT NULL,
+  category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+  is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(name, category_id)
+);
+
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS subcategory_id UUID REFERENCES subcategories(id);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS assignment_group_id UUID REFERENCES assignment_groups(id);
+
+-- Admin activity audit log
+CREATE TABLE IF NOT EXISTS admin_audit_logs (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID        REFERENCES users(id) ON DELETE SET NULL,
+  action      VARCHAR(60) NOT NULL,
+  entity_type VARCHAR(50) NOT NULL,
+  entity_id   VARCHAR(200),
+  entity_name VARCHAR(300),
+  details     JSONB       NOT NULL DEFAULT '{}',
+  ip_address  VARCHAR(45),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON admin_audit_logs(created_at DESC);
 
 COMMIT;
