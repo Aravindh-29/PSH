@@ -5,6 +5,10 @@ const logger = require('../utils/logger');
 // client: pg transaction client (from ticketController)
 async function onStatusChange(client, ticketId, oldStatus, newStatus) {
   try {
+    // Respect global SLA toggle
+    const { rows: settings } = await client.query('SELECT is_enabled FROM sla_settings WHERE id = 1');
+    if (!settings[0]?.is_enabled) return;
+
     const { rows: defs } = await client.query(
       'SELECT * FROM sla_definitions WHERE is_active = true'
     );
@@ -82,6 +86,10 @@ async function onStatusChange(client, ticketId, oldStatus, newStatus) {
 // Background job: check for breaches, warn, critical thresholds.
 // Returns count of newly breached instances.
 async function runSLAChecker() {
+  // Skip if globally disabled
+  const { rows: settings } = await pool.query('SELECT is_enabled FROM sla_settings WHERE id = 1');
+  if (!settings[0]?.is_enabled) return { newlyBreached: [], warnInstances: [], critInstances: [] };
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

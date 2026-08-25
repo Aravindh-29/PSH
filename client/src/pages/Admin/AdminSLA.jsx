@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Clock, Plus, Pencil, Trash2, ToggleLeft, ToggleRight, ShieldAlert } from 'lucide-react';
+import { Clock, Plus, Pencil, Trash2, ToggleLeft, ToggleRight, ShieldAlert, Wand2 } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import './AdminSLA.css';
@@ -186,22 +186,97 @@ function SLAModal({ sla, startStatus, onSave, onClose }) {
   );
 }
 
+function PasswordModal({ title, message, confirmLabel = 'Confirm', onConfirm, onClose }) {
+  const [pwd, setPwd]       = useState('');
+  const [busy, setBusy]     = useState(false);
+  const [show, setShow]     = useState(false);
+
+  const submit = async () => {
+    if (!pwd) return toast.error('Enter your admin password');
+    setBusy(true);
+    try { await onConfirm(pwd); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="sla-modal-overlay" onClick={onClose}>
+      <div className="sla-confirm-modal" onClick={e => e.stopPropagation()}>
+        <h4>{title}</h4>
+        <p>{message}</p>
+        <div className="sla-pwd-wrap">
+          <input
+            type={show ? 'text' : 'password'}
+            placeholder="Admin password"
+            value={pwd}
+            onChange={e => setPwd(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && submit()}
+            autoFocus
+          />
+          <button className="sla-pwd-eye" onClick={() => setShow(s => !s)}>{show ? '🙈' : '👁'}</button>
+        </div>
+        <div className="sla-confirm-btns">
+          <button className="sla-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="sla-btn-save" onClick={submit} disabled={busy}>
+            {busy ? 'Verifying…' : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminSLA() {
   const [definitions, setDefinitions] = useState([]);
+  const [slaEnabled, setSlaEnabled]   = useState(true);
   const [loading, setLoading]         = useState(true);
-  const [modalStatus, setModalStatus] = useState(null); // the start_status being configured
-  const [editSLA, setEditSLA]         = useState(null); // existing SLA being edited
+  const [modalStatus, setModalStatus] = useState(null);
+  const [editSLA, setEditSLA]         = useState(null);
   const [deleteId, setDeleteId]       = useState(null);
+  const [pwdModal, setPwdModal]       = useState(null); // { title, message, confirmLabel, onConfirm }
 
   const load = () => {
     setLoading(true);
-    api.get('/sla/definitions')
-      .then(r => setDefinitions(r.data.definitions || []))
-      .catch(() => toast.error('Failed to load SLA definitions'))
+    Promise.all([api.get('/sla/definitions'), api.get('/sla/settings')])
+      .then(([d, s]) => {
+        setDefinitions(d.data.definitions || []);
+        setSlaEnabled(s.data.settings?.is_enabled ?? true);
+      })
+      .catch(() => toast.error('Failed to load SLA settings'))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, []);
+
+  const handleToggle = () => {
+    const next = !slaEnabled;
+    setPwdModal({
+      title: next ? 'Enable SLA System' : 'Disable SLA System',
+      message: next
+        ? 'SLA tracking will resume for all new status changes. Enter your admin password to confirm.'
+        : 'This will stop all SLA tracking globally. Existing instances remain but no new ones will be created. Enter your admin password to confirm.',
+      confirmLabel: next ? 'Enable SLA' : 'Disable SLA',
+      onConfirm: async (pwd) => {
+        await api.put('/sla/settings', { is_enabled: next, adminPassword: pwd });
+        setSlaEnabled(next);
+        toast.success(`SLA system ${next ? 'enabled' : 'disabled'}`);
+        setPwdModal(null);
+      },
+    });
+  };
+
+  const handleApplyDefaults = () => {
+    setPwdModal({
+      title: 'Apply Default SLAs',
+      message: 'This will create standard ITIL SLA definitions for all statuses that don\'t have one yet. Enter your admin password to confirm.',
+      confirmLabel: 'Apply Defaults',
+      onConfirm: async (pwd) => {
+        const r = await api.post('/sla/apply-defaults', { adminPassword: pwd });
+        toast.success(r.data.message || 'Defaults applied');
+        setPwdModal(null);
+        load();
+      },
+    });
+  };
 
   const handleDelete = async () => {
     try {
@@ -237,7 +312,25 @@ export default function AdminSLA() {
             <div className="sla-page-sub">Define time limits for each ticket status. Breaches trigger alerts and emails.</div>
           </div>
         </div>
+        <div className="sla-page-header-right">
+          <button className="sla-defaults-btn" onClick={handleApplyDefaults} title="Seed all statuses with standard ITIL values">
+            <Wand2 size={14} /> Apply Defaults
+          </button>
+          <button
+            className={`sla-toggle-btn ${slaEnabled ? 'sla-toggle-on' : 'sla-toggle-off'}`}
+            onClick={handleToggle}
+          >
+            {slaEnabled ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+            SLA {slaEnabled ? 'Enabled' : 'Disabled'}
+          </button>
+        </div>
       </div>
+
+      {!slaEnabled && (
+        <div className="sla-disabled-banner">
+          ⚠ SLA tracking is globally disabled. No new SLA instances will be created until re-enabled.
+        </div>
+      )}
 
       <div className="sla-status-grid">
         {ALL_STATUSES.map(status => {
@@ -374,6 +467,20 @@ export default function AdminSLA() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Admin password modal */}
+      {pwdModal && (
+        <PasswordModal
+          title={pwdModal.title}
+          message={pwdModal.message}
+          confirmLabel={pwdModal.confirmLabel}
+          onConfirm={async (pwd) => {
+            try { await pwdModal.onConfirm(pwd); }
+            catch (err) { toast.error(err?.response?.data?.message || 'Action failed'); }
+          }}
+          onClose={() => setPwdModal(null)}
+        />
       )}
     </div>
   );

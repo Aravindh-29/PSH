@@ -298,6 +298,15 @@ CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON admin_audit_logs(created_a
 
 -- ── SLA System ───────────────────────────────────────────────────────────────
 
+-- SLA global on/off switch (single row)
+CREATE TABLE IF NOT EXISTS sla_settings (
+  id         INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by UUID REFERENCES users(id)
+);
+INSERT INTO sla_settings (id) VALUES (1) ON CONFLICT DO NOTHING;
+
 -- SLA Definitions: one per status trigger, configurable stop/pause conditions
 CREATE TABLE IF NOT EXISTS sla_definitions (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),

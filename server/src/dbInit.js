@@ -230,6 +230,16 @@ async function dbInit() {
 
   // ── SLA System ─────────────────────────────────────────────────────────────
   await appClient.query(`
+    CREATE TABLE IF NOT EXISTS sla_settings (
+      id         INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by UUID REFERENCES users(id)
+    )
+  `);
+  await appClient.query(`INSERT INTO sla_settings (id) VALUES (1) ON CONFLICT DO NOTHING`);
+
+  await appClient.query(`
     CREATE TABLE IF NOT EXISTS sla_definitions (
       id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name             VARCHAR(200) NOT NULL,
