@@ -151,23 +151,6 @@ export default function TicketDetail() {
       {/* ── Body ── */}
       <div className="ip-body">
 
-        {/* SLA Panel */}
-        {slaInstances.length > 0 && (
-          <div className="ip-section ip-sla-section">
-            <div className="ip-section-bar">
-              <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                <ShieldAlert size={14} style={{ color: '#E85D04' }} />
-                SLA Status
-              </span>
-            </div>
-            <div className="ip-sla-bars">
-              {slaInstances.map(inst => (
-                <SLABar key={inst.id} instance={inst} />
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* INCIDENT DETAILS */}
         <div className="ip-section">
           <div className="ip-section-bar"><span>Incident Details</span></div>
@@ -309,6 +292,23 @@ export default function TicketDetail() {
             {ticket.description || <span className="ip-val-empty">No description provided</span>}
           </div>
         </div>
+
+        {/* SLA Panel */}
+        {slaInstances.length > 0 && (
+          <div className="ip-sla-section">
+            <div className="ip-section-bar">
+              <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <ShieldAlert size={14} style={{ color: '#E85D04' }} />
+                SLA Status
+              </span>
+            </div>
+            <div className="ip-sla-bars">
+              {slaInstances.map(inst => (
+                <SLABar key={inst.id} instance={inst} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* COMMENTS + ACTIVITY */}
         <div className="ip-bottom">

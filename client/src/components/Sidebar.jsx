@@ -82,6 +82,7 @@ export default function Sidebar({ collapsed, onToggle }) {
 
         {/* Common nav items */}
         {NAV_COMMON.map(item => <NavItem key={item.to} {...item} collapsed={collapsed} />)}
+        {isAdmin && <NavItem to="/qa-analysis" icon={BarChart2} label="QA Analysis" collapsed={collapsed} />}
 
         {/* Admin section */}
         {isAdmin && (

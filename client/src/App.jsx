@@ -24,6 +24,7 @@ import MyQuery from './pages/MyQuery/MyQuery';
 import KnowledgeBase from './pages/KnowledgeBase/KnowledgeBase';
 import KBArticle from './pages/KnowledgeBase/KBArticle';
 import Profile from './pages/Profile/Profile';
+import QAAnalysis from './pages/QAAnalysis/QAAnalysis';
 
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
@@ -67,6 +68,7 @@ function AppRoutes() {
         <Route path="knowledge-base" element={<KnowledgeBase />} />
         <Route path="knowledge-base/:id" element={<KBArticle />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="qa-analysis" element={<RequireAdmin><QAAnalysis /></RequireAdmin>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

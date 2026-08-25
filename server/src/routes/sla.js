@@ -12,5 +12,7 @@ router.put('/definitions/:id',         requireAdmin, ctrl.updateDefinition);
 router.delete('/definitions/:id',      requireAdmin, ctrl.deleteDefinition);
 router.get('/ticket/:ticketId',        requireAuth,  ctrl.getTicketSLAInstances);
 router.get('/breached',                requireAdmin, ctrl.getBreachedTickets);
+router.get('/qa',                      requireAdmin, ctrl.getQAStats);
+router.get('/drill',                   requireAdmin, ctrl.getDrillInstances);
 
 module.exports = router;

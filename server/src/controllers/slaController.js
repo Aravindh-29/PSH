@@ -154,6 +154,153 @@ async function getBreachedTickets(req, res, next) {
   } catch (err) { next(err); }
 }
 
+// GET /api/sla/qa — full QA analytics payload
+async function getQAStats(req, res, next) {
+  try {
+    // 1. Overall summary
+    const { rows: summary } = await pool.query(`
+      SELECT
+        COUNT(*)                                                          AS total,
+        COUNT(*) FILTER (WHERE stage = 'active')                         AS active,
+        COUNT(*) FILTER (WHERE stage = 'paused')                         AS paused,
+        COUNT(*) FILTER (WHERE stage = 'completed')                      AS completed,
+        COUNT(*) FILTER (WHERE stage = 'breached')                       AS breached,
+        COUNT(*) FILTER (WHERE stage = 'completed' AND completed_at <= target_at) AS met,
+        ROUND(AVG(
+          EXTRACT(EPOCH FROM (COALESCE(completed_at, breached_at, NOW()) - started_at))/60
+          - total_pause_minutes
+        )::numeric, 1)                                                   AS avg_elapsed_min
+      FROM ticket_sla_instances
+    `);
+
+    // 2. Per-SLA-definition breakdown
+    const { rows: byDef } = await pool.query(`
+      SELECT
+        sd.id                                                            AS id,
+        sd.name                                                          AS sla_name,
+        sd.start_status,
+        sd.duration_minutes,
+        COUNT(tsi.id)                                                    AS total,
+        COUNT(*) FILTER (WHERE tsi.stage = 'breached')                  AS breached,
+        COUNT(*) FILTER (WHERE tsi.stage = 'completed' AND tsi.completed_at <= tsi.target_at) AS met,
+        COUNT(*) FILTER (WHERE tsi.stage IN ('active','paused'))         AS active,
+        ROUND(AVG(
+          EXTRACT(EPOCH FROM (COALESCE(tsi.completed_at, tsi.breached_at, NOW()) - tsi.started_at))/60
+          - tsi.total_pause_minutes
+        )::numeric, 1)                                                   AS avg_elapsed_min
+      FROM sla_definitions sd
+      LEFT JOIN ticket_sla_instances tsi ON tsi.sla_definition_id = sd.id
+      GROUP BY sd.id, sd.name, sd.start_status, sd.duration_minutes
+      ORDER BY breached DESC, total DESC
+    `);
+
+    // 3. Breaches over last 30 days (daily)
+    const { rows: trend } = await pool.query(`
+      SELECT
+        TO_CHAR(days.day,'Mon DD') AS date,
+        COUNT(tsi.id) FILTER (WHERE tsi.stage = 'breached') AS breached,
+        COUNT(tsi.id) FILTER (WHERE tsi.stage = 'completed' AND tsi.completed_at <= tsi.target_at) AS met
+      FROM (
+        SELECT generate_series(NOW()::date - 29, NOW()::date, INTERVAL '1 day')::date AS day
+      ) days
+      LEFT JOIN ticket_sla_instances tsi
+        ON DATE_TRUNC('day', tsi.created_at)::date = days.day
+      GROUP BY days.day ORDER BY days.day
+    `);
+
+    // 4. Full instance table (last 200)
+    const { rows: instances } = await pool.query(`
+      SELECT
+        tsi.id, tsi.stage, tsi.ticket_id,
+        tsi.started_at, tsi.target_at, tsi.breached_at, tsi.completed_at,
+        tsi.duration_minutes, tsi.total_pause_minutes,
+        sd.name AS sla_name, sd.start_status,
+        t.ticket_number, t.short_description, t.status AS ticket_status, t.priority,
+        u.full_name AS assigned_to_name
+      FROM ticket_sla_instances tsi
+      JOIN sla_definitions sd ON tsi.sla_definition_id = sd.id
+      JOIN tickets t ON tsi.ticket_id = t.id AND t.deleted_at IS NULL
+      LEFT JOIN users u ON t.assigned_to = u.id
+      ORDER BY tsi.created_at DESC
+      LIMIT 200
+    `);
+
+    const s = summary[0];
+    const complianceRate = parseInt(s.total) > 0
+      ? Math.round((parseInt(s.met) / parseInt(s.total)) * 100)
+      : 0;
+
+    res.json({
+      success: true,
+      summary: {
+        total:          parseInt(s.total),
+        active:         parseInt(s.active),
+        paused:         parseInt(s.paused),
+        completed:      parseInt(s.completed),
+        breached:       parseInt(s.breached),
+        met:            parseInt(s.met),
+        complianceRate,
+        avgElapsedMin:  parseFloat(s.avg_elapsed_min) || 0,
+      },
+      byDefinition: byDef.map(r => ({
+        id:             r.id,
+        sla_name:       r.sla_name,
+        start_status:   r.start_status,
+        duration_minutes: parseInt(r.duration_minutes),
+        total:          parseInt(r.total),
+        breached:       parseInt(r.breached),
+        met:            parseInt(r.met),
+        active:         parseInt(r.active),
+        avgElapsedMin:  parseFloat(r.avg_elapsed_min) || 0,
+        complianceRate: parseInt(r.total) > 0 ? Math.round((parseInt(r.met) / parseInt(r.total)) * 100) : 0,
+      })),
+      trend,
+      instances,
+    });
+  } catch (err) { next(err); }
+}
+
+// GET /api/sla/drill?definitionId=...&stage=... — all instances for one definition+stage
+async function getDrillInstances(req, res, next) {
+  try {
+    const { definitionId, stage } = req.query;
+    const params = [];
+    const conditions = ['t.deleted_at IS NULL'];
+
+    if (definitionId) {
+      params.push(definitionId);
+      conditions.push(`tsi.sla_definition_id = $${params.length}`);
+    }
+
+    if (stage === 'met') {
+      conditions.push(`tsi.stage = 'completed' AND tsi.completed_at <= tsi.target_at`);
+    } else if (stage && stage !== 'all') {
+      params.push(stage);
+      conditions.push(`tsi.stage = $${params.length}`);
+    }
+
+    const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+    const { rows } = await pool.query(`
+      SELECT
+        tsi.id, tsi.stage, tsi.ticket_id,
+        tsi.started_at, tsi.target_at, tsi.breached_at, tsi.completed_at,
+        tsi.duration_minutes, tsi.total_pause_minutes,
+        sd.name AS sla_name, sd.start_status,
+        t.ticket_number, t.short_description, t.status AS ticket_status, t.priority,
+        u.full_name AS assigned_to_name
+      FROM ticket_sla_instances tsi
+      JOIN sla_definitions sd ON tsi.sla_definition_id = sd.id
+      JOIN tickets t ON tsi.ticket_id = t.id
+      LEFT JOIN users u ON t.assigned_to = u.id
+      ${where}
+      ORDER BY tsi.created_at DESC
+    `, params);
+
+    res.json({ success: true, instances: rows });
+  } catch (err) { next(err); }
+}
+
 async function getSettings(req, res, next) {
   try {
     const { rows } = await pool.query('SELECT * FROM sla_settings WHERE id = 1');
@@ -214,6 +361,8 @@ module.exports = {
   deleteDefinition,
   getTicketSLAInstances,
   getBreachedTickets,
+  getQAStats,
+  getDrillInstances,
   getSettings,
   toggleSettings,
   applyDefaults,
