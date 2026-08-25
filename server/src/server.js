@@ -61,6 +61,7 @@ app.use('/api/admin-audit',  require('./routes/adminAudit'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/groups',        require('./routes/groups'));
 app.use('/api/subcategories', require('./routes/subcategories'));
+app.use('/api/sla',           require('./routes/sla'));
 
 if (isProd) {
   app.use(express.static(path.join(__dirname, '../../client/dist')));
@@ -70,6 +71,55 @@ if (isProd) {
 }
 
 app.use(errorHandler);
+
+async function runSLABreachChecker() {
+  try {
+    const { runSLAChecker } = require('./services/slaService');
+    const emailService = require('./services/emailService');
+    const { newlyBreached, warnInstances, critInstances } = await runSLAChecker();
+
+    // Send emails for breach, warn, critical
+    const sendSLAEmail = async (inst, type) => {
+      try {
+        const ticketRow = await pool.query(
+          `SELECT t.*, u1.email AS assignee_email, u2.email AS creator_email
+           FROM tickets t
+           LEFT JOIN users u1 ON t.assigned_to = u1.id
+           LEFT JOIN users u2 ON t.created_by = u2.id
+           WHERE t.id = $1 AND t.deleted_at IS NULL`, [inst.ticket_id]
+        );
+        if (!ticketRow.rows.length) return;
+        const ticket = ticketRow.rows[0];
+        const emails = [ticket.assignee_email, ticket.creator_email].filter(Boolean);
+        if (!emails.length) return;
+
+        const now = Date.now();
+        if (type === 'breach') {
+          const overdueMinutes = (now - new Date(inst.target_at).getTime()) / 60000;
+          await emailService.notifySLABreach(ticket, inst.sla_name || inst.name || 'SLA', overdueMinutes, emails);
+        } else if (type === 'critical') {
+          const elapsedMs = now - new Date(inst.started_at).getTime() - (parseFloat(inst.total_pause_minutes) * 60000);
+          const pct = (elapsedMs / 60000 / inst.duration_minutes) * 100;
+          const remainingMinutes = inst.duration_minutes - elapsedMs / 60000;
+          await emailService.notifySLACritical(ticket, inst.sla_name || inst.name || 'SLA', pct, remainingMinutes, emails);
+        } else if (type === 'warn') {
+          const elapsedMs = now - new Date(inst.started_at).getTime() - (parseFloat(inst.total_pause_minutes) * 60000);
+          const pct = (elapsedMs / 60000 / inst.duration_minutes) * 100;
+          const remainingMinutes = inst.duration_minutes - elapsedMs / 60000;
+          await emailService.notifySLAWarn(ticket, inst.sla_name || inst.name || 'SLA', pct, remainingMinutes, emails);
+        }
+      } catch (e) { logger.error(`SLA email error (${type})`, e); }
+    };
+
+    for (const inst of newlyBreached) await sendSLAEmail(inst, 'breach');
+    for (const inst of critInstances) await sendSLAEmail(inst, 'critical');
+    for (const inst of warnInstances)  await sendSLAEmail(inst, 'warn');
+
+    if (newlyBreached.length) logger.info(`SLA: ${newlyBreached.length} tickets newly breached`);
+  } catch (err) {
+    logger.error('SLA breach checker error', err);
+  }
+}
 
 async function runRetentionCleanup() {
   try {
@@ -99,6 +149,12 @@ async function start() {
       await runRetentionCleanup();
       setInterval(runRetentionCleanup, 24 * 60 * 60 * 1000);
     }, 5000);
+
+    // SLA breach checker — runs every 60 seconds
+    setTimeout(async () => {
+      await runSLABreachChecker();
+      setInterval(runSLABreachChecker, 60 * 1000);
+    }, 10000);
   } catch (err) {
     logger.error('Failed to connect to database', err);
     process.exit(1);

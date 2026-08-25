@@ -228,6 +228,50 @@ async function dbInit() {
     CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON admin_audit_logs(created_at DESC)
   `);
 
+  // ── SLA System ─────────────────────────────────────────────────────────────
+  await appClient.query(`
+    CREATE TABLE IF NOT EXISTS sla_definitions (
+      id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name             VARCHAR(200) NOT NULL,
+      description      TEXT,
+      start_status     VARCHAR(50)  NOT NULL,
+      stop_statuses    JSONB        NOT NULL DEFAULT '["RESOLVED","CLOSED","CANCELLED"]',
+      pause_statuses   JSONB        NOT NULL DEFAULT '["ON_HOLD","PENDING"]',
+      duration_minutes INTEGER      NOT NULL DEFAULT 480,
+      warn_pct         INTEGER      NOT NULL DEFAULT 50,
+      critical_pct     INTEGER      NOT NULL DEFAULT 75,
+      notify_on_warn    BOOLEAN      NOT NULL DEFAULT TRUE,
+      notify_on_critical BOOLEAN    NOT NULL DEFAULT TRUE,
+      notify_on_breach  BOOLEAN     NOT NULL DEFAULT TRUE,
+      is_active        BOOLEAN      NOT NULL DEFAULT TRUE,
+      created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+      updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await appClient.query(`
+    CREATE TABLE IF NOT EXISTS ticket_sla_instances (
+      id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      ticket_id           UUID NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+      sla_definition_id   UUID NOT NULL REFERENCES sla_definitions(id) ON DELETE CASCADE,
+      duration_minutes    INTEGER       NOT NULL DEFAULT 480,
+      started_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+      target_at           TIMESTAMPTZ   NOT NULL,
+      breached_at         TIMESTAMPTZ,
+      completed_at        TIMESTAMPTZ,
+      stage               VARCHAR(20)   NOT NULL DEFAULT 'active'
+        CHECK (stage IN ('active','paused','completed','breached')),
+      pause_started_at    TIMESTAMPTZ,
+      total_pause_minutes NUMERIC(10,2) NOT NULL DEFAULT 0,
+      notified_warn       BOOLEAN       NOT NULL DEFAULT FALSE,
+      notified_critical   BOOLEAN       NOT NULL DEFAULT FALSE,
+      notified_breach     BOOLEAN       NOT NULL DEFAULT FALSE,
+      created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+    )
+  `);
+  await appClient.query(`CREATE INDEX IF NOT EXISTS idx_sla_instances_ticket ON ticket_sla_instances(ticket_id)`);
+  await appClient.query(`CREATE INDEX IF NOT EXISTS idx_sla_instances_active  ON ticket_sla_instances(stage, target_at) WHERE stage IN ('active','paused')`);
+
   await appClient.end();
 }
 

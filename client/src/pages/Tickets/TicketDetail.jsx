@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Pencil, Trash2, Download, X, Clock, Paperclip } from 'lucide-react';
+import { Pencil, Trash2, Download, X, Clock, Paperclip, ShieldAlert } from 'lucide-react';
 import { StatusBadge, PriorityBadge } from '../../components/Badge';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { fmt } from '../../utils/dateUtils';
+import SLABar from '../../components/SLABar';
 import './TicketDetail.css';
 import './IncidentPage.css';
 
@@ -19,12 +20,14 @@ export default function TicketDetail() {
   const [attachOpen, setAttachOpen] = useState(false);
   const [customFieldDefs, setCustomFieldDefs] = useState([]);
   const [fieldByKey, setFieldByKey] = useState({});
+  const [slaInstances, setSlaInstances] = useState([]);
 
   const load = () => {
     setLoading(true);
-    Promise.all([api.get(`/tickets/${id}`), api.get('/config/fields')])
-      .then(([res, f]) => {
+    Promise.all([api.get(`/tickets/${id}`), api.get('/config/fields'), api.get(`/sla/ticket/${id}`).catch(() => ({ data: { instances: [] } }))])
+      .then(([res, f, sla]) => {
         setData(res.data);
+        setSlaInstances(sla.data.instances || []);
         const allFields = f.data.fields || [];
         setFieldByKey(Object.fromEntries(allFields.map(f => [f.field_key, f])));
         setCustomFieldDefs(allFields.filter(fd =>
@@ -147,6 +150,23 @@ export default function TicketDetail() {
 
       {/* ── Body ── */}
       <div className="ip-body">
+
+        {/* SLA Panel */}
+        {slaInstances.length > 0 && (
+          <div className="ip-section ip-sla-section">
+            <div className="ip-section-bar">
+              <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <ShieldAlert size={14} style={{ color: '#E85D04' }} />
+                SLA Status
+              </span>
+            </div>
+            <div className="ip-sla-bars">
+              {slaInstances.map(inst => (
+                <SLABar key={inst.id} instance={inst} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* INCIDENT DETAILS */}
         <div className="ip-section">

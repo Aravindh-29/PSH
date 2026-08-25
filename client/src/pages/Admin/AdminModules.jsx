@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, Lock, LockOpen, ChevronUp, ChevronDown, X, AlertTriangle, RotateCcw, Eye, EyeOff } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import AdminSLA from './AdminSLA';
 import './Admin.css';
 import './Configuration.css';
 
@@ -792,6 +793,9 @@ export default function AdminModules() {
           Ticket Types
           <span className="cfg-tab-count">{ticketTypes.length}</span>
         </button>
+        <button className={`cfg-tab ${tab === 'sla' ? 'active' : ''}`} onClick={() => setTab('sla')}>
+          SLA
+        </button>
       </div>
 
       {/* ── Fields tab ── */}
@@ -1038,6 +1042,9 @@ export default function AdminModules() {
           </div>
         </div>
       )}
+
+      {/* ── SLA tab ── */}
+      {tab === 'sla' && <AdminSLA />}
 
       {/* ── Modals ── */}
       {fieldModal !== null && (

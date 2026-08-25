@@ -370,3 +370,12 @@
 .td-attach-name { font-size: 13px; font-weight: 500; color: #1E293B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .td-attach-meta { font-size: 11px; color: #94A3B8; margin-top: 2px; }
 .td-attach-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+/* ── SLA Section ── */
+.ip-sla-section { background: #fafbfc; }
+.ip-sla-bars {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

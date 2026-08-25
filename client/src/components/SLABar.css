@@ -1,0 +1,95 @@
+/* ── SLA Progress Bar ──────────────────────────────────────────────── */
+
+.sla-bar-wrap {
+  border-radius: 10px;
+  padding: 12px 16px;
+  border: 1.5px solid transparent;
+  background: #f8fafc;
+  margin-bottom: 10px;
+  transition: border-color 0.2s;
+}
+
+.sla-ok       { border-color: #bbf7d0; background: #f0fdf4; }
+.sla-warn     { border-color: #fde68a; background: #fffbeb; }
+.sla-critical { border-color: #fed7aa; background: #fff7ed; }
+.sla-breached { border-color: #fecaca; background: #fef2f2; }
+
+.sla-bar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.sla-bar-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.sla-bar-stage-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  padding: 2px 8px;
+  border-radius: 99px;
+}
+.sla-ok .sla-bar-stage-badge       { background: #dcfce7; color: #16a34a; }
+.sla-warn .sla-bar-stage-badge     { background: #fef3c7; color: #d97706; }
+.sla-critical .sla-bar-stage-badge { background: #ffedd5; color: #c2410c; }
+.sla-breached .sla-bar-stage-badge { background: #fee2e2; color: #dc2626; }
+
+.sla-bar-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: #64748b;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.sla-bar-track {
+  position: relative;
+  height: 10px;
+  background: #e2e8f0;
+  border-radius: 99px;
+  overflow: hidden;
+  margin-bottom: 5px;
+}
+
+.sla-bar-fill {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  border-radius: 99px;
+  transition: width 0.6s ease;
+}
+.sla-ok .sla-bar-fill       { background: linear-gradient(90deg, #22c55e, #4ade80); }
+.sla-warn .sla-bar-fill     { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.sla-critical .sla-bar-fill { background: linear-gradient(90deg, #f97316, #fb923c); }
+.sla-breached .sla-bar-fill { background: linear-gradient(90deg, #dc2626, #ef4444); width: 100% !important; }
+
+@keyframes sla-pulse-fill {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.65; }
+}
+.sla-fill-pulse { animation: sla-pulse-fill 1.4s ease-in-out infinite; }
+
+.sla-bar-pct {
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  font-weight: 800;
+  color: #475569;
+  line-height: 1;
+}
+
+.sla-bar-label {
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.sla-ok       .sla-bar-label { color: #15803d; }
+.sla-warn     .sla-bar-label { color: #b45309; }
+.sla-critical .sla-bar-label { color: #c2410c; }
+.sla-breached .sla-bar-label { color: #dc2626; font-weight: 700; }

@@ -155,10 +155,84 @@ async function notifyCommentAdded(ticket, commentBody, actorName, commentType, r
   }
 }
 
+function slaBar(pct, stage) {
+  const color = stage === 'breached' ? '#dc2626'
+    : pct >= 75 ? '#f97316'
+    : pct >= 50 ? '#f59e0b'
+    : '#22c55e';
+  const width = Math.min(Math.round(pct), 100);
+  return `
+    <div style="background:#f1f5f9;border-radius:99px;height:10px;overflow:hidden;margin:12px 0">
+      <div style="height:100%;width:${width}%;background:${color};border-radius:99px;transition:width 0.4s"></div>
+    </div>
+    <div style="font-size:12px;color:${color};font-weight:700">${Math.round(pct)}% elapsed${stage === 'breached' ? ' — SLA BREACHED' : ''}</div>
+  `;
+}
+
+async function notifySLAWarn(ticket, slaName, pct, remainingMinutes, recipientEmails) {
+  const cfg = await loadConfig();
+  const rem = remainingMinutes > 60
+    ? `${Math.floor(remainingMinutes / 60)}h ${Math.round(remainingMinutes % 60)}m`
+    : `${Math.round(remainingMinutes)}m`;
+  const html = baseTemplate(`⚠ SLA Warning: ${ticket.ticket_number}`, `
+    <p>SLA <strong>"${slaName}"</strong> for ticket <strong>${ticket.ticket_number}</strong> is ${Math.round(pct)}% elapsed.</p>
+    ${row('Ticket', `<strong>${ticket.ticket_number}</strong> — ${ticket.short_description}`)}
+    ${row('Status', ticket.status)}
+    ${row('Priority', ticket.priority)}
+    ${row('Remaining', `<strong style="color:#f59e0b">${rem}</strong>`)}
+    ${slaBar(pct, 'warn')}
+    <a href="${ticketUrl(ticket.id)}" class="btn">View Ticket &rarr;</a>
+  `);
+  for (const email of (recipientEmails || []).filter(Boolean)) {
+    await sendMail(cfg, email, `⚠ SLA Warning [${ticket.ticket_number}] — ${rem} remaining`, html);
+  }
+}
+
+async function notifySLACritical(ticket, slaName, pct, remainingMinutes, recipientEmails) {
+  const cfg = await loadConfig();
+  const rem = remainingMinutes > 60
+    ? `${Math.floor(remainingMinutes / 60)}h ${Math.round(remainingMinutes % 60)}m`
+    : `${Math.round(remainingMinutes)}m`;
+  const html = baseTemplate(`🔴 SLA Critical: ${ticket.ticket_number}`, `
+    <p>SLA <strong>"${slaName}"</strong> for ticket <strong>${ticket.ticket_number}</strong> is at ${Math.round(pct)}% — approaching breach!</p>
+    ${row('Ticket', `<strong>${ticket.ticket_number}</strong> — ${ticket.short_description}`)}
+    ${row('Status', ticket.status)}
+    ${row('Priority', ticket.priority)}
+    ${row('Remaining', `<strong style="color:#f97316">${rem}</strong>`)}
+    ${slaBar(pct, 'critical')}
+    <a href="${ticketUrl(ticket.id)}" class="btn" style="background:#f97316">View Ticket &rarr;</a>
+  `);
+  for (const email of (recipientEmails || []).filter(Boolean)) {
+    await sendMail(cfg, email, `🔴 SLA Critical [${ticket.ticket_number}] — only ${rem} remaining`, html);
+  }
+}
+
+async function notifySLABreach(ticket, slaName, overdueMinutes, recipientEmails) {
+  const cfg = await loadConfig();
+  const over = overdueMinutes > 60
+    ? `${Math.floor(overdueMinutes / 60)}h ${Math.round(overdueMinutes % 60)}m`
+    : `${Math.round(overdueMinutes)}m`;
+  const html = baseTemplate(`🚨 SLA Breached: ${ticket.ticket_number}`, `
+    <p>SLA <strong>"${slaName}"</strong> for ticket <strong>${ticket.ticket_number}</strong> has been <span style="color:#dc2626;font-weight:700">BREACHED</span>.</p>
+    ${row('Ticket', `<strong>${ticket.ticket_number}</strong> — ${ticket.short_description}`)}
+    ${row('Status', ticket.status)}
+    ${row('Priority', ticket.priority)}
+    ${row('Overdue By', `<strong style="color:#dc2626">${over}</strong>`)}
+    ${slaBar(105, 'breached')}
+    <a href="${ticketUrl(ticket.id)}" class="btn" style="background:#dc2626">View Ticket &rarr;</a>
+  `);
+  for (const email of (recipientEmails || []).filter(Boolean)) {
+    await sendMail(cfg, email, `🚨 SLA BREACHED [${ticket.ticket_number}] — overdue by ${over}`, html);
+  }
+}
+
 module.exports = {
   notifyTicketCreated,
   notifyTicketAssigned,
   notifyStatusChanged,
   notifyTicketResolved,
   notifyCommentAdded,
+  notifySLAWarn,
+  notifySLACritical,
+  notifySLABreach,
 };

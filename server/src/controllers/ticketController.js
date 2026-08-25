@@ -1,6 +1,7 @@
 const pool = require('../db/pool');
 const logger = require('../utils/logger');
 const emailService = require('../services/emailService');
+const slaService  = require('../services/slaService');
 
 function fireEmail(fn) {
   Promise.resolve().then(fn).catch(err => logger.error('Email notification error', err));
@@ -186,6 +187,9 @@ async function create(req, res, next) {
     for (const { field, value } of initialFields) {
       await logAudit(client, ticket.id, req.session.userId, 'CREATED', field, null, value, req.ip);
     }
+
+    // Trigger SLA for initial status (treat creation as transitioning from null → status)
+    await slaService.onStatusChange(client, ticket.id, null, status);
 
     // Notify the assignee when a ticket is created with an immediate assignment
     if (rawAssigned && rawAssigned !== req.session.userId) {
@@ -396,6 +400,12 @@ async function update(req, res, next) {
 
     for (const change of auditChanges) {
       await logAudit(client, id, req.session.userId, 'UPDATED', change.field, change.old, change.new, req.ip);
+    }
+
+    // Trigger SLA engine on status change
+    const slaStatusChange = auditChanges.find(c => c.field === 'status');
+    if (slaStatusChange) {
+      await slaService.onStatusChange(client, id, slaStatusChange.old, slaStatusChange.new);
     }
 
     // Fire notification when ticket is assigned (or reassigned) to a user
