@@ -4,6 +4,7 @@ const ctrl = require('../controllers/groupController');
 
 const router = express.Router();
 router.get('/',                       requireAuth,  ctrl.list);
+router.get('/mine',                   requireAuth,  ctrl.myGroups);
 router.get('/with-members',           requireAuth,  ctrl.listWithMembers);
 router.get('/:id',                    requireAdmin, ctrl.getOne);
 router.post('/',                      requireAdmin, ctrl.create);

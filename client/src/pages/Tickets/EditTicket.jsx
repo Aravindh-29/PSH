@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { Upload, Download, X, Trash2, Paperclip } from 'lucide-react';
+import { Upload, Download, X, Trash2, Paperclip, ArrowLeft } from 'lucide-react';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
@@ -308,7 +308,13 @@ export default function EditTicket() {
       <div className="ip-header">
         <div className="ip-header-left">
           <div className="ip-breadcrumb">
-            <Link to="/tickets">Tickets</Link> / <Link to={`/tickets/${id}`}>{ticketNumber}</Link> / Edit
+            <button className="ip-back-btn" onClick={() => navigate(-1)}>
+              <ArrowLeft size={14} /> Back
+            </button>
+            <span className="ip-breadcrumb-sep">/</span>
+            <Link to={`/tickets/${id}`}>{ticketNumber}</Link>
+            <span className="ip-breadcrumb-sep">/</span>
+            Edit
           </div>
           <div className="ip-title-row">
             <h1 className="ip-title">Edit: {ticketNumber}</h1>

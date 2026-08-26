@@ -44,7 +44,7 @@ function SortIcon({ field, sort }) {
 }
 
 export default function TicketList({ myTickets }) {
-  const [urlParams] = useSearchParams();
+  const [urlParams, setUrlParams] = useSearchParams();
 
   // Initialise from URL params so dashboard Quick Access links auto-filter
   const initStatus = urlParams.get('status') || '';
@@ -53,6 +53,8 @@ export default function TicketList({ myTickets }) {
   const initDateRange = initStartDate && initEndDate
     ? { start: new Date(initStartDate + 'T00:00:00'), end: new Date(initEndDate + 'T23:59:59') }
     : null;
+  // Tab persisted in URL so navigate(-1) restores the correct tab
+  const initTab = myTickets ? (urlParams.get('tab') || 'mine') : 'mine';
 
   const [tickets, setTickets]       = useState([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, pages: 1 });
@@ -68,6 +70,26 @@ export default function TicketList({ myTickets }) {
   const [customStart, setCustomStart] = useState(initStartDate || '');
   const [customEnd, setCustomEnd]     = useState(initEndDate   || '');
   const datePickerRef = useRef(null);
+  const [activeTab, setActiveTab]   = useState(initTab);
+  const [hasGroups, setHasGroups]   = useState(false);
+
+  // Check if this user belongs to any group (controls tab visibility)
+  useEffect(() => {
+    if (!myTickets) return;
+    api.get('/groups/mine')
+      .then(r => setHasGroups(r.data.groups.length > 0))
+      .catch(() => setHasGroups(false));
+  }, [myTickets]);
+
+  const switchTab = (tab) => {
+    setActiveTab(tab);
+    setPage(1);
+    setUrlParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tab);
+      return next;
+    }, { replace: true });
+  };
 
   useEffect(() => {
     function onClickOutside(e) {
@@ -90,7 +112,8 @@ export default function TicketList({ myTickets }) {
         if (search)           params.set('search', search);
         if (filters.status)   params.set('status', filters.status);
         if (filters.priority) params.set('priority', filters.priority);
-        if (myTickets)        params.set('myTickets', 'true');
+        if (myTickets && activeTab === 'group') params.set('groupView', 'true');
+        else if (myTickets)                     params.set('myTickets', 'true');
         if (dateRange) {
           params.set('startDate', format(dateRange.start, 'yyyy-MM-dd'));
           params.set('endDate',   format(dateRange.end,   'yyyy-MM-dd'));
@@ -109,7 +132,7 @@ export default function TicketList({ myTickets }) {
     run();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, sort.field, sort.dir, search, filters.status, filters.priority, myTickets, refreshKey, dateRange]);
+  }, [page, sort.field, sort.dir, search, filters.status, filters.priority, myTickets, activeTab, refreshKey, dateRange]);
 
   const toggleSort = (field) => {
     const next = sort.field === field
@@ -159,13 +182,30 @@ export default function TicketList({ myTickets }) {
     <div className="ticket-list-page">
       <div className="tl-header">
         <div>
-          <h1>{myTickets ? 'My Tickets' : 'All Tickets'}</h1>
+          <h1>{myTickets ? (activeTab === 'group' ? 'Group Tickets' : 'My Tickets') : 'All Tickets'}</h1>
           <p>{pagination.total} total tickets</p>
         </div>
         <Link to="/tickets/new" className="btn-create">
           <Plus size={15} /> New Ticket
         </Link>
       </div>
+
+      {myTickets && hasGroups && (
+        <div className="tl-tabs">
+          <button
+            className={`tl-tab${activeTab === 'mine' ? ' tl-tab-active' : ''}`}
+            onClick={() => switchTab('mine')}
+          >
+            My Tickets
+          </button>
+          <button
+            className={`tl-tab${activeTab === 'group' ? ' tl-tab-active' : ''}`}
+            onClick={() => switchTab('group')}
+          >
+            Group Tickets
+          </button>
+        </div>
+      )}
 
       <div className="tl-filters">
         <div className="tl-search">

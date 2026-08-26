@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Pencil, Trash2, Download, X, Clock, Paperclip, ShieldAlert } from 'lucide-react';
+import { Pencil, Trash2, Download, X, Clock, Paperclip, ShieldAlert, ArrowLeft } from 'lucide-react';
 import { StatusBadge, PriorityBadge } from '../../components/Badge';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
@@ -118,7 +118,11 @@ export default function TicketDetail() {
       <div className="ip-header">
         <div className="ip-header-left">
           <div className="ip-breadcrumb">
-            <Link to="/tickets">Tickets</Link> / {ticket.ticket_number}
+            <button className="ip-back-btn" onClick={() => navigate(-1)}>
+              <ArrowLeft size={14} /> Back
+            </button>
+            <span className="ip-breadcrumb-sep">/</span>
+            {ticket.ticket_number}
           </div>
           <div className="ip-title-row">
             <h1 className="ip-title">{ticket.ticket_number}</h1>
@@ -154,67 +158,35 @@ export default function TicketDetail() {
         {/* INCIDENT DETAILS */}
         <div className="ip-section">
           <div className="ip-section-bar"><span>Incident Details</span></div>
-          <div className="ip-fields ip-view-mode">
-            <div className="ip-row">
+          <div className="ip-two-cols">
+            {/* Left column — flows independently, no gap from optional fields */}
+            <div className="ip-col">
               <div className="ip-pair">
                 <span className="ip-lc">Number</span>
                 <span className="ip-vc">{ticket.ticket_number}</span>
               </div>
               <div className="ip-pair">
-                <span className="ip-lc">State</span>
-                <span className="ip-vc"><StatusBadge status={ticket.status} /></span>
-              </div>
-            </div>
-            <div className="ip-row">
-              <div className="ip-pair">
                 <span className="ip-lc">{fieldByKey['customer_name']?.label || 'Customer'}</span>
                 <span className="ip-vc"><Val v={ticket.customer_name} /></span>
               </div>
-              <div className="ip-pair">
-                <span className="ip-lc">{fieldByKey['priority']?.label || 'Priority'}</span>
-                <span className="ip-vc"><PriorityBadge priority={ticket.priority} /></span>
-              </div>
-            </div>
-            <div className="ip-row">
               <div className="ip-pair">
                 <span className="ip-lc">{fieldByKey['module_text']?.label || 'Module'}</span>
                 <span className="ip-vc"><Val v={ticket.module_name} /></span>
               </div>
               <div className="ip-pair">
-                <span className="ip-lc">{fieldByKey['impact']?.label || 'Impact'}</span>
-                <span className="ip-vc"><Val v={ticket.impact} /></span>
-              </div>
-            </div>
-            <div className="ip-row">
-              <div className="ip-pair">
                 <span className="ip-lc">{fieldByKey['category_id']?.label || 'Category'}</span>
                 <span className="ip-vc"><Val v={ticket.category_name} /></span>
               </div>
-              <div className="ip-pair">
-                <span className="ip-lc">{fieldByKey['urgency']?.label || 'Urgency'}</span>
-                <span className="ip-vc"><Val v={ticket.urgency} /></span>
-              </div>
-            </div>
-            {ticket.subcategory_name && (
-              <div className="ip-row">
+              {ticket.subcategory_name && (
                 <div className="ip-pair">
                   <span className="ip-lc">Subcategory</span>
                   <span className="ip-vc"><Val v={ticket.subcategory_name} /></span>
                 </div>
-                <div className="ip-pair" />
-              </div>
-            )}
-            <div className="ip-row">
+              )}
               <div className="ip-pair">
                 <span className="ip-lc">Type</span>
                 <span className="ip-vc"><Val v={ticket.type_name} /></span>
               </div>
-              <div className="ip-pair">
-                <span className="ip-lc">Classification</span>
-                <span className="ip-vc"><Val v={ticket.classification} /></span>
-              </div>
-            </div>
-            <div className="ip-row">
               <div className="ip-pair">
                 <span className="ip-lc">Assigned To</span>
                 <span className="ip-vc">
@@ -222,39 +194,56 @@ export default function TicketDetail() {
                 </span>
               </div>
               <div className="ip-pair">
-                <span className="ip-lc">{fieldByKey['assignment_group']?.label || 'Assignment Group'}</span>
-                <span className="ip-vc"><Val v={ticket.assignment_group} /></span>
-              </div>
-            </div>
-            <div className="ip-row">
-              <div className="ip-pair">
                 <span className="ip-lc">Ticket Owner</span>
                 <span className="ip-vc"><Val v={ticket.ticket_owner_name} /></span>
               </div>
               <div className="ip-pair">
-                <span className="ip-lc">Created By</span>
-                <span className="ip-vc"><Val v={ticket.created_by_name} /></span>
-              </div>
-            </div>
-            <div className="ip-row">
-              <div className="ip-pair">
                 <span className="ip-lc">Created At</span>
                 <span className="ip-vc">{fmt(ticket.created_at)}</span>
+              </div>
+              {ticket.updated_by_name && (
+                <div className="ip-pair">
+                  <span className="ip-lc">Updated By</span>
+                  <span className="ip-vc">{ticket.updated_by_name}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Right column — flows independently */}
+            <div className="ip-col">
+              <div className="ip-pair">
+                <span className="ip-lc">State</span>
+                <span className="ip-vc"><StatusBadge status={ticket.status} /></span>
+              </div>
+              <div className="ip-pair">
+                <span className="ip-lc">{fieldByKey['priority']?.label || 'Priority'}</span>
+                <span className="ip-vc"><PriorityBadge priority={ticket.priority} /></span>
+              </div>
+              <div className="ip-pair">
+                <span className="ip-lc">{fieldByKey['impact']?.label || 'Impact'}</span>
+                <span className="ip-vc"><Val v={ticket.impact} /></span>
+              </div>
+              <div className="ip-pair">
+                <span className="ip-lc">{fieldByKey['urgency']?.label || 'Urgency'}</span>
+                <span className="ip-vc"><Val v={ticket.urgency} /></span>
+              </div>
+              <div className="ip-pair">
+                <span className="ip-lc">Classification</span>
+                <span className="ip-vc"><Val v={ticket.classification} /></span>
+              </div>
+              <div className="ip-pair">
+                <span className="ip-lc">{fieldByKey['assignment_group']?.label || 'Assignment Group'}</span>
+                <span className="ip-vc"><Val v={ticket.assignment_group} /></span>
+              </div>
+              <div className="ip-pair">
+                <span className="ip-lc">Created By</span>
+                <span className="ip-vc"><Val v={ticket.created_by_name} /></span>
               </div>
               <div className="ip-pair">
                 <span className="ip-lc">Updated At</span>
                 <span className="ip-vc">{fmt(ticket.updated_at)}</span>
               </div>
             </div>
-            {ticket.updated_by_name && (
-              <div className="ip-row">
-                <div className="ip-pair">
-                  <span className="ip-lc">Updated By</span>
-                  <span className="ip-vc">{ticket.updated_by_name}</span>
-                </div>
-                <div className="ip-pair" />
-              </div>
-            )}
           </div>
         </div>
 

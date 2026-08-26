@@ -134,7 +134,7 @@ export default function Dashboard({ personal = false }) {
     { label: 'Global Dashboard',   to: '/',                      icon: LayoutDashboard },
   ] : isAdmin ? [
     { label: 'Create New Ticket',  to: '/tickets/new',          icon: Plus },
-    { label: 'User Wise Tickets',  to: '/admin/user-tickets',   icon: LayoutList },
+    { label: 'Tickets by User',  to: '/admin/user-tickets',   icon: LayoutList },
     { label: 'User Management',    to: '/admin/users',           icon: Users },
     { label: 'Audit Logs',         to: '/audit-logs',            icon: ShieldCheck },
   ] : [

@@ -88,11 +88,7 @@
 .sla-critical .sla-row-fill { background: linear-gradient(90deg, #f97316, #fb923c); }
 .sla-breached .sla-row-fill { background: linear-gradient(90deg, #dc2626, #ef4444); width: 100% !important; }
 
-@keyframes sla-pulse-fill {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.5; }
-}
-.sla-fill-pulse { animation: sla-pulse-fill 1.2s ease-in-out infinite; }
+.sla-fill-pulse { /* animation removed — static fill */ }
 
 .sla-row-pct {
   font-size: 10px;

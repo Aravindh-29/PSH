@@ -17,7 +17,7 @@ const NAV_TOP_EMPLOYEE = [
 ];
 
 const ADMIN_MAIN = [
-  { to: '/admin/user-tickets', icon: LayoutList, label: 'User Wise Tickets' },
+  { to: '/admin/user-tickets', icon: LayoutList, label: 'Tickets by User' },
 ];
 
 const NAV_COMMON = [

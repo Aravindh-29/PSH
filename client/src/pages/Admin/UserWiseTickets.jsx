@@ -28,7 +28,7 @@ export default function UserWiseTickets() {
     <div className="admin-page">
       <div className="admin-header">
         <div>
-          <h1>User Wise Tickets</h1>
+          <h1>Tickets by User</h1>
           <p>Browse tickets by user — click any user to view and manage their tickets</p>
         </div>
         <div className="uwt-search-wrap">

@@ -1119,7 +1119,7 @@ export default function AdminUsers() {
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: deleteTickets ? '#dc2626' : '#374151' }}>Also delete all their tickets</div>
                 <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>
-                  {deleteTickets ? 'Tickets will be removed from all views.' : 'Tickets stay visible in User Wise Tickets.'}
+                  {deleteTickets ? 'Tickets will be removed from all views.' : 'Tickets stay visible in Tickets by User.'}
                 </div>
               </div>
             </label>

@@ -22,18 +22,39 @@ async function list(req, res, next) {
   try {
     const isAdmin = req.session.role === 'admin';
     const userId = req.session.userId;
-    const { page = 1, limit = 25, status, priority, module: mod, category, search, assignedTo, myTickets, createdBy, sortBy, sortDir, startDate, endDate } = req.query;
+    const { page = 1, limit = 25, status, priority, module: mod, category, search, assignedTo, myTickets, groupView, createdBy, sortBy, sortDir, startDate, endDate } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     const conditions = ['t.deleted_at IS NULL'];
     const params = [];
 
-    if (!isAdmin) {
-      // Employee sees tickets assigned to them, OR unassigned tickets they created.
-      // Once a ticket is assigned to someone else it leaves their bucket completely.
+    if (!isAdmin && groupView === 'true') {
+      // Group Tickets tab: any ticket whose assigned_to, created_by, or assignment_group
+      // belongs to the same group(s) as the current user
       params.push(userId);
+      const p = params.length;
       conditions.push(
-        `(t.assigned_to = $${params.length} OR (t.assigned_to IS NULL AND (t.created_by = $${params.length} OR t.ticket_owner = $${params.length})))`
+        `(
+           t.assignment_group_id IN (
+             SELECT group_id FROM user_groups WHERE user_id = $${p}
+           )
+           OR t.assigned_to IN (
+             SELECT user_id FROM user_groups
+             WHERE group_id IN (SELECT group_id FROM user_groups WHERE user_id = $${p})
+           )
+           OR t.created_by IN (
+             SELECT user_id FROM user_groups
+             WHERE group_id IN (SELECT group_id FROM user_groups WHERE user_id = $${p})
+           )
+         )`
+      );
+    } else if (!isAdmin) {
+      // My Tickets: tickets assigned to them, or unassigned tickets they created/own
+      params.push(userId);
+      const p = params.length;
+      conditions.push(
+        `(t.assigned_to = $${p}
+         OR (t.assigned_to IS NULL AND (t.created_by = $${p} OR t.ticket_owner = $${p})))`
       );
     } else if (myTickets === 'true') {
       params.push(userId);
@@ -268,8 +289,20 @@ async function getOne(req, res, next) {
 
     const ticket = result.rows[0];
     const isAdmin = req.session.role === 'admin';
-    if (!isAdmin && ticket.created_by !== req.session.userId && ticket.ticket_owner !== req.session.userId && ticket.assigned_to !== req.session.userId) {
-      return res.status(403).json({ success: false, message: 'Access denied' });
+    if (!isAdmin) {
+      const uid = req.session.userId;
+      const isOwner = ticket.created_by === uid || ticket.ticket_owner === uid || ticket.assigned_to === uid;
+      if (!isOwner && ticket.assignment_group_id) {
+        const grpCheck = await pool.query(
+          'SELECT 1 FROM user_groups WHERE user_id = $1 AND group_id = $2 LIMIT 1',
+          [uid, ticket.assignment_group_id]
+        );
+        if (grpCheck.rows.length === 0) {
+          return res.status(403).json({ success: false, message: 'Access denied' });
+        }
+      } else if (!isOwner) {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
     }
 
     const [attachments, comments, auditRaw] = await Promise.all([

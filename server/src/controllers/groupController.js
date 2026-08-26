@@ -169,4 +169,14 @@ async function listWithMembers(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { list, getOne, create, update, remove, setMembers, addMember, removeMember, listWithMembers };
+async function myGroups(req, res, next) {
+  try {
+    const { rows } = await pool.query(
+      'SELECT group_id FROM user_groups WHERE user_id = $1',
+      [req.session.userId]
+    );
+    res.json({ success: true, groups: rows });
+  } catch (err) { next(err); }
+}
+
+module.exports = { list, getOne, create, update, remove, setMembers, addMember, removeMember, listWithMembers, myGroups };

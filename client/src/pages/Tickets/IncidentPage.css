@@ -14,8 +14,20 @@
   flex-wrap: wrap;
 }
 .ip-header-left { flex: 1; min-width: 0; }
-.ip-breadcrumb { font-size: 12px; color: var(--text-muted); margin-bottom: 5px; }
+.ip-breadcrumb {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-muted); margin-bottom: 5px;
+}
 .ip-breadcrumb a { color: var(--orange); text-decoration: none; }
+.ip-back-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: none; padding: 0;
+  font-size: 12px; font-weight: 600; color: var(--orange);
+  cursor: pointer; text-decoration: none;
+  transition: opacity 0.15s;
+}
+.ip-back-btn:hover { opacity: 0.75; }
+.ip-breadcrumb-sep { color: #CBD5E1; }
 .ip-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 3px; }
 .ip-title { font-size: 21px; font-weight: 700; color: #0D1B2A; margin: 0; }
 .ip-short-desc-head { font-size: 13.5px; color: var(--text-muted); }
@@ -84,7 +96,7 @@
 }
 .ip-section-bar-btn:hover { background: #F3F4F6; }
 
-/* ── 2-column fields grid ── */
+/* ── 2-column fields grid (edit mode) ── */
 .ip-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -93,6 +105,26 @@
   padding: 14px 0 8px;
 }
 .ip-row { display: contents; }
+
+/* ── Two independent columns (incident details view) ──
+      Optional fields on one side never create a gap on the other. ── */
+.ip-two-cols {
+  display: flex;
+  flex-direction: row;
+  gap: 48px;
+  align-items: flex-start;
+  padding: 14px 0 8px;
+}
+.ip-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .ip-two-cols { flex-direction: column; }
+}
 
 /* Each pair is its own 2-col mini-grid: label | input */
 .ip-pair {
@@ -216,8 +248,10 @@
 .ip-vc.ip-input-cell:focus-within { z-index: 100; }
 
 /* ── View mode – disabled-input boxes ── */
-.ip-view-mode .ip-lc { font-weight: 700; color: #1F2937; }
-.ip-view-mode .ip-vc {
+.ip-view-mode .ip-lc,
+.ip-two-cols  .ip-lc { font-weight: 700; color: #1F2937; }
+.ip-view-mode .ip-vc,
+.ip-two-cols  .ip-vc {
   border: 1px solid #E5E7EB;
   border-radius: 4px;
   background: #F9FAFB;
@@ -227,7 +261,8 @@
   overflow: hidden;
   cursor: default;
 }
-.ip-view-mode .ip-vc.ip-tall {
+.ip-view-mode .ip-vc.ip-tall,
+.ip-two-cols  .ip-vc.ip-tall {
   align-items: flex-start;
   padding: 8px 10px;
   min-height: 60px;

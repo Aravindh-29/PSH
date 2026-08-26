@@ -13,6 +13,32 @@
 }
 .btn-create:hover { background: var(--orange-hover); }
 
+/* ── My Tickets / Group Tickets tabs ── */
+.tl-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 18px;
+  border-bottom: 2px solid #E5E7EB;
+}
+.tl-tab {
+  padding: 8px 20px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #6B7280;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tl-tab:hover { color: #0D1B2A; }
+.tl-tab-active {
+  color: var(--orange);
+  border-bottom-color: var(--orange);
+  font-weight: 600;
+}
+
 .tl-filters {
   display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;
 }
