@@ -460,7 +460,7 @@ export default function LoginPage() {
           <div className="login-brand-accent login-brand-accent-two" />
 
           <div className="login-brand-content">
-            <div className="login-logo-shell">
+            <div className={`login-logo-shell${branding?.customize ? ' login-logo-shell-branded' : ''}`}>
               <>{branding?.customize ? <BrandIdentity branding={branding} /> : <img src="/psh.png" alt="SERV-IT" className="login-left-logo" />}</>
             </div>
 
