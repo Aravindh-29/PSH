@@ -534,7 +534,6 @@ Default users created automatically on first startup:
 | Username | Password | Role |
 |---|---|---|
 | `admin` | `Admin@123` | Admin |
-| `john.smith` | `Employee@123` | Employee |
 | `sarah.johnson` | `Employee@123` | Employee |
 | `mike.davis` | `Employee@123` | Employee |
 
@@ -864,3 +863,36 @@ npm run build
 ```
 
 The email suite uses a disposable database schema and loopback SMTP/HTTPS services. On Windows it uses Git's OpenSSL; set `TEST_OPENSSL` if installed elsewhere. The RBAC/Template suites require `TEST_USERNAME` and `TEST_PASSWORD` for an authorized local administrator with MFA disabled. Test accounts, records and schemas are removed afterward. Real provider delivery requires your actual approved credentials and a mailbox test.
+
+
+## Updating existing Linux installations
+
+Fetch the current scripts before running an update. `update.sh` does not pull Git changes itself:
+
+```sh
+cd /opt/PSH
+git pull --ff-only origin main
+sudo bash scripts/update.sh
+```
+
+The updater requires Node.js 20+, npm, PostgreSQL's `pg_dump` (compatible with your database server), sudo, flock and systemd. Allow maintenance downtime and sufficient disk space for the database backup, previous UI build and new build. Small instances still need adequate RAM/swap for Vite. The application directory defaults to `/opt/PSH` and the service to `servit`; custom installations can pass `SERVIT_APP_DIR` and `SERVIT_SERVICE_NAME` to sudo explicitly.
+
+The script stops the service, backs up PostgreSQL and `.env` to a protected timestamped directory under `/var/backups/servit`, installs locked dependencies, verifies the environment, builds the UI separately, applies the migration, then starts the service and checks `/api/health` for both API and database readiness. It prints success only after those checks pass. If a step fails, it exits with an error and identifies the failed step and backup directory; the service can remain stopped until the issue is corrected. It never automatically restores an old database over current data.
+
+`database/schema.sql` now includes Templates and ticket snapshots/answers, Branding, configurable Roles and permissions, Managed Groups, role history/migration checkpoints, SMTP/OAuth/TLS configuration, the email outbox, Knowledge Base and sessions. Install, update and application startup use `database/migrate.js`. The migration is transactional, serializes concurrent runners and can be repeated. Schema/credential migration failures roll back the migration; changes to code, dependencies and environment files are outside that database transaction.
+
+Existing tickets, template answers, branding, custom roles, edited articles and account passwords are retained. The one-time managed-group backfill is not repeated after administrators change assignments. The built-in Admin role receives the current complete permission catalog. New installs create an initial administrator; rerunning initialization does not reset an existing administrator password or reactivate an account. Existing unused legacy database columns are retained rather than deleted.
+
+The updater preserves `.env`, including database and session settings. If `EMAIL_ENCRYPTION_KEY` is missing, it generates a persistent key only when existing credentials are unencrypted or empty. Legacy SMTP credentials are encrypted during migration. If encrypted credentials already exist, a missing or incorrect key stops the update: restore the original key, do not generate a replacement. Protect both environment backups and database backups. Running SQL alone creates the structures but does not perform credential encryption; use the updater or `npm run db:migrate` with a valid environment.
+
+Fresh Linux installations continue to use `sudo bash scripts/install.sh`; this now creates the email encryption key and uses the same migration. If `.env` already exists, the installer delegates to the updater to preserve installation settings.
+
+Migration verification:
+
+```sh
+node server/scripts/test-migrations.js
+bash -n scripts/install.sh scripts/update.sh
+bash server/scripts/test-update.sh
+```
+
+The migration suite uses disposable schemas in the configured PostgreSQL database and temporary environment files. It checks fresh setup, legacy upgrades, repeated upgrades, preservation of application data, rollback and encryption-key handling. The shell suite uses mock services/commands to verify success and backup, migration and health failure paths; it does not replace a systemd deployment test on the target Linux host.

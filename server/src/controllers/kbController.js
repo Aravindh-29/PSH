@@ -98,7 +98,7 @@ async function initTable() {
   }
 }
 
-initTable().catch(err => console.error('KB table init error:', err));
+
 
 async function list(req, res, next) {
   try {
@@ -265,4 +265,4 @@ async function remove(req, res, next) {
   }
 }
 
-module.exports = { list, listAdmin, getOne, getBySlug, create, update, remove };
+module.exports = { initTable, list, listAdmin, getOne, getBySlug, create, update, remove };

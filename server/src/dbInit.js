@@ -5,35 +5,26 @@ const argon2 = require('argon2');
 
 async function dbInit() {
   const dbUrl = new URL(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/psh_ticketing');
-  const dbName = dbUrl.pathname.replace('/', '');
+  const dbName = decodeURIComponent(dbUrl.pathname.slice(1));
 
-  const adminClient = new Client({
-    host: dbUrl.hostname,
-    port: parseInt(dbUrl.port) || 5432,
-    user: dbUrl.username,
-    password: dbUrl.password,
-    database: 'postgres',
-  });
+  const { connectionConfig } = require('../../database/migrate');
+  const adminUrl = new URL(process.env.DATABASE_URL);
+  adminUrl.pathname = '/postgres';
+  const adminClient = new Client({ ...connectionConfig(), connectionString: adminUrl.toString() });
 
   await adminClient.connect();
 
   const exists = await adminClient.query(`SELECT 1 FROM pg_database WHERE datname = $1`, [dbName]);
   if (exists.rows.length === 0) {
-    await adminClient.query(`CREATE DATABASE "${dbName}"`);
+    await adminClient.query(`CREATE DATABASE "${dbName.replace(/"/g, '""')}"`);
   }
   await adminClient.end();
 
-  const appClient = new Client({
-    host: dbUrl.hostname,
-    port: parseInt(dbUrl.port) || 5432,
-    user: dbUrl.username,
-    password: dbUrl.password,
-    database: dbName,
-  });
+  const appClient = new Client(connectionConfig());
   await appClient.connect();
 
   const dbDir = path.join(__dirname, '../../database');
-  await appClient.query(fs.readFileSync(path.join(dbDir, 'schema.sql'), 'utf8'));
+  await require('../../database/migrate').migrate(appClient);
   await appClient.query(fs.readFileSync(path.join(dbDir, 'seed.sql'), 'utf8'));
 
   await appClient.query(`
@@ -195,17 +186,10 @@ async function dbInit() {
   // Ensure admin user exists — only user created on fresh install
   const adminExists = await appClient.query(`SELECT id, password_hash FROM users WHERE username = 'admin'`);
   if (adminExists.rows.length === 0) {
-    const adminHash = await argon2.hash('Admin@123');
+    const adminHash = await argon2.hash(process.env.ADMIN_INITIAL_PASSWORD || 'Admin@123');
     await appClient.query(
       `INSERT INTO users (username, email, full_name, password_hash, role)
        VALUES ('admin', 'admin@purestoragehorizon.com', 'Administrator', $1, 'admin')`,
-      [adminHash]
-    );
-  } else if (!adminExists.rows[0].password_hash) {
-    // password_hash is empty — happens when column was added to a pre-existing DB via ALTER TABLE DEFAULT ''
-    const adminHash = await argon2.hash('Admin@123');
-    await appClient.query(
-      `UPDATE users SET password_hash = $1 WHERE username = 'admin'`,
       [adminHash]
     );
   }
@@ -282,8 +266,6 @@ async function dbInit() {
   await appClient.query(`CREATE INDEX IF NOT EXISTS idx_sla_instances_ticket ON ticket_sla_instances(ticket_id)`);
   await appClient.query(`CREATE INDEX IF NOT EXISTS idx_sla_instances_active  ON ticket_sla_instances(stage, target_at) WHERE stage IN ('active','paused')`);
 
-  await require('./access/init')(appClient);
-  await require('./services/emailSettings').init(appClient);
   await appClient.end();
 }
 

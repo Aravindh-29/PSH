@@ -147,6 +147,9 @@ async function init(client) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
     CREATE INDEX IF NOT EXISTS email_outbox_pending ON email_outbox(status,next_attempt_at);`);
   const {rows}=await client.query('SELECT * FROM email_config WHERE id=1');
-  for(const name of secrets) if(rows[0]?.[name]&&!rows[0][name].startsWith('enc:v1:'))await client.query(`UPDATE email_config SET ${name}=$1 WHERE id=1`,[encrypt(rows[0][name])]);
+  for(const name of secrets) if(rows[0]?.[name]) {
+    if(rows[0][name].startsWith('enc:v1:'))decrypt(rows[0][name]);
+    else await client.query(`UPDATE email_config SET ${name}=$1 WHERE id=1`,[encrypt(rows[0][name])]);
+  }
 }
 module.exports={MASK,secrets,fields,defaults,encrypt,decrypt,publicConfig,prepare,validate,address,transport,safeError,init};

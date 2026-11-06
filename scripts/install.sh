@@ -42,22 +42,14 @@ CRED_FILE="/root/servit-credentials.txt"
 APP_DIR_OWNER="${SUDO_USER:-ubuntu}"
 [[ -z "${APP_DIR_OWNER}" || "${APP_DIR_OWNER}" == "root" ]] && APP_DIR_OWNER="ubuntu"
 
-# ── Generate secrets (preserved if .env already exists) ──────────
-NEW_DB_PASS="$(openssl rand -hex 16)"
-NEW_SESSION_SECRET="$(openssl rand -hex 32)"
-
+# Existing installations must use the non-destructive upgrade path.
 if [[ -f "${APP_DIR}/.env" ]]; then
-  warn "Existing .env found — reusing DB password and session secret"
-  DB_PASS="$(grep '^DATABASE_URL=' "${APP_DIR}/.env" \
-    | sed 's|.*://[^:]*:\([^@]*\)@.*|\1|')"
-  SESSION_SECRET="$(grep '^SESSION_SECRET=' "${APP_DIR}/.env" \
-    | cut -d= -f2-)"
-  [[ -z "${DB_PASS}" ]]         && DB_PASS="${NEW_DB_PASS}"
-  [[ -z "${SESSION_SECRET}" ]]  && SESSION_SECRET="${NEW_SESSION_SECRET}"
-else
-  DB_PASS="${NEW_DB_PASS}"
-  SESSION_SECRET="${NEW_SESSION_SECRET}"
+  info "Existing installation detected; using update.sh and preserving .env."
+  exec bash "${APP_DIR}/scripts/update.sh"
 fi
+DB_PASS="$(openssl rand -hex 16)"
+SESSION_SECRET="$(openssl rand -hex 32)"
+EMAIL_ENCRYPTION_KEY="$(openssl rand -base64 32)"
 
 # ── Public IP detection ──────────────────────────────────────────
 SERVER_IP="$(curl -s --max-time 5 ifconfig.me 2>/dev/null \
@@ -147,7 +139,7 @@ fi
 step "5 / 10  Repository → ${APP_DIR}"
 if [[ -d "${APP_DIR}/.git" ]]; then
   info "Repo already exists at ${APP_DIR} — pulling latest changes"
-  sudo -u "${APP_DIR_OWNER}" git -C "${APP_DIR}" pull origin main 2>&1 | tail -3
+  sudo -u "${APP_DIR_OWNER}" git -C "${APP_DIR}" pull --ff-only origin main 2>&1 | tail -3
   ok "Repository updated"
 else
   info "Cloning ${REPO_URL} → ${APP_DIR}"
@@ -194,6 +186,7 @@ NODE_ENV=production
 PORT=${PORT}
 DATABASE_URL=postgresql://${DB_USER}:${DB_PASS}@localhost:5432/${DB_NAME}
 SESSION_SECRET=${SESSION_SECRET}
+EMAIL_ENCRYPTION_KEY=${EMAIL_ENCRYPTION_KEY}
 CLIENT_URL=${CLIENT_URL}
 DATABASE_SSL=false
 
@@ -254,18 +247,8 @@ sudo -u "${APP_DIR_OWNER}" bash -c "
 ok "Client built"
 
 info "Running database schema initialisation..."
-sudo -u "${APP_DIR_OWNER}" bash -c "
-  export HOME=$(eval echo ~${APP_DIR_OWNER})
-  export DATABASE_URL='postgresql://${DB_USER}:${DB_PASS}@localhost:5432/${DB_NAME}'
-  export NODE_ENV=production
-  export SESSION_SECRET='${SESSION_SECRET}'
-  export CLIENT_URL='${CLIENT_URL}'
-  export PORT='${PORT}'
-  export DATABASE_SSL=false
-  export NODE_PATH='${APP_DIR}/server/node_modules'
-  cd '${APP_DIR}/server'
-  ${NODE_BIN} ../database/init.js 2>&1
-"
+sudo -H -u "${APP_DIR_OWNER}" -- "${NODE_BIN}" "${APP_DIR}/server/scripts/deployment.js" prepare-env
+sudo -H -u "${APP_DIR_OWNER}" -- "${NODE_BIN}" "${APP_DIR}/database/init.js"
 ok "Database schema ready"
 
 # ════════════════════════════════════════════════════════════════

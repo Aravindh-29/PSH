@@ -142,6 +142,7 @@ async function start() {
     await pool.query('SELECT 1');
     logger.info('Database connected');
     await require('./dbInit')();
+    await require('./controllers/kbController').initTable();
     logger.info('Database ready');
     require('./services/emailDelivery').start();
     app.listen(PORT, () => logger.info(`Server running on port ${PORT}`));

@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL DEFAULT '',
   sso_sub       TEXT,
   sso_provider  VARCHAR(50),
-  role VARCHAR(20) NOT NULL DEFAULT 'employee' CHECK (role IN ('admin','employee')),
+  role VARCHAR(64) NOT NULL DEFAULT 'employee',
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   avatar_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -349,7 +349,6 @@ CREATE INDEX IF NOT EXISTS idx_sla_instances_ticket ON ticket_sla_instances(tick
 CREATE INDEX IF NOT EXISTS idx_sla_instances_active ON ticket_sla_instances(stage, target_at)
   WHERE stage IN ('active','paused');
 
-COMMIT;
 
 -- Optional ticket templates. Ticket snapshots preserve historical names and fields.
 CREATE TABLE IF NOT EXISTS ticket_templates (
@@ -382,3 +381,66 @@ INSERT INTO organization_branding (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 ALTER TABLE organization_branding ADD COLUMN IF NOT EXISTS service_desk_name VARCHAR(150) NOT NULL DEFAULT '';
 ALTER TABLE organization_branding ADD COLUMN IF NOT EXISTS accent_color VARCHAR(7) NOT NULL DEFAULT '#E85D04';
 ALTER TABLE organization_branding ADD COLUMN IF NOT EXISTS logo_data TEXT NOT NULL DEFAULT '';
+
+-- Configurable roles and delegated team access (safe for existing installations).
+CREATE TABLE IF NOT EXISTS access_roles (
+  key VARCHAR(64) PRIMARY KEY, name VARCHAR(150) NOT NULL, responsibility TEXT NOT NULL DEFAULT '',
+  permissions JSONB NOT NULL DEFAULT '{}', assignable_roles JSONB NOT NULL DEFAULT '[]',
+  is_active BOOLEAN NOT NULL DEFAULT TRUE, is_system BOOLEAN NOT NULL DEFAULT FALSE, version INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS access_roles_name_unique ON access_roles(LOWER(name));
+-- Initial defaults mirror server/src/access/catalog.js; existing role edits are preserved.
+INSERT INTO access_roles(key,name,responsibility,permissions,is_system) VALUES
+ ('admin','Admin','Full application administration','{"dashboard.view":"all","dashboard.global":"all","query.view":"all","users.tickets":"all","tickets.view":"all","tickets.group_view":"all","tickets.create":"all","tickets.edit":"all","tickets.priority":"all","tickets.impact":"all","tickets.urgency":"all","tickets.category":"all","tickets.type":"all","tickets.classification":"all","tickets.template":"all","tickets.status":"all","tickets.resolve":"all","tickets.close":"all","tickets.reopen":"all","tickets.cancel":"all","tickets.assign":"all","tickets.owner":"all","tickets.delete":"all","comments.view":"all","comments.add":"all","comments.work_note":"all","attachments.upload":"all","attachments.preview":"all","attachments.download":"all","attachments.zip":"all","attachments.delete":"all","kb.view":"all","kb.drafts":"all","kb.create":"all","kb.edit":"all","kb.publish":"all","kb.delete":"all","reports.view":"all","reports.global":"all","reports.export":"all","sla.view":"all","qa.view":"all","qa.drill":"all","qa.export":"all","users.view":"all","users.create":"all","users.edit":"all","users.assign_role":"all","users.groups":"all","users.status":"all","users.delete":"all","users.delete_tickets":"all","users.bulk_template":"all","users.bulk_validate":"all","users.bulk_create":"all","users.password":"all","users.mfa_reset":"all","users.mfa_requirement":"all","groups.view":"all","groups.create":"all","groups.edit":"all","groups.status":"all","groups.members":"all","groups.delete":"all","fields.view":"all","fields.create":"all","fields.edit":"all","fields.required":"all","fields.active":"all","fields.lock":"all","fields.reorder":"all","fields.delete":"all","fields.reset":"all","categories.view":"all","categories.create":"all","categories.edit":"all","categories.status":"all","categories.delete":"all","categories.force_delete":"all","subcategories.create":"all","subcategories.edit":"all","subcategories.status":"all","subcategories.delete":"all","types.view":"all","types.create":"all","types.edit":"all","types.status":"all","types.delete":"all","templates.view":"all","templates.create":"all","templates.edit":"all","templates.status":"all","branding.view":"all","branding.edit":"all","branding.logo":"all","branding.accent":"all","branding.toggle":"all","sla_config.view":"all","sla_config.create":"all","sla_config.edit":"all","sla_config.status":"all","sla_config.defaults":"all","sla_config.toggle":"all","sso.view":"all","sso.edit":"all","sso.test":"all","sso.toggle":"all","email.view":"all","email.edit":"all","email.test":"all","email.toggle":"all","sso.clear":"all","audit.view":"all","audit.admin":"all","audit.retention":"all","roles.view":"all","roles.create":"all","roles.edit":"all","roles.permissions":"all","roles.status":"all","roles.delete":"all","roles.history":"all","profile.view":"all","profile.edit":"all","profile.password":"all","notifications.view":"all","notifications.read":"all","tickets.history":"all","users.activity":"all","email.history":"all","email.retry":"all"}'::jsonb,TRUE),
+ ('employee','User / Employee','Create and work on permitted tickets','{"dashboard.view":"own","query.view":"own","tickets.view":"related","tickets.group_view":"groups","tickets.create":"own","tickets.edit":"own","tickets.priority":"own","tickets.impact":"own","tickets.urgency":"own","tickets.category":"own","tickets.type":"own","tickets.classification":"own","tickets.template":"own","tickets.status":"own","tickets.resolve":"own","tickets.close":"own","tickets.reopen":"own","tickets.cancel":"own","tickets.assign":"own","tickets.delete":"own","comments.view":"own","comments.add":"own","comments.work_note":"own","attachments.upload":"own","attachments.preview":"own","attachments.download":"own","attachments.zip":"own","attachments.delete":"own","kb.view":"all","reports.view":"own","reports.export":"own","sla.view":"own","profile.view":"all","profile.edit":"all","profile.password":"all","notifications.view":"all","notifications.read":"all","tickets.history":"own"}'::jsonb,TRUE)
+ON CONFLICT(key) DO NOTHING;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ALTER COLUMN role TYPE VARCHAR(64);
+DO $$ BEGIN
+ IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='users'::regclass AND conname='users_access_role_fk') THEN
+   ALTER TABLE users ADD CONSTRAINT users_access_role_fk FOREIGN KEY(role) REFERENCES access_roles(key);
+ END IF;
+END $$;
+CREATE TABLE IF NOT EXISTS user_managed_groups (
+ user_id UUID REFERENCES users(id) ON DELETE CASCADE, group_id UUID REFERENCES assignment_groups(id) ON DELETE CASCADE,
+ PRIMARY KEY(user_id,group_id)
+);
+CREATE INDEX IF NOT EXISTS idx_managed_group ON user_managed_groups(group_id);
+CREATE TABLE IF NOT EXISTS access_role_history (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),role_key VARCHAR(64) NOT NULL,actor_id UUID REFERENCES users(id) ON DELETE SET NULL,
+ before_value JSONB,after_value JSONB,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS access_migrations(key TEXT PRIMARY KEY);
+WITH migration AS (
+ INSERT INTO access_migrations VALUES('initial-managed-groups') ON CONFLICT DO NOTHING RETURNING key
+) INSERT INTO user_managed_groups SELECT user_id,group_id FROM user_groups WHERE EXISTS(SELECT 1 FROM migration) ON CONFLICT DO NOTHING;
+
+-- Email authentication settings. Secret encryption is performed by database/migrate.js.
+ALTER TABLE email_config ADD COLUMN IF NOT EXISTS auth_type TEXT NOT NULL DEFAULT 'password',
+ ADD COLUMN IF NOT EXISTS oauth_client_id TEXT NOT NULL DEFAULT '',
+ ADD COLUMN IF NOT EXISTS oauth_client_secret TEXT NOT NULL DEFAULT '',
+ ADD COLUMN IF NOT EXISTS oauth_refresh_token TEXT NOT NULL DEFAULT '',
+ ADD COLUMN IF NOT EXISTS oauth_token_url TEXT NOT NULL DEFAULT 'https://oauth2.googleapis.com/token',
+ ADD COLUMN IF NOT EXISTS tls_servername TEXT NOT NULL DEFAULT '',
+ ADD COLUMN IF NOT EXISTS tls_ca TEXT NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS email_outbox (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),recipient TEXT NOT NULL,subject TEXT NOT NULL,html TEXT NOT NULL,
+ from_name TEXT NOT NULL,from_email TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,
+ next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),locked_at TIMESTAMPTZ,sent_at TIMESTAMPTZ,last_error TEXT,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS email_outbox_pending ON email_outbox(status,next_attempt_at);
+
+-- Knowledge Base and session persistence are included for complete installations.
+CREATE TABLE IF NOT EXISTS kb_articles (
+ id SERIAL PRIMARY KEY,title VARCHAR(255) NOT NULL,content TEXT NOT NULL,category VARCHAR(100) NOT NULL DEFAULT 'General',
+ author_id UUID REFERENCES users(id) ON DELETE SET NULL,status VARCHAR(20) NOT NULL DEFAULT 'PUBLISHED',views INTEGER NOT NULL DEFAULT 0,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),deleted_at TIMESTAMPTZ,
+ deleted_by UUID REFERENCES users(id) ON DELETE SET NULL,slug VARCHAR(100) UNIQUE
+);
+ALTER TABLE kb_articles ADD COLUMN IF NOT EXISTS slug VARCHAR(100) UNIQUE;
+CREATE TABLE IF NOT EXISTS session (sid VARCHAR PRIMARY KEY,sess JSON NOT NULL,expire TIMESTAMP(6) NOT NULL);
+CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON session(expire);
+
+COMMIT;

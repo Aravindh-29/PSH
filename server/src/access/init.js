@@ -23,10 +23,10 @@ module.exports = async function initAccess(client) {
     ON CONFLICT(key) DO NOTHING`, [JSON.stringify(Object.fromEntries(catalog.map(p => [p.key,'all']))), JSON.stringify(employee)]);
   await client.query("UPDATE access_roles SET permissions=$1 WHERE key='admin'",[JSON.stringify(Object.fromEntries(catalog.map(p=>[p.key,'all'])))]);
   // Drop only the legacy two-role check. All other user constraints are retained.
-  const checks = await client.query(`SELECT conname FROM pg_constraint WHERE conrelid='users'::regclass AND contype='c' AND pg_get_constraintdef(oid) LIKE '%role%'`);
+  const checks = await client.query(`SELECT conname FROM pg_constraint WHERE conrelid='users'::regclass AND contype='c' AND conname='users_role_check'`);
   for (const { conname } of checks.rows) await client.query('ALTER TABLE users DROP CONSTRAINT "' + conname.replace(/"/g,'""') + '"');
   await client.query('ALTER TABLE users ALTER COLUMN role TYPE VARCHAR(64)');
-  await client.query(`DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='users_access_role_fk') THEN ALTER TABLE users ADD CONSTRAINT users_access_role_fk FOREIGN KEY(role) REFERENCES access_roles(key); END IF; END $$`);
+  await client.query(`DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='users'::regclass AND conname='users_access_role_fk') THEN ALTER TABLE users ADD CONSTRAINT users_access_role_fk FOREIGN KEY(role) REFERENCES access_roles(key); END IF; END $$`);
   const migration = await client.query("INSERT INTO access_migrations VALUES('initial-managed-groups') ON CONFLICT DO NOTHING RETURNING key");
   if (migration.rowCount) await client.query('INSERT INTO user_managed_groups SELECT user_id,group_id FROM user_groups ON CONFLICT DO NOTHING');
 };
