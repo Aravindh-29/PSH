@@ -1,0 +1,16 @@
+.brand-identity { width:100%; color:#0f172a; }
+.brand-lockup { display:flex; align-items:center; gap:12px; min-width:0; }
+.brand-monogram, .brand-org-logo { flex-shrink:0; width:48px; height:48px; border-radius:10px; }
+.brand-monogram { display:flex; align-items:center; justify-content:center; background:var(--brand-accent); color:#fff; font-size:30px; font-weight:700; }
+.brand-org-logo { object-fit:contain; background:white; }
+.brand-org-text { display:flex; flex-direction:column; gap:4px; min-width:0; overflow-wrap:anywhere; }
+.brand-org-text strong { font-size:17px; line-height:1.25; }
+.brand-org-text span { font-size:12px; line-height:1.4; }
+.brand-powered { display:flex; justify-content:center; align-items:center; gap:7px; margin-top:16px; color:#64748b; font-size:11px; }
+.brand-powered img { width:65px; height:30px; object-fit:contain; }
+.brand-identity-compact .brand-lockup { justify-content:center; }
+.brand-identity-compact .brand-monogram,.brand-identity-compact .brand-org-logo { width:40px; height:40px; font-size:24px; }
+.sidebar-logo-branded { padding:20px 14px; }
+.topbar-workspace { max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:600; color:#0f172a; border-right:1px solid #e2e8f0; padding-right:20px; }
+@media(max-width:900px) { .topbar-workspace { display:none; } }
+.login-logo-shell .brand-identity { min-width:230px; background:white; border-radius:12px; padding:18px; box-sizing:border-box; }

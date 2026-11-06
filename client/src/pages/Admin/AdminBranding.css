@@ -1,0 +1,43 @@
+.branding-settings { max-width:1400px; }
+.branding-settings h2 { margin:0 0 12px; font-size:20px; }
+.branding-customize-row { display:flex; align-items:center; gap:12px; margin:24px 0; font-size:14px; }
+.branding-customize-row label { font-weight:600; }
+.branding-switch { width:42px; height:24px; border:0; border-radius:20px; background:#94a3b8; padding:3px; cursor:pointer; }
+.branding-switch span { display:block; width:18px; height:18px; border-radius:50%; background:white; transition:transform .15s; }
+.branding-switch[aria-checked=true] { background:var(--orange); }
+.branding-switch[aria-checked=true] span { transform:translateX(18px); }
+.branding-switch:focus-visible { outline:2px solid var(--orange); outline-offset:3px; }
+.branding-name input { width:100%; padding:10px 12px; border:1px solid #cbd5e1; border-radius:4px; background:white; color:#0f172a; font:inherit; box-sizing:border-box; }
+.branding-name label { color:#0f172a; }
+.branding-hint { font-size:13px; color:#64748b; line-height:1.6; }
+.branding-preview { display:flex; flex-direction:column; align-items:center; width:260px; max-width:100%; box-sizing:border-box; border:1px solid #e2e8f0; background:white; border-radius:8px; padding:20px; margin:20px 0; }
+.branding-preview-label { color:#64748b; font-size:12px; align-self:flex-start; margin-bottom:16px; }
+.branding-preview img { width:130px; height:60px; object-fit:contain; }
+.branding-preview-name { text-align:center; font-size:15px; font-weight:600; color:#0f172a; overflow-wrap:anywhere; max-width:100%; margin-top:8px; }
+
+.branding-grid { display:grid; grid-template-columns:minmax(300px, .9fr) minmax(360px,1.1fr); gap:24px; align-items:start; }
+.branding-card { background:white; border:1px solid #dbe3ed; border-radius:10px; padding:24px; min-width:0; }
+.branding-card h3 { font-size:21px; margin:0 0 25px; color:#0f172a; }
+.branding-card fieldset { border:0; padding:0; margin:0; min-width:0; }
+.branding-card fieldset:disabled { opacity:.55; }
+.branding-input { margin-bottom:22px; }
+.branding-input > label,.branding-field-label { display:block; font-size:14px; font-weight:600; margin-bottom:9px; color:#0f172a; }
+.branding-input > input { width:100%; box-sizing:border-box; border:1px solid #cbd5e1; border-radius:5px; padding:10px 12px; font:inherit; font-size:14px; background:white; color:#0f172a; }
+.branding-input small { display:block; color:#64748b; font-size:11px; margin-top:10px; line-height:1.5; }
+.branding-upload { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
+.branding-upload img,.branding-logo-fallback { width:64px; height:64px; object-fit:contain; border-radius:10px; }
+.branding-logo-fallback { display:flex; align-items:center; justify-content:center; color:white; font-size:38px; font-weight:700; }
+.branding-upload label { cursor:pointer; }
+.branding-upload input[type=file] { position:absolute; width:1px; height:1px; overflow:hidden; opacity:0; }
+.branding-upload input[type=file]:focus-visible { position:static; width:auto; height:auto; opacity:1; }
+.branding-swatches { display:flex; gap:12px; }
+.branding-swatches button { border:2px solid transparent; border-radius:7px; width:44px; height:44px; color:white; font-size:23px; cursor:pointer; }
+.branding-swatches button[aria-pressed=true] { outline:2px solid #64748b; outline-offset:3px; }
+.branding-portal { border:1px solid #dbe3ed; border-radius:9px; overflow:hidden; }
+.branding-portal-header { padding:24px; background:white; }
+.branding-portal-header .brand-identity { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; }
+.branding-portal-header .brand-powered { margin:0; }
+.branding-default-logo { width:130px; height:60px; object-fit:contain; }
+@media(max-width:1100px) { .branding-grid { grid-template-columns:1fr; } }
+
+@media(max-width:500px) { .branding-card { padding:16px; } }

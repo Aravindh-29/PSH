@@ -89,3 +89,6 @@
   cursor: pointer;
 }
 .sidebar-collapse-btn:hover { background: var(--sb-hover); color: var(--sb-text-active); }
+
+.sidebar-logo-branded { flex-direction:column; flex-shrink:0; gap:8px; }
+.sidebar-organization-name { max-width:100%; text-align:center; overflow-wrap:anywhere; color:var(--sb-text-active); font-size:14px; font-weight:600; line-height:1.4; padding:0 6px 4px; }

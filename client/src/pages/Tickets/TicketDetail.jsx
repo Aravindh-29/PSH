@@ -1,3 +1,4 @@
+import { TemplateFields } from '../../components/TicketTemplate';
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Pencil, Trash2, Download, X, Clock, Paperclip, ShieldAlert, ArrowLeft } from 'lucide-react';
@@ -78,7 +79,7 @@ export default function TicketDetail() {
     short_description: 'Short Description', description: 'Description',
     customer_name: 'Customer', module_text: 'Module',
     assignment_group: 'Assignment Group', classification: 'Classification',
-    attachment: 'Attachment',
+    attachment: 'Attachment', template: 'Template', template_id: 'Template', template_snapshot: 'Template Definition', template_values: 'Template Fields',
   };
 
   const auditActionLabel = (a) => {
@@ -129,7 +130,7 @@ export default function TicketDetail() {
             <StatusBadge status={ticket.status} />
             <PriorityBadge priority={ticket.priority} />
           </div>
-          <div className="ip-short-desc-head">{ticket.short_description}</div>
+          {ticket.template_snapshot?.name && <div className="ip-short-desc-head">{ticket.template_snapshot.name}</div>}
         </div>
         <div className="ip-header-actions">
           {attachments.length > 0 && (
@@ -281,6 +282,8 @@ export default function TicketDetail() {
             {ticket.description || <span className="ip-val-empty">No description provided</span>}
           </div>
         </div>
+
+        <TemplateFields template={ticket.template_snapshot} values={ticket.template_values} readOnly />
 
         {/* SLA Panel */}
         {slaInstances.length > 0 && (

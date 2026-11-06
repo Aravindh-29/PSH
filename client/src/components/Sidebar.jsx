@@ -6,6 +6,8 @@ import {
   BarChart2, Users, Users2, Settings, ShieldCheck, LogOut, ChevronLeft, LayoutList, KeyRound, Mail, Search
 } from 'lucide-react';
 import './Sidebar.css';
+import BrandIdentity from './BrandIdentity';
+import { useBranding } from '../context/BrandingContext';
 
 const NAV_TOP_ADMIN = [
   { to: '/',                    icon: LayoutDashboard, label: 'Global Dashboard', exact: true },
@@ -54,6 +56,7 @@ function NavItem({ to, icon: Icon, label, exact, disabled, collapsed }) {
 export default function Sidebar({ collapsed, onToggle }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { branding } = useBranding();
   const isAdmin = user?.role === 'admin';
 
   const handleLogout = async () => {
@@ -63,12 +66,8 @@ export default function Sidebar({ collapsed, onToggle }) {
 
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
-      <div className="sidebar-logo">
-        <img
-          src="/psh.png"
-          alt="SERV-IT"
-          className={collapsed ? 'sidebar-logo-sm' : 'sidebar-logo-img'}
-        />
+      <div className={`sidebar-logo${!collapsed && branding?.customize ? ' sidebar-logo-branded' : ''}`}>
+        {branding?.customize ? <BrandIdentity branding={branding} compact={collapsed} /> : <img src="/psh.png" alt="SERV-IT" className={collapsed ? 'sidebar-logo-sm' : 'sidebar-logo-img'} />}
       </div>
 
       <nav className="sidebar-nav">

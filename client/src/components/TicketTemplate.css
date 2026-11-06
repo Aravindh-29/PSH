@@ -1,0 +1,16 @@
+.ticket-template-selector { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:16px; }
+.ticket-template-selector label { font-size:13px; font-weight:600; }
+.ticket-template-selector label span { color:#64748b; font-weight:400; }
+.ticket-template-selector select { width:340px; max-width:100%; background:white; border:1px solid #cbd5e1; border-radius:4px; padding:9px 12px; color:#0f172a; font:inherit; font-size:13px; }
+.ticket-template-field { margin:18px 0; }
+.ticket-template-field > label { display:block; font-size:13px; font-weight:600; margin-bottom:8px; }
+.ticket-template-field .ticket-template-text { display:block; box-sizing:border-box; width:100%; height:180px; min-height:180px; max-height:180px; overflow-y:auto; overflow-wrap:anywhere; white-space:pre-wrap; resize:none; padding:12px; border:1px solid #cbd5e1; background:#fff; border-radius:4px; font:inherit; font-size:13px; line-height:1.6; color:#0f172a; }
+.ticket-template-field > select, .ticket-template-field > input { width:340px; max-width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:4px; background:white; color:#0f172a; font:inherit; font-size:13px; }
+.ticket-template-field :focus-visible, .ticket-template-selector select:focus-visible { outline:2px solid #e85d04; outline-offset:2px; }
+.ticket-template-toggle { display:flex; align-items:center; gap:10px; font-size:13px; }
+.ticket-template-toggle button { width:40px; height:23px; background:#94a3b8; border:0; border-radius:20px; padding:3px; cursor:pointer; }
+.ticket-template-toggle button[aria-checked=true] { background:#e85d04; }
+.ticket-template-toggle button span { display:block; width:17px; height:17px; border-radius:50%; background:white; transition:transform .15s; }
+.ticket-template-toggle button[aria-checked=true] span { transform:translateX(17px); }
+.ticket-template-value { font-size:14px; padding:10px 0; }
+@media(max-width:600px) { .ticket-template-selector { align-items:stretch; flex-direction:column; } .ticket-template-selector select { width:100%; } }

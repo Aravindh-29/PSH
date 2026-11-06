@@ -6,6 +6,7 @@ import { useNotifications } from '../context/NotificationContext';
 import { StatusBadge, PriorityBadge } from './Badge';
 import api from '../api/axios';
 import './Topbar.css';
+import { useBranding } from '../context/BrandingContext';
 
 function useDebounce(value, delay) {
   const [debounced, setDebounced] = useState(value);
@@ -28,6 +29,7 @@ function relativeTime(ts) {
 
 export default function Topbar({ onMenuClick }) {
   const { user, logout } = useAuth();
+  const { branding } = useBranding();
   const navigate = useNavigate();
   const { notifications, unread, markRead, markAllRead } = useNotifications();
 
@@ -128,6 +130,8 @@ export default function Topbar({ onMenuClick }) {
       <button className="topbar-menu-btn" onClick={onMenuClick}>
         <Menu size={20} />
       </button>
+
+      {branding?.customize && <div className="topbar-workspace" title={branding.organization_name}>{branding.organization_name} workspace</div>}
 
       {/* ── Global Search ── */}
       <div className={`topbar-search ${open ? 'search-active' : ''}`} ref={containerRef}>

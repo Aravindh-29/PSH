@@ -350,3 +350,35 @@ CREATE INDEX IF NOT EXISTS idx_sla_instances_active ON ticket_sla_instances(stag
   WHERE stage IN ('active','paused');
 
 COMMIT;
+
+-- Optional ticket templates. Ticket snapshots preserve historical names and fields.
+CREATE TABLE IF NOT EXISTS ticket_templates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(150) NOT NULL,
+  fields JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(fields) = 'array'),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ticket_templates_name_unique ON ticket_templates (LOWER(name));
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS template_id UUID REFERENCES ticket_templates(id);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS template_values JSONB NOT NULL DEFAULT '{}'::jsonb;
+CREATE INDEX IF NOT EXISTS idx_tickets_template_id ON tickets(template_id);
+
+-- One organization identity per application installation; disabled by default.
+CREATE TABLE IF NOT EXISTS organization_branding (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  customize BOOLEAN NOT NULL DEFAULT FALSE,
+  organization_name VARCHAR(150) NOT NULL DEFAULT '',
+  updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (NOT customize OR LENGTH(TRIM(organization_name)) > 0)
+);
+INSERT INTO organization_branding (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE organization_branding ADD COLUMN IF NOT EXISTS service_desk_name VARCHAR(150) NOT NULL DEFAULT '';
+ALTER TABLE organization_branding ADD COLUMN IF NOT EXISTS accent_color VARCHAR(7) NOT NULL DEFAULT '#E85D04';
+ALTER TABLE organization_branding ADD COLUMN IF NOT EXISTS logo_data TEXT NOT NULL DEFAULT '';

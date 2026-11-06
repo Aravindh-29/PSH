@@ -4,10 +4,20 @@ const configCtrl       = require('../controllers/configController');
 const ssoConfigCtrl    = require('../controllers/ssoConfigController');
 const emailConfigCtrl  = require('../controllers/emailConfigController');
 
+const templateCtrl = require('../controllers/templateController');
+const brandingCtrl = require('../controllers/brandingController');
 const router = express.Router();
+router.get('/branding/public', brandingCtrl.get);
 router.use(requireAuth);
 
 // Authenticated endpoints used by ticket forms
+router.get('/branding', brandingCtrl.get);
+router.put('/admin/branding', requireAdmin, brandingCtrl.save);
+
+router.get('/templates', templateCtrl.list);
+router.post('/admin/templates', requireAdmin, templateCtrl.save);
+router.put('/admin/templates/:id', requireAdmin, templateCtrl.save);
+
 router.get('/fields', configCtrl.getFields);
 router.get('/modules', configCtrl.getModules);
 router.get('/categories', configCtrl.getCategories);

@@ -3,6 +3,8 @@ import { Plus, Pencil, Trash2, Lock, LockOpen, ChevronUp, ChevronDown, X, AlertT
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import AdminSLA from './AdminSLA';
+import AdminTemplates from './AdminTemplates';
+import AdminBranding from './AdminBranding';
 import './Admin.css';
 import './Configuration.css';
 
@@ -796,7 +798,12 @@ export default function AdminModules() {
         <button className={`cfg-tab ${tab === 'sla' ? 'active' : ''}`} onClick={() => setTab('sla')}>
           SLA
         </button>
+        <button className={`cfg-tab ${tab === 'templates' ? 'active' : ''}`} onClick={() => setTab('templates')}>Templates</button>
+        <button className={`cfg-tab ${tab === 'branding' ? 'active' : ''}`} onClick={() => setTab('branding')}>Branding</button>
       </div>
+
+      {tab === 'branding' && <AdminBranding />}
+      {tab === 'templates' && <AdminTemplates />}
 
       {/* ── Fields tab ── */}
       {tab === 'fields' && (

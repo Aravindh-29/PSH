@@ -5,6 +5,7 @@ import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import SearchSelect from '../../components/SearchSelect';
+import { useTicketTemplate, TemplateSelector, TemplateFields } from '../../components/TicketTemplate';
 import toast from 'react-hot-toast';
 import './TicketDetail.css';
 import './IncidentPage.css';
@@ -33,6 +34,7 @@ const MODULE_DEFAULTS = [
 
 export default function CreateTicket() {
   const navigate = useNavigate();
+  const templateState = useTicketTemplate();
   const location = useLocation();
   const { user } = useAuth();
   const { refetch: refetchNotifications } = useNotifications();
@@ -140,7 +142,7 @@ export default function CreateTicket() {
     for (const f of customRequired) {
       if (!customData[f.field_key]) { toast.error(`"${f.label}" is required`); return false; }
     }
-    return true;
+    return templateState.validate();
   };
 
   const handleSubmit = async (e) => {
@@ -157,6 +159,7 @@ export default function CreateTicket() {
         assignmentGroupId: form.assignmentGroupId || undefined,
         subcategoryId: form.subcategoryId || undefined,
         customData,
+        ...templateState.payload,
       };
       const res = await api.post('/tickets', payload);
       const { id: ticketId, ticket_number } = res.data.ticket;
@@ -261,6 +264,7 @@ export default function CreateTicket() {
               : <span className="ip-ticket-num-preview ip-ticket-num-pending">Select type…</span>
             }
           </div>
+          <TemplateSelector state={templateState} disabled={loading} />
         </div>
         <div className="ip-header-actions">
           <button type="button" className="ip-btn" onClick={() => setAttachOpen(true)}>
@@ -495,6 +499,8 @@ export default function CreateTicket() {
               placeholder="Provide full details of the issue..."
             />
           </div>
+
+          <TemplateFields template={templateState.template} values={templateState.values} onChange={templateState.setValues} disabled={loading} />
 
           {/* COMMENTS & WORK NOTES */}
           <div className="ip-section">

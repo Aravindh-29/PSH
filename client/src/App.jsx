@@ -1,4 +1,5 @@
 import React from 'react';
+import { BrandingProvider } from './context/BrandingContext';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -79,7 +80,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <BrandingProvider><AppRoutes /></BrandingProvider>
         <Toaster position="top-right" toastOptions={{ duration: 3500, style: { fontFamily: 'Inter, sans-serif', fontSize: '14px' } }} />
       </AuthProvider>
     </BrowserRouter>

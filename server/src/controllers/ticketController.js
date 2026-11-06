@@ -1,6 +1,7 @@
 const pool = require('../db/pool');
 const logger = require('../utils/logger');
 const emailService = require('../services/emailService');
+const { resolveTicketTemplate } = require('../services/templateService');
 const slaService  = require('../services/slaService');
 
 function fireEmail(fn) {
@@ -147,6 +148,8 @@ async function create(req, res, next) {
       return res.status(400).json({ success: false, message: 'Invalid priority' });
     }
 
+    const template = await resolveTicketTemplate(client, req.body);
+
     let ticketNumber;
     if (typeId) {
       const typeRow = await client.query('SELECT prefix FROM ticket_types WHERE id = $1', [typeId]);
@@ -175,8 +178,8 @@ async function create(req, res, next) {
       INSERT INTO tickets (ticket_number, customer_name, module_text, category_id, subcategory_id,
         short_description, description, status, priority, impact, urgency, assigned_to,
         assignment_group, assignment_group_id, ticket_owner, created_by, updated_by,
-        type_id, classification, custom_data)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15,$15,$16,$17,$18)
+        type_id, classification, custom_data, template_id, template_snapshot, template_values)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15,$15,$16,$17,$18,$19,$20,$21)
       RETURNING *
     `, [ticketNumber, customerName, moduleText, categoryId, subcategoryId || null,
         shortDescription, description,
@@ -186,7 +189,7 @@ async function create(req, res, next) {
         assignmentGroupId || null,
         req.session.userId,
         typeId || null, classification || null,
-        JSON.stringify(customData)]);
+        JSON.stringify(customData), template.id, JSON.stringify(template.snapshot), JSON.stringify(template.values)]);
 
     const ticket = result.rows[0];
     await logAudit(client, ticket.id, req.session.userId, 'CREATED', null, null, ticketNumber, req.ip);
@@ -208,6 +211,8 @@ async function create(req, res, next) {
     for (const { field, value } of initialFields) {
       await logAudit(client, ticket.id, req.session.userId, 'CREATED', field, null, value, req.ip);
     }
+
+    if (template.id) await logAudit(client, ticket.id, req.session.userId, 'CREATED', 'template', null, JSON.stringify({ ...template.snapshot, values: template.values }), req.ip);
 
     // Trigger SLA for initial status (treat creation as transitioning from null → status)
     await slaService.onStatusChange(client, ticket.id, null, status);
@@ -252,6 +257,7 @@ async function create(req, res, next) {
     res.status(201).json({ success: true, ticket });
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err.status === 400) return res.status(400).json({ success: false, message: err.message });
     next(err);
   } finally {
     client.release();
@@ -406,6 +412,17 @@ async function update(req, res, next) {
       }
     }
 
+    if (req.body.templateId !== undefined || req.body.templateValues !== undefined) {
+      const template = await resolveTicketTemplate(client, req.body, ticket);
+      for (const [column, value] of Object.entries({ template_id: template.id, template_snapshot: template.snapshot, template_values: template.values })) {
+        if (JSON.stringify(ticket[column]) !== JSON.stringify(value)) {
+          params.push(column === 'template_id' ? value : JSON.stringify(value));
+          sets.push(`${column} = $${params.length}`);
+          auditChanges.push({ field: column, old: JSON.stringify(ticket[column]), new: JSON.stringify(value) });
+        }
+      }
+    }
+
     // Merge custom_data if provided
     if (req.body.customData !== undefined) {
       const merged = { ...(ticket.custom_data || {}), ...req.body.customData };
@@ -492,6 +509,7 @@ async function update(req, res, next) {
     res.json({ success: true, ticket: updated.rows[0] });
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err.status === 400) return res.status(400).json({ success: false, message: err.message });
     next(err);
   } finally {
     client.release();

@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { fmt } from '../../utils/dateUtils';
 import SearchSelect from '../../components/SearchSelect';
+import { useTicketTemplate, TemplateSelector, TemplateFields } from '../../components/TicketTemplate';
 import toast from 'react-hot-toast';
 import './TicketDetail.css';
 import './IncidentPage.css';
@@ -50,6 +51,7 @@ const ASSIGN_GROUP_DEFAULTS = [
 export default function EditTicket() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const templateState = useTicketTemplate();
   const { user: currentUser } = useAuth();
   const { refetch: refetchNotifications } = useNotifications();
   const isAdmin = currentUser?.role === 'admin';
@@ -84,6 +86,7 @@ export default function EditTicket() {
       api.get('/groups/with-members'),
     ]).then(([t, f, c, u, tt, g]) => {
       const ticket = t.data.ticket;
+      templateState.hydrate(ticket);
       setTicketNumber(ticket.ticket_number);
       const catId = ticket.category_id ? String(ticket.category_id) : '';
       setForm({
@@ -146,6 +149,7 @@ export default function EditTicket() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!templateState.validate()) return;
     if (noteRequired && !saveNote.trim()) {
       toast.error('A work note is required when changing status or reassigning.');
       return;
@@ -172,6 +176,7 @@ export default function EditTicket() {
         assignedTo:        form.assignedTo        || null,
         ...(isAdmin ? { ticketOwner: form.ticketOwner || null } : {}),
         customData,
+        ...templateState.payload,
       };
       await api.put(`/tickets/${id}`, payload);
       toast.success('Ticket updated');
@@ -320,6 +325,7 @@ export default function EditTicket() {
             <h1 className="ip-title">Edit: {ticketNumber}</h1>
           </div>
           <div className="ip-short-desc-head">{form.shortDescription}</div>
+          <TemplateSelector state={templateState} disabled={loading} />
         </div>
         <div className="ip-header-actions">
           <button type="button" className="ip-btn" onClick={() => setAttachOpen(true)}>
@@ -574,6 +580,8 @@ export default function EditTicket() {
               placeholder="Provide full details of the issue..."
             />
           </div>
+
+          <TemplateFields template={templateState.template} values={templateState.values} onChange={templateState.setValues} disabled={loading} />
 
           {/* COMMENTS & WORK NOTES */}
           <div className="ip-section">

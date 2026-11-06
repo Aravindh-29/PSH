@@ -621,3 +621,57 @@ df -h   # confirm new size
 ---
 
 *Last updated: August 2026 — SERV-IT v1.0*
+# Optional ticket templates
+
+Administrators can open **Configuration → Templates → Create Template**. Enter a
+template name and use **Create New Field** to add any number of fields. Supported
+types are Text (multiline), Integer, Dropdown (one option per line), and Toggle.
+Fields can be required, reordered, or removed before saving. Names must be unique
+within a template; dropdown options must also be unique. Templates can be edited
+or deactivated. Deactivation hides a template from new selections without changing
+existing tickets.
+
+On Create Ticket and Edit Ticket, the optional **Templates** selector is below the
+ticket heading. Selecting a template displays its fields immediately after Full
+Description. Text fields use full-width, 180-pixel-high boxes with internal
+scrolling and preserved line breaks. Integer inputs support whole numbers within
+JavaScript's safe integer range. Toggles accept both On and Off, including when
+marked required. Clearing the selector saves the ticket without a template.
+Switching between templates preserves unsaved template drafts for the current
+page visit; only the selected template's values are saved.
+
+Database initialization in `server/src/dbInit.js` runs `database/schema.sql`, which
+idempotently creates `ticket_templates` and adds `template_id`,
+`template_snapshot`, and `template_values` to tickets. Back up an existing database
+before deployment, then restart the backend to apply the additions. Existing
+tickets do not need a template. Template definitions and values are validated on
+the server. A ticket stores a snapshot of the original template so later changes
+to labels, options, field order, or activation do not rewrite historical tickets.
+Editing the same ticket uses that snapshot; selecting a different template uses
+the current definition. Template administration requires the admin role.
+
+The local integration check is `node server/scripts/test-templates.js`, run from
+the repository root with the API running. Supply `TEST_USERNAME` and
+`TEST_PASSWORD` for a local admin with MFA disabled (do not disable MFA on a real
+account just for the test). Optionally set `TEST_API_URL`; it defaults to
+`http://localhost:5000/api`. It tests validation, permissions, long text, optional
+templates, create/view/edit/switch/clear, audit history, inactive templates, and
+snapshot preservation. It removes only its temporary records in a `finally`
+block. Test ticket numbers are consumed and are not reused.
+
+## Organization branding
+
+Open **Configuration → Branding** to enable **Customize** and set the organization
+name, service desk name, organization logo, and brand accent (Orange, Blue, Teal).
+The live preview shows unsaved changes. Save Branding applies the organization
+identity to the sidebar, workspace header, and sign-in screen, with a small
+Powered by SERV-IT signature. Without an uploaded logo, a monogram is generated
+from the organization name. Logos support PNG, JPEG, or WebP up to 256 KB.
+Saving with Customize off restores the default appearance and retains settings
+for later reuse. There is no configurable welcome panel or dashboard action banner.
+
+Settings are stored per installation in `organization_branding`; startup adds the
+columns without replacing saved settings. The public branding endpoint exposes
+only display settings for the sign-in page and returns defaults when customization
+is disabled. Writes require an administrator and are logged. Other sessions see
+changes on refresh.

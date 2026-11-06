@@ -1,3 +1,5 @@
+import { useBranding } from '../../context/BrandingContext';
+import BrandIdentity from '../../components/BrandIdentity';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -291,6 +293,7 @@ const SSO_ERRORS = {
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const { branding } = useBranding();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [form, setForm] = useState({ username: '', password: '', remember: false });
@@ -360,7 +363,7 @@ export default function LoginPage() {
               <p className="login-eyebrow">Welcome back</p>
             </div>
 
-            <h1 className="login-card-title">Sign in to SERV-IT</h1>
+            <h1 className="login-card-title">Sign in to {branding?.customize ? branding.service_desk_name || branding.organization_name : 'SERV-IT'}</h1>
             <p className="login-card-sub">
               Enter your credentials to securely access your enterprise workspace.
             </p>
@@ -458,7 +461,7 @@ export default function LoginPage() {
 
           <div className="login-brand-content">
             <div className="login-logo-shell">
-              <img src="/psh.png" alt="SERV-IT" className="login-left-logo" />
+              <>{branding?.customize ? <BrandIdentity branding={branding} /> : <img src="/psh.png" alt="SERV-IT" className="login-left-logo" />}</>
             </div>
 
             <p className="login-welcome">Connected support. Clear outcomes.</p>
