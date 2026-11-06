@@ -3,7 +3,7 @@ const path = require('node:path');
 const { createRequire } = require('node:module');
 const serverRequire = createRequire(path.join(__dirname, '../server/package.json'));
 const { Client } = serverRequire('pg');
-serverRequire('dotenv').config({ path: path.join(__dirname, '../.env') });
+serverRequire('dotenv').config({ path: process.env.SERVIT_ENV_FILE || path.join(__dirname, '../.env') });
 
 function connectionConfig() {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required.');

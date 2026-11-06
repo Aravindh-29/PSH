@@ -6,7 +6,7 @@ const { spawnSync } = require('node:child_process');
 const dotenv = require('dotenv');
 const { Client } = require('pg');
 const root = path.resolve(__dirname, '../..');
-const envPath = path.join(root, '.env');
+const envPath = process.env.SERVIT_ENV_FILE || path.join(root, '.env');
 function environment(file = envPath) {
   const config = dotenv.parse(fs.readFileSync(file));
   Object.assign(process.env, config);

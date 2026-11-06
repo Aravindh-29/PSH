@@ -877,7 +877,7 @@ sudo bash scripts/update.sh
 
 The updater requires Node.js 20+, npm, PostgreSQL's `pg_dump` (compatible with your database server), sudo, flock and systemd. Allow maintenance downtime and sufficient disk space for the database backup, previous UI build and new build. Small instances still need adequate RAM/swap for Vite. The application directory defaults to `/opt/PSH` and the service to `servit`; custom installations can pass `SERVIT_APP_DIR` and `SERVIT_SERVICE_NAME` to sudo explicitly.
 
-The script stops the service, backs up PostgreSQL and `.env` to a protected timestamped directory under `/var/backups/servit`, installs locked dependencies, verifies the environment, builds the UI separately, applies the migration, then starts the service and checks `/api/health` for both API and database readiness. It prints success only after those checks pass. If a step fails, it exits with an error and identifies the failed step and backup directory; the service can remain stopped until the issue is corrected. It never automatically restores an old database over current data.
+The script uses the systemd service account, backs up `.env`, and installs locked dependencies/builds the UI in a separate staging folder while the existing service stays available. It then stops the service, takes a protected PostgreSQL backup under `/var/backups/servit`, applies the migration, publishes the verified dependencies/UI, starts the service and checks `/api/health` for both API and database readiness. It prints success only after those checks pass. If staging fails, it exits while the current service remains running. If a later step fails, it restores the previous dependencies/UI where available and attempts to restart a previously active service; it reports the failed step and protected backup/staging directories. It never automatically restores an old database over current data.
 
 `database/schema.sql` now includes Templates and ticket snapshots/answers, Branding, configurable Roles and permissions, Managed Groups, role history/migration checkpoints, SMTP/OAuth/TLS configuration, the email outbox, Knowledge Base and sessions. Install, update and application startup use `database/migrate.js`. The migration is transactional, serializes concurrent runners and can be repeated. Schema/credential migration failures roll back the migration; changes to code, dependencies and environment files are outside that database transaction.
 
@@ -895,7 +895,7 @@ bash -n scripts/install.sh scripts/update.sh
 bash server/scripts/test-update.sh
 ```
 
-The migration suite uses disposable schemas in the configured PostgreSQL database and temporary environment files. It checks fresh setup, legacy upgrades, repeated upgrades, preservation of application data, rollback and encryption-key handling. The shell suite uses mock services/commands to verify success and backup, migration and health failure paths; it does not replace a systemd deployment test on the target Linux host.
+The migration suite uses disposable schemas in the configured PostgreSQL database and temporary environment files. It checks fresh setup, legacy upgrades, repeated upgrades, preservation of application data, rollback and encryption-key handling. The shell suite uses mock services/commands to verify staging, backup, migration, publish and health failure paths.
 
 
 ## Dependency security verification
@@ -918,3 +918,36 @@ npm run build
 ```
 
 The dependency suite verifies loopback JSON/form requests, gzip compression, multiple uploads and upload errors, ZIP selection, the actual ticket ZIP controller including duplicate filenames, Excel round trips and development file matching. It does not send external mail or change application records.
+
+
+### Installer and updater recovery behavior
+
+Both scripts are noninteractive and preserve existing `.env`, database credentials, customized Nginx routing and trusted certificates. They use the configured systemd `User`, rather than the owner of `.env`, and repair runtime/environment ownership left by older root-run deployments. Builds and dependency installations happen under the service account. Root-owned backups remain private.
+
+The installer provisions missing Ubuntu prerequisites and delegates deployment to the staged updater. It does not perform a full OS upgrade. Fresh credentials are persisted before database creation so an interrupted install can resume. An existing database without its original `.env` stops setup rather than resetting account or database passwords. New installs need Node 20.6+ (the Node 20 repository supplies the current patch release); updates require Node 20+. A valid PostgreSQL connection and adequate disk/RAM are still required.
+
+For an existing installation:
+
+```sh
+cd /opt/PSH
+git pull --ff-only origin main
+sudo bash scripts/update.sh
+```
+
+For fresh installation or repair of missing prerequisites/service setup:
+
+```sh
+sudo SERVIT_DOMAIN=servit.example.com bash scripts/install.sh
+```
+
+The domain setting is optional when repairing an existing installation; its public URL is read from `.env`. Existing certificates and Nginx site settings are retained. A fresh site uses existing Let's Encrypt certificate files when present, otherwise a local self-signed certificate; obtain a trusted certificate before public use.
+
+Additional script validation:
+
+```sh
+bash -n scripts/install.sh scripts/update.sh scripts/deploy-common.sh
+bash server/scripts/test-install.sh
+bash server/scripts/test-update.sh
+```
+
+The tests cover four installer flows and eight updater flows, including wrong environment-file ownership, build/install failures without downtime, and restoring previous dependencies/UI after publication or health failures. Staging artifacts can remain after a failed deployment for diagnosis; their path is printed. Database rollback is transactional for a failed migration; a committed database is never automatically overwritten from backup.

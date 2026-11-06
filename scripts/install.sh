@@ -1,631 +1,92 @@
 #!/bin/bash
-# ================================================================
-#  SERV-IT — Complete Ubuntu Setup Script
-#  Installs Node.js, PostgreSQL, Nginx (80/443), clones app,
-#  creates .env, builds client, inits DB, registers systemd service
-#
-#  Ports:
-#    80  — HTTP  (Nginx → Node :5000)
-#    443 — HTTPS (Nginx + self-signed cert → Node :5000)
-#   5000 — Node.js (internal only, not exposed externally)
-#
-#  Usage:  sudo bash /opt/PSH/scripts/install.sh
-# ================================================================
-
-set -euo pipefail
-
-# ── Colour helpers ───────────────────────────────────────────────
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-BLUE='\033[0;34m'; BOLD='\033[1m'; NC='\033[0m'
-step() { echo -e "\n${GREEN}${BOLD}━━━ STEP $1 ━━━${NC}"; }
-info() { echo -e "  ${BLUE}→ $1${NC}"; }
-ok()   { echo -e "  ${GREEN}✓ $1${NC}"; }
-warn() { echo -e "  ${YELLOW}⚠ $1${NC}"; }
-die()  { echo -e "\n${RED}${BOLD}ERROR: $1${NC}" >&2; exit 1; }
-
-# ── Must run as root ─────────────────────────────────────────────
-[[ $EUID -ne 0 ]] && die "Run this script as root:  sudo bash $0"
-
-# ── Fixed configuration ──────────────────────────────────────────
-APP_DIR="/opt/PSH"
-REPO_URL="https://github.com/Aravindh-29/PSH.git"
-DB_NAME="psh_db"
-DB_USER="psh_user"
-PORT=5000                    # Node.js internal port (not exposed)
-NGINX_CONF="servit"
-SERVICE_NAME="servit"
-NODE_MAJOR="20"
-SSL_DIR="/etc/ssl/servit"
-CRED_FILE="/root/servit-credentials.txt"
-
-# Owner of APP_DIR — the user who invoked sudo, or ubuntu as fallback
-APP_DIR_OWNER="${SUDO_USER:-ubuntu}"
-[[ -z "${APP_DIR_OWNER}" || "${APP_DIR_OWNER}" == "root" ]] && APP_DIR_OWNER="ubuntu"
-
-# Existing installations must use the non-destructive upgrade path.
-if [[ -f "${APP_DIR}/.env" ]]; then
-  info "Existing installation detected; using update.sh and preserving .env."
-  exec bash "${APP_DIR}/scripts/update.sh"
-fi
-DB_PASS="$(openssl rand -hex 16)"
-SESSION_SECRET="$(openssl rand -hex 32)"
-EMAIL_ENCRYPTION_KEY="$(openssl rand -base64 32)"
-
-# ── Public IP detection ──────────────────────────────────────────
-SERVER_IP="$(curl -s --max-time 5 ifconfig.me 2>/dev/null \
-  || curl -s --max-time 5 checkip.amazonaws.com 2>/dev/null \
-  || curl -s --max-time 5 api.ipify.org 2>/dev/null \
-  || hostname -I | awk '{print $1}')"
-
-# Public URLs (no port — Nginx handles 80 and 443)
-CLIENT_URL_HTTP="http://${SERVER_IP}"
-CLIENT_URL_HTTPS="https://${SERVER_IP}"
-CLIENT_URL="${CLIENT_URL_HTTP}"   # used in .env (CORS)
-
-# ── Banner ───────────────────────────────────────────────────────
-echo ""
-echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}${BOLD}║   SERV-IT — Automated Ubuntu Setup           ║${NC}"
-echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════╝${NC}"
-echo -e "  Server IP  : ${BOLD}${SERVER_IP}${NC}"
-echo -e "  HTTP URL   : ${BOLD}${CLIENT_URL_HTTP}${NC}"
-echo -e "  HTTPS URL  : ${BOLD}${CLIENT_URL_HTTPS}${NC}  (self-signed cert)"
-echo -e "  App dir    : ${APP_DIR}"
-echo -e "  DB         : ${DB_NAME} / ${DB_USER}"
-echo ""
-
-# ════════════════════════════════════════════════════════════════
-# STEP 1 — System update & prerequisites
-# ════════════════════════════════════════════════════════════════
-step "1 / 10  System update & prerequisites"
+# Fresh Ubuntu installation, or safe repair/resume of an existing installation.
+# Optional: sudo SERVIT_DOMAIN=servit.example.com bash scripts/install.sh
+set -Eeuo pipefail
+umask 077
+[[ $EUID -eq 0 ]] || { echo 'Run with sudo.' >&2; exit 1; }
+APP_DIR="${SERVIT_APP_DIR:-/opt/PSH}"
+SERVICE_NAME="${SERVIT_SERVICE_NAME:-servit}"
+REPO_URL="${SERVIT_REPO_URL:-https://github.com/Aravindh-29/PSH.git}"
+APP_OWNER="${SERVIT_APP_USER:-${SUDO_USER:-ubuntu}}"
+if [[ "$APP_OWNER" == root ]]; then APP_OWNER=ubuntu; fi
+if [[ -n "${SERVIT_DOMAIN:-}" && ! "$SERVIT_DOMAIN" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]$ ]]; then echo 'Invalid SERVIT_DOMAIN.' >&2; exit 1; fi
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -y
-apt-get upgrade -y
-apt-get install -y \
-  curl wget git build-essential ca-certificates gnupg openssl \
-  libpq-dev nginx 2>&1 | tail -3
-ok "System packages ready (including nginx)"
-
-# ════════════════════════════════════════════════════════════════
-# STEP 2 — Node.js 20 LTS
-# ════════════════════════════════════════════════════════════════
-step "2 / 10  Node.js ${NODE_MAJOR} LTS"
-NEED_NODE=true
-if command -v node &>/dev/null; then
-  CURRENT_MAJOR="$(node -v | cut -d. -f1 | tr -d 'v')"
-  if [[ "${CURRENT_MAJOR}" == "${NODE_MAJOR}" ]]; then
-    NEED_NODE=false
-    ok "Node.js $(node -v) already installed — skipping"
+# Existing installations avoid unnecessary OS/package changes.
+NEED_PACKAGES=0
+for tool in curl git openssl nginx psql pg_dump make g++ python3 flock; do command -v "$tool" >/dev/null || NEED_PACKAGES=1; done
+if [[ $NEED_PACKAGES -eq 1 ]]; then
+  apt-get -o DPkg::Lock::Timeout=120 update
+  apt-get -o DPkg::Lock::Timeout=120 install -y curl git openssl ca-certificates gnupg build-essential python3 postgresql postgresql-contrib nginx
+fi
+if ! command -v node >/dev/null || ! node -e 'const [a,b]=process.versions.node.split(".").map(Number);if(a<20||(a===20&&b<6))process.exit(1)' ; then
+  curl -fsSL --retry 3 https://deb.nodesource.com/setup_20.x | bash -
+  apt-get -o DPkg::Lock::Timeout=120 install -y nodejs
+fi
+command -v npm >/dev/null
+if ! id "$APP_OWNER" >/dev/null 2>&1; then useradd --create-home --shell /bin/bash "$APP_OWNER"; fi
+APP_GROUP="$(id -gn "$APP_OWNER")"
+if [[ ! -f "$APP_DIR/package.json" ]]; then
+  install -d -o "$APP_OWNER" -g "$APP_GROUP" "$APP_DIR"
+  sudo -H -u "$APP_OWNER" -- git clone "$REPO_URL" "$APP_DIR"
+fi
+APP_DIR="$(realpath "$APP_DIR")"
+source "$APP_DIR/scripts/deploy-common.sh"
+# Preserve all existing environment values, including encryption/session keys.
+# Persist fresh credentials before provisioning DB resources so interruptions can resume.
+if [[ ! -f "$APP_DIR/.env" ]]; then
+  systemctl enable --now postgresql
+  if sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='psh_db'" 2>/dev/null | grep -q 1; then
+    echo 'psh_db already exists but .env is missing. Restore its original .env before installing; existing credentials will not be reset.' >&2
+    exit 1
   fi
-fi
-if [[ "${NEED_NODE}" == "true" ]]; then
-  info "Downloading NodeSource setup script..."
-  curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - 2>&1 | tail -5
-  apt-get install -y nodejs 2>&1 | tail -3
-  ok "Node.js $(node -v) installed"
-fi
-NODE_BIN="$(which node)"
-NPM_BIN="$(which npm)"
-info "node: ${NODE_BIN}  npm: ${NPM_BIN}"
-
-# ════════════════════════════════════════════════════════════════
-# STEP 3 — PostgreSQL
-# ════════════════════════════════════════════════════════════════
-step "3 / 10  PostgreSQL"
-if ! command -v psql &>/dev/null; then
-  apt-get install -y postgresql postgresql-contrib 2>&1 | tail -3
-  ok "PostgreSQL installed"
-else
-  ok "PostgreSQL already installed — skipping"
-fi
-systemctl enable postgresql
-systemctl start postgresql
-ok "PostgreSQL service running"
-
-# ════════════════════════════════════════════════════════════════
-# STEP 4 — Ensure app user exists
-# ════════════════════════════════════════════════════════════════
-step "4 / 10  App user: ${APP_DIR_OWNER}"
-if id "${APP_DIR_OWNER}" &>/dev/null; then
-  ok "User '${APP_DIR_OWNER}' exists"
-else
-  useradd --create-home --shell /bin/bash "${APP_DIR_OWNER}"
-  ok "User '${APP_DIR_OWNER}' created"
-fi
-
-# ════════════════════════════════════════════════════════════════
-# STEP 5 — Clone / update repository to /opt/PSH
-# ════════════════════════════════════════════════════════════════
-step "5 / 10  Repository → ${APP_DIR}"
-if [[ -d "${APP_DIR}/.git" ]]; then
-  info "Repo already exists at ${APP_DIR} — pulling latest changes"
-  sudo -u "${APP_DIR_OWNER}" git -C "${APP_DIR}" pull --ff-only origin main 2>&1 | tail -3
-  ok "Repository updated"
-else
-  info "Cloning ${REPO_URL} → ${APP_DIR}"
-  git clone "${REPO_URL}" "${APP_DIR}" 2>&1 | tail -5
-  ok "Repository cloned to ${APP_DIR}"
-fi
-chown -R "${APP_DIR_OWNER}:${APP_DIR_OWNER}" "${APP_DIR}"
-
-# ════════════════════════════════════════════════════════════════
-# STEP 6 — Database
-# ════════════════════════════════════════════════════════════════
-step "6 / 10  Database setup"
-
-if sudo -u postgres psql -tAc \
-    "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" | grep -q 1; then
-  info "Role '${DB_USER}' exists — updating password"
-  sudo -u postgres psql -c \
-    "ALTER ROLE ${DB_USER} WITH LOGIN PASSWORD '${DB_PASS}';" > /dev/null
-else
-  sudo -u postgres psql -c \
-    "CREATE ROLE ${DB_USER} WITH LOGIN PASSWORD '${DB_PASS}';" > /dev/null
-  ok "DB role '${DB_USER}' created"
-fi
-
-if sudo -u postgres psql -tAc \
-    "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1; then
-  ok "Database '${DB_NAME}' already exists — skipping"
-else
-  sudo -u postgres psql -c \
-    "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" > /dev/null
-  ok "Database '${DB_NAME}' created"
-fi
-
-sudo -u postgres psql -c \
-  "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" > /dev/null
-ok "Privileges granted"
-
-# ════════════════════════════════════════════════════════════════
-# STEP 7 — Write .env
-# ════════════════════════════════════════════════════════════════
-step "7 / 10  Writing .env"
-cat > "${APP_DIR}/.env" << EOF
+  touch "$APP_DIR/.servit-install-pending"
+  SESSION_SECRET="$(openssl rand -hex 32)"
+  EMAIL_KEY="$(openssl rand -base64 32)"
+  DB_PASSWORD="$(openssl rand -hex 24)"
+  PUBLIC_HOST="${SERVIT_DOMAIN:-$(hostname -I | awk '{print $1}')}"
+  cat > "$APP_DIR/.env" <<EOF
 NODE_ENV=production
-PORT=${PORT}
-DATABASE_URL=postgresql://${DB_USER}:${DB_PASS}@localhost:5432/${DB_NAME}
-SESSION_SECRET=${SESSION_SECRET}
-EMAIL_ENCRYPTION_KEY=${EMAIL_ENCRYPTION_KEY}
-CLIENT_URL=${CLIENT_URL}
+PORT=${SERVIT_PORT:-5000}
+DATABASE_URL=postgresql://psh_user:${DB_PASSWORD}@localhost:5432/psh_db
 DATABASE_SSL=false
-
-# ── SSO (optional) ────────────────────────────────────────────
-# Configure via Admin → SSO in the app — no env vars needed.
-# Uncomment below only if you prefer env-var-based SSO config.
-# SSO_ISSUER_URL=
-# SSO_CLIENT_ID=
-# SSO_CLIENT_SECRET=
-# SSO_REDIRECT_URI=
-# SSO_PROVIDER_NAME=
-# SSO_AUTO_PROVISION=false
+SESSION_SECRET=${SESSION_SECRET}
+EMAIL_ENCRYPTION_KEY=${EMAIL_KEY}
+CLIENT_URL=https://${PUBLIC_HOST}
 EOF
-chown "${APP_DIR_OWNER}:${APP_DIR_OWNER}" "${APP_DIR}/.env"
-chmod 600 "${APP_DIR}/.env"
-ok ".env written (permissions: 600)"
-
-# ════════════════════════════════════════════════════════════════
-# STEP 8 — Install dependencies, build client, init DB schema
-# ════════════════════════════════════════════════════════════════
-step "8 / 10  npm install + build + database schema"
-
-# ── Ensure swap exists (Vite build needs ~1.5 GB; t2/t3.micro have 1 GB RAM) ──
-SWAP_FILE="/swapfile"
-if [[ "$(swapon --show | wc -l)" -le 1 ]]; then
-  info "No swap detected — creating 2 GB swap file (required for Vite build on small instances)..."
-  if fallocate -l 2G "${SWAP_FILE}" 2>/dev/null || dd if=/dev/zero of="${SWAP_FILE}" bs=1M count=2048 status=none; then
-    chmod 600 "${SWAP_FILE}"
-    mkswap "${SWAP_FILE}" > /dev/null
-    swapon "${SWAP_FILE}"
-    # persist across reboots
-    grep -q "${SWAP_FILE}" /etc/fstab || echo "${SWAP_FILE} none swap sw 0 0" >> /etc/fstab
-    ok "Swap created and enabled (2 GB)"
-  else
-    warn "Could not create swap file — build may be killed on low-memory instances"
-  fi
-else
-  ok "Swap already present — skipping"
+  chown "$APP_OWNER:$APP_GROUP" "$APP_DIR/.env"
+  chmod 600 "$APP_DIR/.env"
 fi
-
-info "Running as user: ${APP_DIR_OWNER}"
-
-info "Installing server and client dependencies..."
-sudo -u "${APP_DIR_OWNER}" bash -c "
-  export HOME=$(eval echo ~${APP_DIR_OWNER})
-  cd '${APP_DIR}'
-  ${NPM_BIN} run install:all 2>&1
-" | tail -8
-ok "Dependencies installed"
-
-info "Building React client..."
-sudo -u "${APP_DIR_OWNER}" bash -c "
-  export HOME=$(eval echo ~${APP_DIR_OWNER})
-  export NODE_OPTIONS='--max-old-space-size=1536'
-  cd '${APP_DIR}'
-  ${NPM_BIN} run build:client 2>&1
-" | tail -5
-ok "Client built"
-
-info "Running database schema initialisation..."
-sudo -H -u "${APP_DIR_OWNER}" -- "${NODE_BIN}" "${APP_DIR}/server/scripts/deployment.js" prepare-env
-sudo -H -u "${APP_DIR_OWNER}" -- "${NODE_BIN}" "${APP_DIR}/database/init.js"
-ok "Database schema ready"
-
-# ════════════════════════════════════════════════════════════════
-# STEP 9 — Nginx reverse proxy (port 80 + 443)
-# ════════════════════════════════════════════════════════════════
-step "9 / 10  Nginx — ports 80 (HTTP) and 443 (HTTPS)"
-
-# ── Generate self-signed SSL certificate (10-year) ──────────────
-info "Generating self-signed SSL certificate..."
-mkdir -p "${SSL_DIR}"
-openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-  -keyout "${SSL_DIR}/servit.key" \
-  -out    "${SSL_DIR}/servit.crt" \
-  -subj "/C=US/ST=State/L=City/O=SERV-IT/CN=${SERVER_IP}" \
-  2>/dev/null
-chmod 600 "${SSL_DIR}/servit.key"
-ok "Self-signed certificate generated (${SSL_DIR})"
-info "Tip: replace with a Let's Encrypt cert for a real domain → sudo certbot --nginx"
-
-# ── Ensure sites-available/sites-enabled dirs exist (some nginx installs omit them)
-mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
-# Ensure nginx.conf includes sites-enabled
-if ! grep -q "sites-enabled" /etc/nginx/nginx.conf 2>/dev/null; then
-  sed -i '/include \/etc\/nginx\/conf\.d/a\    include /etc/nginx/sites-enabled/*;' \
-    /etc/nginx/nginx.conf 2>/dev/null || true
+# Back up the original environment before correcting old root ownership.
+install -d -m 700 /var/backups/servit
+ENV_BACKUP="$(mktemp /var/backups/servit/install-environment.XXXXXX)"
+cp -p "$APP_DIR/.env" "$ENV_BACKUP"
+chmod 600 "$ENV_BACKUP"
+# Prefer the actual configured service account for repairs.
+SERVICE_USER="$(systemctl show "$SERVICE_NAME" --property=User --value 2>/dev/null || true)"
+if [[ -n "$SERVICE_USER" ]]; then APP_OWNER="$SERVICE_USER"; APP_GROUP="$(id -gn "$APP_OWNER")"; fi
+chown "$APP_OWNER:$APP_GROUP" "$APP_DIR/.env"
+chmod 600 "$APP_DIR/.env"
+# Provision only an installation created by this script; repairs leave DB resources intact.
+if [[ -f "$APP_DIR/.servit-install-pending" ]]; then
+systemctl enable --now postgresql
+sudo -H -u "$APP_OWNER" -- node --env-file="$APP_DIR/.env" <<'NODE' | sudo -u postgres psql --set=ON_ERROR_STOP=1
+const u = new URL(process.env.DATABASE_URL);
+if (!['localhost','127.0.0.1','::1'].includes(u.hostname)) process.exit(0);
+const role = decodeURIComponent(u.username), db = decodeURIComponent(u.pathname.slice(1)), pass = decodeURIComponent(u.password);
+const literal = value => "'" + value.replace(/'/g, "''") + "'";
+console.log("SELECT format('CREATE ROLE %I LOGIN PASSWORD %L',"+literal(role)+","+literal(pass)+") WHERE NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname="+literal(role)+");\n\gexec");
+console.log("SELECT format('CREATE DATABASE %I OWNER %I',"+literal(db)+","+literal(role)+") WHERE NOT EXISTS(SELECT 1 FROM pg_database WHERE datname="+literal(db)+");\n\gexec");
+NODE
+rm -f -- "$APP_DIR/.servit-install-pending"
 fi
-
-# ── Write Nginx site config ──────────────────────────────────────
-info "Writing Nginx config..."
-cat > "/etc/nginx/sites-available/${NGINX_CONF}" << 'NGINXEOF'
-# ── HTTP — redirect all traffic to HTTPS ───────────────────────
-server {
-    listen 80;
-    listen [::]:80;
-    server_name _;
-
-    # Allow Let's Encrypt challenge files through
-    location /.well-known/acme-challenge/ {
-        root /var/www/html;
-    }
-
-    location / {
-        return 301 https://$host$request_uri;
-    }
-}
-
-# ── HTTPS — proxy to Node.js on :5000 ──────────────────────────
-server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    server_name _;
-
-    ssl_certificate     /etc/ssl/servit/servit.crt;
-    ssl_certificate_key /etc/ssl/servit/servit.key;
-    ssl_protocols       TLSv1.2 TLSv1.3;
-    ssl_ciphers         HIGH:!aNULL:!MD5;
-    ssl_session_cache   shared:SSL:10m;
-    ssl_session_timeout 10m;
-
-    # Max upload size (match app's 25 MB attachment limit + overhead)
-    client_max_body_size 30M;
-
-    # Proxy to Node.js
-    location / {
-        proxy_pass         http://127.0.0.1:5000;
-        proxy_http_version 1.1;
-
-        # WebSocket support
-        proxy_set_header Upgrade    $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-
-        # Pass real client info to Node.js
-        proxy_set_header Host              $host;
-        proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        proxy_cache_bypass $http_upgrade;
-
-        # Timeouts
-        proxy_connect_timeout 60s;
-        proxy_send_timeout    60s;
-        proxy_read_timeout    60s;
-    }
-}
-NGINXEOF
-
-# ── Enable site, remove default, reload ─────────────────────────
-ln -sf "/etc/nginx/sites-available/${NGINX_CONF}" \
-       "/etc/nginx/sites-enabled/${NGINX_CONF}"
-
-# Disable default Nginx page if still enabled
-rm -f /etc/nginx/sites-enabled/default
-
-# Validate config before reloading
-nginx -t 2>&1 || die "Nginx config test failed — check /etc/nginx/sites-available/${NGINX_CONF}"
-
-systemctl enable nginx
-systemctl restart nginx
-
-if systemctl is-active --quiet nginx; then
-  ok "Nginx running — listening on ports 80 and 443"
-else
-  warn "Nginx did not start cleanly — check: journalctl -u nginx -n 20"
+SERVIT_PORT="$(sudo -H -u "$APP_OWNER" -- node --env-file="$APP_DIR/.env" -e 'const p=Number(process.env.PORT||5000);if(!Number.isInteger(p)||p<1||p>65535)process.exit(1);process.stdout.write(String(p))')"
+if [[ -z "${SERVIT_DOMAIN:-}" ]]; then
+  SERVIT_DOMAIN="$(sudo -H -u "$APP_OWNER" -- node --env-file="$APP_DIR/.env" -e 'process.stdout.write(new URL(process.env.CLIENT_URL).hostname)')"
 fi
-
-# ── Certbot prompt ───────────────────────────────────────────────
-CERTBOT_DOMAIN=""
-echo ""
-echo -e "${BOLD}────────────────────────────────────────────────────────${NC}"
-echo -e "  ${BOLD}SSL Certificate Setup${NC}"
-echo -e "  Currently using a self-signed cert (browser will warn)."
-echo -e "  If you have a domain pointing to this server you can"
-echo -e "  get a free trusted certificate from Let's Encrypt now."
-echo -e "${BOLD}────────────────────────────────────────────────────────${NC}"
-echo ""
-read -r -p "  Want to configure a trusted SSL certificate (Let's Encrypt)? [y/N]: " CERT_CHOICE
-
-if [[ "${CERT_CHOICE,,}" == "y" ]]; then
-  echo ""
-  read -r -p "  Enter your domain name (e.g. servit.company.com): " CERTBOT_DOMAIN
-  CERTBOT_DOMAIN="${CERTBOT_DOMAIN// /}"   # strip any spaces
-
-  if [[ -z "${CERTBOT_DOMAIN}" ]]; then
-    warn "No domain entered — skipping Let's Encrypt, keeping self-signed cert"
-  else
-    echo ""
-    echo -e "  ${YELLOW}Important: DNS for '${CERTBOT_DOMAIN}' must already point to ${SERVER_IP}${NC}"
-    echo -e "  ${YELLOW}If DNS is not set up yet, certbot will fail. You can run it later:${NC}"
-    echo -e "  ${YELLOW}  sudo certbot --nginx -d ${CERTBOT_DOMAIN}${NC}"
-    echo ""
-    read -r -p "  DNS is ready — proceed with certificate? [y/N]: " DNS_READY
-
-    if [[ "${DNS_READY,,}" == "y" ]]; then
-      info "Installing certbot..."
-      apt-get install -y certbot python3-certbot-nginx 2>&1 | tail -3
-      ok "Certbot installed"
-
-      # Certbot's nginx plugin needs server_name to match the domain — replace wildcard
-      info "Updating Nginx server_name to '${CERTBOT_DOMAIN}' for certbot..."
-      sed -i "s/server_name _;/server_name ${CERTBOT_DOMAIN};/g" \
-        "/etc/nginx/sites-available/${NGINX_CONF}"
-      nginx -t 2>/dev/null && systemctl reload nginx
-      ok "Nginx server_name → ${CERTBOT_DOMAIN}"
-
-      info "Requesting Let's Encrypt certificate for ${CERTBOT_DOMAIN}..."
-      if certbot --nginx -d "${CERTBOT_DOMAIN}" --non-interactive --agree-tos \
-          --register-unsafely-without-email --redirect 2>&1; then
-        ok "Let's Encrypt certificate issued for ${CERTBOT_DOMAIN}"
-
-        # Update CLIENT_URL in .env to use the real domain
-        CLIENT_URL_HTTPS="https://${CERTBOT_DOMAIN}"
-        CLIENT_URL="${CLIENT_URL_HTTPS}"
-        sed -i "s|^CLIENT_URL=.*|CLIENT_URL=${CLIENT_URL}|" "${APP_DIR}/.env"
-        ok "CLIENT_URL updated in .env → ${CLIENT_URL}"
-
-        # Enable auto-renewal via systemd timer (installed by certbot)
-        systemctl enable certbot.timer 2>/dev/null || true
-        ok "Auto-renewal enabled (certbot.timer)"
-
-        info "Reloading Nginx with new certificate..."
-        systemctl reload nginx
-        ok "Nginx reloaded"
-
-        CLIENT_URL_HTTPS="https://${CERTBOT_DOMAIN}"
-        CLIENT_URL_HTTP="http://${CERTBOT_DOMAIN}"
-      else
-        warn "Certbot failed — keeping self-signed certificate"
-        warn "Check DNS for '${CERTBOT_DOMAIN}' and retry: sudo certbot --nginx -d ${CERTBOT_DOMAIN}"
-      fi
-    else
-      warn "Skipping certbot for now — keeping self-signed cert"
-      info "Run later: sudo certbot --nginx -d ${CERTBOT_DOMAIN}"
-    fi
-  fi
-else
-  info "Keeping self-signed certificate — browser will show a security warning"
-  info "Run later: sudo certbot --nginx -d yourdomain.com"
-fi
-echo ""
-
-# ════════════════════════════════════════════════════════════════
-# STEP 10 — Systemd service (Node.js on :5000 internal)
-# ════════════════════════════════════════════════════════════════
-step "10 / 10  Systemd service: ${SERVICE_NAME}"
-cat > "/etc/systemd/system/${SERVICE_NAME}.service" << EOF
-[Unit]
-Description=SERV-IT Ticketing System
-Documentation=https://github.com/Aravindh-29/PSH
-After=network.target postgresql.service nginx.service
-Wants=postgresql.service
-
-[Service]
-Type=simple
-User=${APP_DIR_OWNER}
-Group=${APP_DIR_OWNER}
-WorkingDirectory=${APP_DIR}
-EnvironmentFile=${APP_DIR}/.env
-ExecStart=${NODE_BIN} server/src/server.js
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=${SERVICE_NAME}
-TimeoutStopSec=30
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-systemctl enable "${SERVICE_NAME}"
-systemctl restart "${SERVICE_NAME}"
-
-sleep 4
-if systemctl is-active --quiet "${SERVICE_NAME}"; then
-  ok "Service '${SERVICE_NAME}' is running on internal port ${PORT}"
-else
-  warn "Service did not start cleanly — check: journalctl -u ${SERVICE_NAME} -n 50"
-fi
-
-# ── Save credentials to file ─────────────────────────────────────
-cat > "${CRED_FILE}" << EOF
-╔══════════════════════════════════════════════════╗
-  SERV-IT — Credentials  ($(date '+%Y-%m-%d %H:%M'))
-╚══════════════════════════════════════════════════╝
-
-HTTP URL       : ${CLIENT_URL_HTTP}   (redirects to HTTPS)
-HTTPS URL      : ${CLIENT_URL_HTTPS}  (self-signed cert)
-App directory  : ${APP_DIR}
-Service name   : ${SERVICE_NAME}
-
-─── AWS Security Group — required inbound rules ────
-Port 80   (HTTP)   — 0.0.0.0/0
-Port 443  (HTTPS)  — 0.0.0.0/0
-Port 5000 is internal only — do NOT expose in security group
-
-─── Database ───────────────────────────────────────
-Host           : localhost:5432
-Database       : ${DB_NAME}
-User           : ${DB_USER}
-Password       : ${DB_PASS}
-
-─── App ────────────────────────────────────────────
-Session secret : ${SESSION_SECRET}
-.env path      : ${APP_DIR}/.env
-
-─── SSL Certificate ────────────────────────────────
-$(if [[ -n "${CERTBOT_DOMAIN}" ]]; then
-  echo "Type           : Let's Encrypt (trusted, auto-renews)"
-  echo "Domain         : ${CERTBOT_DOMAIN}"
-  echo "Auto-renewal   : systemctl status certbot.timer"
-else
-  echo "Type           : Self-signed (10 years, browser will warn)"
-  echo "Certificate    : ${SSL_DIR}/servit.crt"
-  echo "Private key    : ${SSL_DIR}/servit.key"
-  echo "Upgrade tip    : sudo certbot --nginx -d yourdomain.com"
-fi)
-
-─── Default admin login ────────────────────────────
-Username       : admin
-Password       : Admin@123
-  ⚠ Change this password immediately after first login!
-
-─── Useful commands ────────────────────────────────
-App status  : systemctl status ${SERVICE_NAME}
-App logs    : journalctl -u ${SERVICE_NAME} -f
-App restart : systemctl restart ${SERVICE_NAME}
-Nginx status: systemctl status nginx
-Nginx logs  : tail -f /var/log/nginx/error.log
-Nginx reload: systemctl reload nginx
-EOF
-chmod 600 "${CRED_FILE}"
-
-# ── Final summary ────────────────────────────────────────────────
-echo ""
-echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}${BOLD}║      SERV-IT setup complete!                 ║${NC}"
-echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "  ${BOLD}HTTP  (auto-redirects):${NC}  ${BLUE}${CLIENT_URL_HTTP}${NC}"
-echo -e "  ${BOLD}HTTPS:${NC}                   ${BLUE}${CLIENT_URL_HTTPS}${NC}"
-echo -e "  ${BOLD}Default login:${NC}           admin / Admin@123"
-echo ""
-if [[ -n "${CERTBOT_DOMAIN}" ]]; then
-  echo -e "  ${GREEN}✓  Trusted SSL certificate installed for ${CERTBOT_DOMAIN}${NC}"
-  echo -e "  ${GREEN}   Auto-renewal is enabled via certbot.timer${NC}"
-else
-  echo -e "  ${YELLOW}⚠  Self-signed cert — browser will warn → click Advanced → Proceed${NC}"
-  echo -e "  ${YELLOW}   To get a trusted cert:  sudo certbot --nginx -d yourdomain.com${NC}"
-fi
-echo ""
-echo -e "  ${BOLD}AWS Security Group — open these ports:${NC}"
-echo -e "    Port 80  (HTTP)  — 0.0.0.0/0"
-echo -e "    Port 443 (HTTPS) — 0.0.0.0/0"
-echo -e "    ${YELLOW}Do NOT expose port 5000 externally${NC}"
-echo ""
-echo -e "  ${BOLD}Service commands:${NC}"
-echo -e "    systemctl status  ${SERVICE_NAME}"
-echo -e "    journalctl -u ${SERVICE_NAME} -f"
-echo -e "    systemctl restart ${SERVICE_NAME}"
-echo -e "    systemctl reload  nginx"
-echo ""
-echo -e "  ${BOLD}Credentials saved to:${NC} ${CRED_FILE}"
-echo ""
-echo -e "${YELLOW}  ⚠  Change the admin password after first login!${NC}"
-echo ""
-
-# ════════════════════════════════════════════════════════════════
-# HEALTH CHECK — verify app is reachable on ports 80 and 443
-# ════════════════════════════════════════════════════════════════
-echo -e "${BOLD}────────────────────────────────────────────────────────${NC}"
-echo -e "  ${BOLD}Running health checks...${NC}"
-echo -e "${BOLD}────────────────────────────────────────────────────────${NC}"
-echo ""
-
-sleep 3   # give Node.js a moment to fully boot
-
-CHECK_PASS=true
-
-# ── Check port 80 (should redirect to 443) ──────────────────────
-info "Checking port 80 (HTTP)..."
-HTTP_CODE="$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
-  "http://127.0.0.1" 2>/dev/null || echo "000")"
-
-if [[ "${HTTP_CODE}" == "301" || "${HTTP_CODE}" == "302" || "${HTTP_CODE}" == "200" ]]; then
-  ok "Port 80  → HTTP ${HTTP_CODE}  ✓"
-else
-  warn "Port 80  → HTTP ${HTTP_CODE}  ✗  (expected 301 redirect)"
-  CHECK_PASS=false
-fi
-
-# ── Check port 443 (HTTPS — skip cert verification for self-signed) ──
-info "Checking port 443 (HTTPS)..."
-HTTPS_CODE="$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 -k \
-  "https://127.0.0.1" 2>/dev/null || echo "000")"
-
-if [[ "${HTTPS_CODE}" == "200" || "${HTTPS_CODE}" == "301" || "${HTTPS_CODE}" == "302" ]]; then
-  ok "Port 443 → HTTPS ${HTTPS_CODE} ✓"
-else
-  warn "Port 443 → HTTPS ${HTTPS_CODE} ✗  (expected 200)"
-  CHECK_PASS=false
-fi
-
-# ── Check Node.js API directly on port 5000 (internal) ──────────
-info "Checking Node.js API (internal :5000)..."
-API_CODE="$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
-  "http://127.0.0.1:${PORT}/api/auth/me" 2>/dev/null || echo "000")"
-
-if [[ "${API_CODE}" == "200" || "${API_CODE}" == "401" ]]; then
-  ok "Port ${PORT} → Node.js API ${API_CODE} ✓  (internal)"
-else
-  warn "Port ${PORT} → Node.js API ${API_CODE} ✗"
-  CHECK_PASS=false
-fi
-
-# ── Result ───────────────────────────────────────────────────────
-echo ""
-if [[ "${CHECK_PASS}" == "true" ]]; then
-  echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════════════╗${NC}"
-  echo -e "${GREEN}${BOLD}║  🎉  Congratulations! SERV-IT is up and running!     ║${NC}"
-  echo -e "${GREEN}${BOLD}║                                                      ║${NC}"
-  echo -e "${GREEN}${BOLD}║  Port 80  → redirects to HTTPS         ✓             ║${NC}"
-  echo -e "${GREEN}${BOLD}║  Port 443 → app is live and responding  ✓            ║${NC}"
-  echo -e "${GREEN}${BOLD}║  Node.js  → API healthy (internal)      ✓            ║${NC}"
-  echo -e "${GREEN}${BOLD}║                                                      ║${NC}"
-  echo -e "${GREEN}${BOLD}║  Open in browser: ${CLIENT_URL_HTTPS}${NC}"
-  echo -e "${GREEN}${BOLD}║  Login: admin / Admin@123                            ║${NC}"
-  echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════╝${NC}"
-else
-  echo -e "${YELLOW}${BOLD}╔══════════════════════════════════════════════════════╗${NC}"
-  echo -e "${YELLOW}${BOLD}║  ⚠  Setup complete but one or more checks failed.   ║${NC}"
-  echo -e "${YELLOW}${BOLD}║                                                      ║${NC}"
-  echo -e "${YELLOW}${BOLD}║  Diagnose with:                                      ║${NC}"
-  echo -e "${YELLOW}${BOLD}║    journalctl -u ${SERVICE_NAME} -n 50                      ║${NC}"
-  echo -e "${YELLOW}${BOLD}║    journalctl -u nginx -n 20                         ║${NC}"
-  echo -e "${YELLOW}${BOLD}║    curl -vk https://127.0.0.1                        ║${NC}"
-  echo -e "${YELLOW}${BOLD}╚══════════════════════════════════════════════════════╝${NC}"
-fi
-echo ""
+export SERVIT_PORT SERVIT_DOMAIN
+# Use a real service unit before handing off to the shared, staged updater.
+if [[ "$(systemctl show "$SERVICE_NAME" --property=LoadState --value 2>/dev/null || true)" != loaded ]]; then servit_write_service; fi
+servit_configure_nginx
+# Export explicit settings so a custom installation uses the same paths/account.
+export SERVIT_APP_DIR="$APP_DIR" SERVIT_SERVICE_NAME="$SERVICE_NAME" SERVIT_APP_USER="$APP_OWNER"
+exec bash "$APP_DIR/scripts/update.sh"
