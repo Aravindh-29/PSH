@@ -1,3 +1,4 @@
+import useAccess from '../../hooks/useAccess';
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Eye, BookOpen, Edit2 } from 'lucide-react';
@@ -5,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
 import { format } from 'date-fns';
 import './KnowledgeBase.css';
+import ArticleMarkdown from '../../components/ArticleContent';
 
 const CATEGORY_COLORS = {
   'General':        { bg: '#EEF2FF', color: '#6366F1' },
@@ -16,56 +18,12 @@ const CATEGORY_COLORS = {
 };
 const CAT_COLOR = (cat) => CATEGORY_COLORS[cat] || { bg: '#F1F5F9', color: '#64748B' };
 
-function renderContent(content) {
-  if (!content) return null;
-  const boldify = (text) =>
-    text.split(/(\*\*.+?\*\*)/).map((part, i) =>
-      part.startsWith('**') && part.endsWith('**')
-        ? <strong key={i}>{part.slice(2, -2)}</strong>
-        : part
-    );
-
-  const lines = content.split('\n');
-  const elements = [];
-  let listItems = [];
-  let key = 0;
-
-  const flushList = () => {
-    if (listItems.length) {
-      elements.push(
-        <ul key={`ul-${key++}`} className="kb-content-list">
-          {listItems.map((item, i) => <li key={i}>{boldify(item)}</li>)}
-        </ul>
-      );
-      listItems = [];
-    }
-  };
-
-  lines.forEach(line => {
-    if (line.startsWith('# ')) {
-      flushList();
-      elements.push(<h2 key={key++} className="kb-content-h2">{line.slice(2)}</h2>);
-    } else if (line.startsWith('## ')) {
-      flushList();
-      elements.push(<h3 key={key++} className="kb-content-h3">{line.slice(3)}</h3>);
-    } else if (line.startsWith('- ')) {
-      listItems.push(line.slice(2));
-    } else if (line.trim() === '') {
-      flushList();
-    } else {
-      flushList();
-      elements.push(<p key={key++} className="kb-content-p">{boldify(line)}</p>);
-    }
-  });
-  flushList();
-  return elements;
-}
-
 export default function KBArticle() {
+  const {can}=useAccess();
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = can('kb.edit');
 
   const [article, setArticle] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -119,7 +77,7 @@ export default function KBArticle() {
           </div>
           <hr className="kba-divider" />
           <div className="kba-content">
-            {renderContent(article.content)}
+            <ArticleMarkdown content={article.content}/>
           </div>
         </article>
 

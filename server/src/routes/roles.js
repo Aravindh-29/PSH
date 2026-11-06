@@ -1,0 +1,12 @@
+const router=require('express').Router();
+const {requireAuth}=require('../middleware/auth');
+const ctrl=require('../controllers/roleController');
+router.use(requireAuth);
+router.get('/catalog',ctrl.list);
+router.get('/assignable',ctrl.list);
+router.get('/',ctrl.list);
+router.get('/:key/history',ctrl.history);
+router.post('/',ctrl.save);
+router.put('/:key',ctrl.save);
+router.delete('/:key',ctrl.remove);
+module.exports=router;

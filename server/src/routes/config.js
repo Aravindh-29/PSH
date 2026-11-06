@@ -51,5 +51,7 @@ router.delete('/admin/sso',      requireAdmin, ssoConfigCtrl.clearSSOConfig);
 router.get ('/admin/email',      requireAdmin, emailConfigCtrl.getConfig);
 router.post('/admin/email',      requireAdmin, emailConfigCtrl.saveConfig);
 router.post('/admin/email/test', requireAdmin, emailConfigCtrl.testConfig);
+router.get('/admin/email/deliveries', requireAdmin, emailConfigCtrl.deliveries);
+router.post('/admin/email/retry/:id', requireAdmin, emailConfigCtrl.retry);
 
 module.exports = router;

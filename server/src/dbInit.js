@@ -282,6 +282,8 @@ async function dbInit() {
   await appClient.query(`CREATE INDEX IF NOT EXISTS idx_sla_instances_ticket ON ticket_sla_instances(ticket_id)`);
   await appClient.query(`CREATE INDEX IF NOT EXISTS idx_sla_instances_active  ON ticket_sla_instances(stage, target_at) WHERE stage IN ('active','paused')`);
 
+  await require('./access/init')(appClient);
+  await require('./services/emailSettings').init(appClient);
   await appClient.end();
 }
 

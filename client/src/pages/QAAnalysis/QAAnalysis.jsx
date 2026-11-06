@@ -1,3 +1,4 @@
+import useAccess from '../../hooks/useAccess';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -360,6 +361,7 @@ function DrillModal({ drill, onClose }) {
 
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function QAAnalysis() {
+  const {can}=useAccess();
   const [data, setData]           = useState(null);
   const [loading, setLoading]     = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -402,6 +404,8 @@ export default function QAAnalysis() {
 
   // ── Excel Export ────────────────────────────────────────────────────────────
   const handleExport = async () => {
+    if(!can('qa.export'))return toast.error("You don't have permission to perform this action.");
+    const auth=await fetch('/api/sla/qa?export=true',{credentials:'include'});if(!auth.ok)return toast.error("You don't have permission to perform this action.");
     if (!data) return;
     setExporting(true);
     try {
@@ -706,7 +710,7 @@ export default function QAAnalysis() {
         </div>
         <div className="qa-header-right">
           <button className="qa-refresh-btn" onClick={load}><RefreshCw size={15}/> Refresh</button>
-          <button className="qa-export-btn" onClick={handleExport} disabled={exporting}>
+          <button className="qa-export-btn" onClick={handleExport} disabled={exporting || !can('qa.export')}>
             <Download size={15}/>
             {exporting ? 'Exporting…' : 'Export Excel'}
           </button>

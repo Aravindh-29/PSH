@@ -64,23 +64,8 @@ async function logout(req, res, next) {
   });
 }
 
-async function me(req, res, next) {
-  try {
-    const result = await pool.query(
-      'SELECT id, username, email, full_name, role FROM users WHERE id = $1',
-      [req.session.userId]
-    );
-    if (result.rows.length === 0) {
-      return res.status(401).json({ success: false, message: 'Session expired' });
-    }
-    const user = result.rows[0];
-    res.json({
-      success: true,
-      user: { id: user.id, username: user.username, email: user.email, fullName: user.full_name, role: user.role },
-    });
-  } catch (err) {
-    next(err);
-  }
+async function me(req, res) {
+  res.json({ success:true, user:req.authUser });
 }
 
 module.exports = { login, logout, me };

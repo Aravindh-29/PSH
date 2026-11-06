@@ -1,3 +1,4 @@
+import useAccess from '../../hooks/useAccess';
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -8,6 +9,7 @@ import api from '../../api/axios';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import './KnowledgeBase.css';
+import ArticleMarkdown from '../../components/ArticleContent';
 
 const CATEGORY_COLORS = {
   'General':       { bg: '#EEF2FF', color: '#6366F1' },
@@ -36,7 +38,8 @@ export default function KnowledgeBase() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const isAdmin = user?.role === 'admin';
+  const {can,any}=useAccess();
+  const isAdmin = any(['kb.drafts','kb.create','kb.edit','kb.delete']);
 
   const [articles, setArticles] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -48,6 +51,7 @@ export default function KnowledgeBase() {
   const [editTarget, setEditTarget] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [editorMode, setEditorMode] = useState('split');
 
   // Handle edit redirect from article detail page
   useEffect(() => {
@@ -64,7 +68,7 @@ export default function KnowledgeBase() {
   }, [location.state, isAdmin, navigate, location.pathname]);
 
   const load = useCallback(() => {
-    const endpoint = isAdmin ? '/kb/admin/all' : '/kb';
+    const endpoint = can('kb.drafts') ? '/kb/admin/all' : '/kb';
     const params = {};
     if (search) params.search = search;
     if (activeCategory) params.category = activeCategory;
@@ -139,7 +143,7 @@ export default function KnowledgeBase() {
             <p className="kb-sub">Browse articles, guides, and FAQs</p>
           </div>
         </div>
-        {isAdmin && (
+        {can('kb.create') && (
           <button className="kb-new-btn" onClick={openCreate}>
             <Plus size={15} /> New Article
           </button>
@@ -207,7 +211,7 @@ export default function KnowledgeBase() {
             <div className="kb-empty">
               <BookOpen size={40} color="#CBD5E1" />
               <p>No articles found</p>
-              {isAdmin && <button className="kb-new-btn" onClick={openCreate}><Plus size={14} />Write the first article</button>}
+              {can('kb.create') && <button className="kb-new-btn" onClick={openCreate}><Plus size={14} />Write the first article</button>}
             </div>
           ) : (
             <div className="kb-grid">
@@ -224,10 +228,10 @@ export default function KnowledgeBase() {
                     )}
                     {isAdmin && (
                       <div className="kb-card-actions" onClick={e => e.stopPropagation()}>
-                        <button className="kb-action-btn edit" onClick={e => openEdit(e, art)} title="Edit">
+                        <button disabled={!can('kb.edit')} className="kb-action-btn edit" onClick={e => openEdit(e, art)} title="Edit">
                           <Edit2 size={13} />
                         </button>
-                        <button className="kb-action-btn del" onClick={e => handleDelete(e, art.id, art.title)} title="Delete">
+                        <button disabled={!can('kb.delete')} className="kb-action-btn del" onClick={e => handleDelete(e, art.id, art.title)} title="Delete">
                           <Trash2 size={13} />
                         </button>
                       </div>
@@ -252,7 +256,7 @@ export default function KnowledgeBase() {
       {/* Create / Edit Modal */}
       {showModal && (
         <div className="kb-modal-overlay" onClick={closeModal}>
-          <div className="kb-modal" onClick={e => e.stopPropagation()}>
+          <div className="kb-modal kb-markdown-modal" role="dialog" aria-modal="true" aria-label={editTarget ? 'Edit Article' : 'New Article'} onClick={e => e.stopPropagation()}>
             <div className="kb-modal-header">
               <h2>{editTarget ? 'Edit Article' : 'New Article'}</h2>
               <button className="kb-modal-close" onClick={closeModal}><X size={18} /></button>
@@ -282,19 +286,29 @@ export default function KnowledgeBase() {
                   </select>
                 </div>
               </div>
-              <div className="kb-field kb-field-grow">
-                <label>
-                  Content
-                  <span className="kb-field-hint">Supports: # Heading, ## Sub-heading, - bullet, **bold**</span>
-                </label>
-                <textarea
-                  value={form.content}
-                  onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
-                  placeholder="Write article content here…"
-                  rows={16}
-                  required
-                />
+              <div className="kb-markdown-toolbar">
+                <div className="kb-editor-modes" role="group" aria-label="Editor view">
+                  {['write', 'split', 'preview'].map(mode => <button key={mode} type="button"
+                    aria-pressed={editorMode === mode} onClick={() => setEditorMode(mode)}>
+                    {mode === 'write' ? 'Write Markdown' : mode === 'split' ? 'Side by side' : 'Preview'}
+                  </button>)}
+                </div>
+                <span>Tables · lists · code · math · Mermaid diagrams</span>
               </div>
+              <div className={'kb-markdown-editor kb-editor-' + editorMode}>
+                {editorMode !== 'preview' && <div className="kb-field kb-source-pane">
+                  <label htmlFor="kb-article-content">Markdown source</label>
+                  <textarea id="kb-article-content" value={form.content}
+                    onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+                    placeholder="Paste Markdown copied from ChatGPT here…" rows={20} spellCheck={false}/>
+                </div>}
+                {editorMode !== 'write' && <section className="kb-preview-pane" aria-label="Article preview">
+                  <div className="kb-preview-label">Article preview · matches the saved article</div>
+                  {form.content.trim() ? <ArticleMarkdown content={form.content}/>
+                    : <p className="kb-preview-empty">Paste your Markdown to see formatted tables, headings, lists and diagrams here.</p>}
+                </section>}
+              </div>
+              <p className="kb-markdown-help">Paste the Markdown text itself. For diagrams, use a fenced code block with the language mermaid. Images need a reachable image URL; copying plain text does not include image files.</p>
               <div className="kb-modal-footer">
                 <button type="button" className="kb-btn-cancel" onClick={closeModal}>Cancel</button>
                 <button type="submit" className="kb-btn-save" disabled={saving}>

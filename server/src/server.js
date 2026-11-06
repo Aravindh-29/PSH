@@ -53,6 +53,7 @@ app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/tickets', require('./routes/tickets'));
 app.use('/api/attachments', require('./routes/attachments'));
 app.use('/api/users', require('./routes/users'));
+app.use('/api/roles', require('./routes/roles'));
 app.use('/api/config', require('./routes/config'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/kb',      require('./routes/kb'));
@@ -142,6 +143,7 @@ async function start() {
     logger.info('Database connected');
     await require('./dbInit')();
     logger.info('Database ready');
+    require('./services/emailDelivery').start();
     app.listen(PORT, () => logger.info(`Server running on port ${PORT}`));
 
     // Run retention cleanup once at startup, then every 24 hours

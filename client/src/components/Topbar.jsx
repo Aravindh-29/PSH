@@ -245,7 +245,7 @@ export default function Topbar({ onMenuClick }) {
           <div className="topbar-avatar">{user?.fullName?.[0] || 'U'}</div>
           <div className="topbar-user-info">
             <div className="topbar-user-name">{user?.fullName}</div>
-            <div className="topbar-user-role">{user?.role === 'admin' ? 'Administrator' : 'Employee'}</div>
+            <div className="topbar-user-role">{user?.roleName || (user?.role === 'admin' ? 'Administrator' : 'Employee')}</div>
           </div>
           <ChevronDown size={14} className={`topbar-chevron ${dropdownOpen ? 'open' : ''}`} />
 

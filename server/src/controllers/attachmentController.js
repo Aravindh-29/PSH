@@ -26,7 +26,7 @@ async function upload(req, res, next) {
     const ticket = await pool.query('SELECT id, created_by, assigned_to FROM tickets WHERE id = $1 AND deleted_at IS NULL', [ticketId]);
     if (ticket.rows.length === 0) return res.status(404).json({ success: false, message: 'Ticket not found' });
 
-    const isAdmin = req.session.role === 'admin';
+    const isAdmin = req.session.role === 'admin' || !!req.authorizedTicket;
     const t = ticket.rows[0];
     if (!isAdmin && t.created_by !== req.session.userId && t.assigned_to !== req.session.userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
@@ -75,7 +75,7 @@ async function download(req, res, next) {
     if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Attachment not found' });
 
     const att = result.rows[0];
-    const isAdmin = req.session.role === 'admin';
+    const isAdmin = req.session.role === 'admin' || !!req.authorizedTicket;
     if (!isAdmin && att.created_by !== req.session.userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
@@ -102,7 +102,7 @@ async function remove(req, res, next) {
     if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Attachment not found' });
 
     const att = result.rows[0];
-    const isAdmin = req.session.role === 'admin';
+    const isAdmin = req.session.role === 'admin' || !!req.authorizedTicket;
     const uid = req.session.userId;
     if (!isAdmin && att.created_by !== uid && att.assigned_to !== uid && att.uploaded_by !== uid) {
       return res.status(403).json({ success: false, message: 'Access denied' });
@@ -133,7 +133,7 @@ async function downloadZip(req, res, next) {
     if (ticketRow.rows.length === 0) return res.status(404).json({ success: false, message: 'Ticket not found' });
 
     const ticket = ticketRow.rows[0];
-    const isAdmin = req.session.role === 'admin';
+    const isAdmin = req.session.role === 'admin' || !!req.authorizedTicket;
     if (!isAdmin && ticket.created_by !== req.session.userId && ticket.assigned_to !== req.session.userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }

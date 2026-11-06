@@ -163,7 +163,7 @@ async function deleteTicketType(req, res, next) {
 
 async function getUsers(req, res, next) {
   try {
-    const result = await pool.query('SELECT id, full_name, username, email, role FROM users WHERE is_active = true ORDER BY full_name');
+    const result = await pool.query(`SELECT id, full_name, username, email, role FROM users WHERE is_active = true AND deleted_at IS NULL ${req.access?.custom && !req.access.permissions['users.view'] && req.access.permissions['tickets.assign'] !== 'all' ? 'AND (id=$1 OR id IN (SELECT user_id FROM user_groups WHERE group_id=ANY($2::uuid[])))' : ''} ORDER BY full_name`, req.access?.custom && !req.access.permissions['users.view'] && req.access.permissions['tickets.assign'] !== 'all' ? [req.access.userId,req.access.managedGroups] : []);
     res.json({ success: true, users: result.rows });
   } catch (err) { next(err); }
 }

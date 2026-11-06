@@ -1,0 +1,1151 @@
+[
+  {
+    "key": "dashboard.view",
+    "label": "View dashboard",
+    "group": "Dashboards",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "dashboard.global",
+    "label": "View global dashboard",
+    "group": "Dashboards",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "query.view",
+    "label": "Use My Query",
+    "group": "Dashboards",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "users.tickets",
+    "label": "View tickets by user",
+    "group": "Dashboards",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "tickets.view",
+    "label": "View tickets",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": []
+  },
+  {
+    "key": "tickets.group_view",
+    "label": "View group tickets",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "tickets.create",
+    "label": "Create tickets",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "tickets.edit",
+    "label": "Edit ticket details",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "tickets.priority",
+    "label": "Change priority",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "tickets.impact",
+    "label": "Change impact",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "tickets.urgency",
+    "label": "Change urgency",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "tickets.category",
+    "label": "Change category or subcategory",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "tickets.type",
+    "label": "Change ticket type",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "tickets.classification",
+    "label": "Change classification",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "tickets.template",
+    "label": "Select or change template",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "tickets.status",
+    "label": "Change status",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view",
+      "comments.work_note"
+    ]
+  },
+  {
+    "key": "tickets.resolve",
+    "label": "Resolve tickets",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view",
+      "tickets.status"
+    ]
+  },
+  {
+    "key": "tickets.close",
+    "label": "Close tickets",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view",
+      "tickets.status"
+    ]
+  },
+  {
+    "key": "tickets.reopen",
+    "label": "Reopen tickets",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view",
+      "tickets.status"
+    ]
+  },
+  {
+    "key": "tickets.cancel",
+    "label": "Cancel tickets",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view",
+      "tickets.status"
+    ]
+  },
+  {
+    "key": "tickets.assign",
+    "label": "Assign or reassign tickets",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view",
+      "comments.work_note"
+    ]
+  },
+  {
+    "key": "tickets.owner",
+    "label": "Change ticket owner",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "tickets.delete",
+    "label": "Delete tickets",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "comments.view",
+    "label": "View comments and work notes",
+    "group": "Comments & Work Notes",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "comments.add",
+    "label": "Add comments",
+    "group": "Comments & Work Notes",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "comments.work_note",
+    "label": "Add work notes",
+    "group": "Comments & Work Notes",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "attachments.upload",
+    "label": "Upload attachments",
+    "group": "Attachments",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "attachments.preview",
+    "label": "Preview attachments",
+    "group": "Attachments",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "attachments.download",
+    "label": "Download attachments",
+    "group": "Attachments",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "attachments.zip",
+    "label": "Download all attachments as ZIP",
+    "group": "Attachments",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "attachments.delete",
+    "label": "Delete attachments",
+    "group": "Attachments",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "kb.view",
+    "label": "Read published articles",
+    "group": "Knowledge Base",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "kb.drafts",
+    "label": "Read draft articles",
+    "group": "Knowledge Base",
+    "scoped": false,
+    "requires": [
+      "kb.view"
+    ]
+  },
+  {
+    "key": "kb.create",
+    "label": "Create articles",
+    "group": "Knowledge Base",
+    "scoped": false,
+    "requires": [
+      "kb.view"
+    ]
+  },
+  {
+    "key": "kb.edit",
+    "label": "Edit articles",
+    "group": "Knowledge Base",
+    "scoped": false,
+    "requires": [
+      "kb.view"
+    ]
+  },
+  {
+    "key": "kb.publish",
+    "label": "Publish or unpublish articles",
+    "group": "Knowledge Base",
+    "scoped": false,
+    "requires": [
+      "kb.view"
+    ]
+  },
+  {
+    "key": "kb.delete",
+    "label": "Delete articles",
+    "group": "Knowledge Base",
+    "scoped": false,
+    "requires": [
+      "kb.view"
+    ]
+  },
+  {
+    "key": "reports.view",
+    "label": "View reports",
+    "group": "Reports",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "reports.global",
+    "label": "View organization-wide reports",
+    "group": "Reports",
+    "scoped": false,
+    "requires": [
+      "reports.view"
+    ]
+  },
+  {
+    "key": "reports.export",
+    "label": "Export reports to Excel",
+    "group": "Reports",
+    "scoped": true,
+    "requires": [
+      "reports.view",
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "sla.view",
+    "label": "View ticket SLA timers",
+    "group": "SLA & QA",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "qa.view",
+    "label": "View SLA and QA analysis",
+    "group": "SLA & QA",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "qa.drill",
+    "label": "View detailed SLA instances",
+    "group": "SLA & QA",
+    "scoped": true,
+    "requires": [
+      "qa.view",
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "qa.export",
+    "label": "Export QA analysis",
+    "group": "SLA & QA",
+    "scoped": true,
+    "requires": [
+      "qa.view",
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "users.view",
+    "label": "View users",
+    "group": "Users",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "users.create",
+    "label": "Create users",
+    "group": "Users",
+    "scoped": false,
+    "requires": [
+      "users.view",
+      "users.assign_role"
+    ]
+  },
+  {
+    "key": "users.edit",
+    "label": "Edit user details",
+    "group": "Users",
+    "scoped": false,
+    "requires": [
+      "users.view"
+    ]
+  },
+  {
+    "key": "users.assign_role",
+    "label": "Assign permitted roles",
+    "group": "Users",
+    "scoped": false,
+    "requires": [
+      "users.view"
+    ]
+  },
+  {
+    "key": "users.groups",
+    "label": "Change user groups and managed groups",
+    "group": "Users",
+    "scoped": false,
+    "requires": [
+      "users.view"
+    ]
+  },
+  {
+    "key": "users.status",
+    "label": "Activate or deactivate users",
+    "group": "Users",
+    "scoped": false,
+    "requires": [
+      "users.view"
+    ]
+  },
+  {
+    "key": "users.delete",
+    "label": "Delete user accounts",
+    "group": "Users",
+    "scoped": false,
+    "requires": [
+      "users.view"
+    ]
+  },
+  {
+    "key": "users.delete_tickets",
+    "label": "Delete a user's tickets",
+    "group": "Users",
+    "scoped": false,
+    "requires": [
+      "users.view"
+    ]
+  },
+  {
+    "key": "users.bulk_template",
+    "label": "Download user import template",
+    "group": "Users",
+    "scoped": false,
+    "requires": [
+      "users.view"
+    ]
+  },
+  {
+    "key": "users.bulk_validate",
+    "label": "Upload and validate user imports",
+    "group": "Users",
+    "scoped": false,
+    "requires": [
+      "users.view"
+    ]
+  },
+  {
+    "key": "users.bulk_create",
+    "label": "Submit bulk user creation",
+    "group": "Users",
+    "scoped": false,
+    "requires": [
+      "users.view",
+      "users.create",
+      "users.assign_role",
+      "users.bulk_validate"
+    ]
+  },
+  {
+    "key": "users.password",
+    "label": "Reset passwords",
+    "group": "Users",
+    "scoped": false,
+    "requires": [
+      "users.view"
+    ]
+  },
+  {
+    "key": "users.mfa_reset",
+    "label": "Reset MFA",
+    "group": "Users",
+    "scoped": false,
+    "requires": [
+      "users.view"
+    ]
+  },
+  {
+    "key": "users.mfa_requirement",
+    "label": "Change MFA requirement",
+    "group": "Users",
+    "scoped": false,
+    "requires": [
+      "users.view"
+    ]
+  },
+  {
+    "key": "groups.view",
+    "label": "View groups",
+    "group": "Groups",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "groups.create",
+    "label": "Create groups",
+    "group": "Groups",
+    "scoped": false,
+    "requires": [
+      "groups.view"
+    ]
+  },
+  {
+    "key": "groups.edit",
+    "label": "Edit group details",
+    "group": "Groups",
+    "scoped": false,
+    "requires": [
+      "groups.view"
+    ]
+  },
+  {
+    "key": "groups.status",
+    "label": "Activate or deactivate groups",
+    "group": "Groups",
+    "scoped": false,
+    "requires": [
+      "groups.view"
+    ]
+  },
+  {
+    "key": "groups.members",
+    "label": "Manage group members",
+    "group": "Groups",
+    "scoped": false,
+    "requires": [
+      "groups.view"
+    ]
+  },
+  {
+    "key": "groups.delete",
+    "label": "Delete groups",
+    "group": "Groups",
+    "scoped": false,
+    "requires": [
+      "groups.view"
+    ]
+  },
+  {
+    "key": "fields.view",
+    "label": "View field configuration",
+    "group": "Ticket Fields",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "fields.create",
+    "label": "Add fields",
+    "group": "Ticket Fields",
+    "scoped": false,
+    "requires": [
+      "fields.view"
+    ]
+  },
+  {
+    "key": "fields.edit",
+    "label": "Edit fields and options",
+    "group": "Ticket Fields",
+    "scoped": false,
+    "requires": [
+      "fields.view"
+    ]
+  },
+  {
+    "key": "fields.required",
+    "label": "Change required fields",
+    "group": "Ticket Fields",
+    "scoped": false,
+    "requires": [
+      "fields.view"
+    ]
+  },
+  {
+    "key": "fields.active",
+    "label": "Activate or deactivate fields",
+    "group": "Ticket Fields",
+    "scoped": false,
+    "requires": [
+      "fields.view"
+    ]
+  },
+  {
+    "key": "fields.lock",
+    "label": "Lock or unlock fields",
+    "group": "Ticket Fields",
+    "scoped": false,
+    "requires": [
+      "fields.view"
+    ]
+  },
+  {
+    "key": "fields.reorder",
+    "label": "Reorder fields",
+    "group": "Ticket Fields",
+    "scoped": false,
+    "requires": [
+      "fields.view"
+    ]
+  },
+  {
+    "key": "fields.delete",
+    "label": "Delete fields",
+    "group": "Ticket Fields",
+    "scoped": false,
+    "requires": [
+      "fields.view"
+    ]
+  },
+  {
+    "key": "fields.reset",
+    "label": "Reset fields to defaults",
+    "group": "Ticket Fields",
+    "scoped": false,
+    "requires": [
+      "fields.view"
+    ]
+  },
+  {
+    "key": "categories.view",
+    "label": "View category configuration",
+    "group": "Categories",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "categories.create",
+    "label": "Create categories",
+    "group": "Categories",
+    "scoped": false,
+    "requires": [
+      "categories.view"
+    ]
+  },
+  {
+    "key": "categories.edit",
+    "label": "Edit categories",
+    "group": "Categories",
+    "scoped": false,
+    "requires": [
+      "categories.view"
+    ]
+  },
+  {
+    "key": "categories.status",
+    "label": "Activate or deactivate categories",
+    "group": "Categories",
+    "scoped": false,
+    "requires": [
+      "categories.view"
+    ]
+  },
+  {
+    "key": "categories.delete",
+    "label": "Delete categories",
+    "group": "Categories",
+    "scoped": false,
+    "requires": [
+      "categories.view"
+    ]
+  },
+  {
+    "key": "categories.force_delete",
+    "label": "Force-delete categories",
+    "group": "Categories",
+    "scoped": false,
+    "requires": [
+      "categories.view"
+    ]
+  },
+  {
+    "key": "subcategories.create",
+    "label": "Create subcategories",
+    "group": "Categories",
+    "scoped": false,
+    "requires": [
+      "categories.view"
+    ]
+  },
+  {
+    "key": "subcategories.edit",
+    "label": "Edit subcategories",
+    "group": "Categories",
+    "scoped": false,
+    "requires": [
+      "categories.view"
+    ]
+  },
+  {
+    "key": "subcategories.status",
+    "label": "Activate or deactivate subcategories",
+    "group": "Categories",
+    "scoped": false,
+    "requires": [
+      "categories.view"
+    ]
+  },
+  {
+    "key": "subcategories.delete",
+    "label": "Delete subcategories",
+    "group": "Categories",
+    "scoped": false,
+    "requires": [
+      "categories.view"
+    ]
+  },
+  {
+    "key": "types.view",
+    "label": "View ticket types",
+    "group": "Ticket Types",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "types.create",
+    "label": "Create ticket types",
+    "group": "Ticket Types",
+    "scoped": false,
+    "requires": [
+      "types.view"
+    ]
+  },
+  {
+    "key": "types.edit",
+    "label": "Edit ticket types and prefixes",
+    "group": "Ticket Types",
+    "scoped": false,
+    "requires": [
+      "types.view"
+    ]
+  },
+  {
+    "key": "types.status",
+    "label": "Activate or deactivate types",
+    "group": "Ticket Types",
+    "scoped": false,
+    "requires": [
+      "types.view"
+    ]
+  },
+  {
+    "key": "types.delete",
+    "label": "Delete custom types",
+    "group": "Ticket Types",
+    "scoped": false,
+    "requires": [
+      "types.view"
+    ]
+  },
+  {
+    "key": "templates.view",
+    "label": "View template configuration",
+    "group": "Templates",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "templates.create",
+    "label": "Create templates",
+    "group": "Templates",
+    "scoped": false,
+    "requires": [
+      "templates.view"
+    ]
+  },
+  {
+    "key": "templates.edit",
+    "label": "Edit template fields and order",
+    "group": "Templates",
+    "scoped": false,
+    "requires": [
+      "templates.view"
+    ]
+  },
+  {
+    "key": "templates.status",
+    "label": "Activate or deactivate templates",
+    "group": "Templates",
+    "scoped": false,
+    "requires": [
+      "templates.view"
+    ]
+  },
+  {
+    "key": "branding.view",
+    "label": "View branding settings",
+    "group": "Branding",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "branding.edit",
+    "label": "Edit organization identity",
+    "group": "Branding",
+    "scoped": false,
+    "requires": [
+      "branding.view"
+    ]
+  },
+  {
+    "key": "branding.logo",
+    "label": "Upload or remove organization logo",
+    "group": "Branding",
+    "scoped": false,
+    "requires": [
+      "branding.view"
+    ]
+  },
+  {
+    "key": "branding.accent",
+    "label": "Change brand accent",
+    "group": "Branding",
+    "scoped": false,
+    "requires": [
+      "branding.view"
+    ]
+  },
+  {
+    "key": "branding.toggle",
+    "label": "Enable or disable customization",
+    "group": "Branding",
+    "scoped": false,
+    "requires": [
+      "branding.view"
+    ]
+  },
+  {
+    "key": "sla_config.view",
+    "label": "View SLA configuration",
+    "group": "SLA Configuration",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "sla_config.create",
+    "label": "Create SLA definitions",
+    "group": "SLA Configuration",
+    "scoped": false,
+    "requires": [
+      "sla_config.view"
+    ]
+  },
+  {
+    "key": "sla_config.edit",
+    "label": "Edit SLA definitions",
+    "group": "SLA Configuration",
+    "scoped": false,
+    "requires": [
+      "sla_config.view"
+    ]
+  },
+  {
+    "key": "sla_config.status",
+    "label": "Enable or disable SLA definitions",
+    "group": "SLA Configuration",
+    "scoped": false,
+    "requires": [
+      "sla_config.view"
+    ]
+  },
+  {
+    "key": "sla_config.defaults",
+    "label": "Apply default SLA definitions",
+    "group": "SLA Configuration",
+    "scoped": false,
+    "requires": [
+      "sla_config.view"
+    ]
+  },
+  {
+    "key": "sla_config.toggle",
+    "label": "Enable or disable SLA tracking",
+    "group": "SLA Configuration",
+    "scoped": false,
+    "requires": [
+      "sla_config.view"
+    ]
+  },
+  {
+    "key": "sso.view",
+    "label": "View SSO configuration",
+    "group": "Security & Integrations",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "sso.edit",
+    "label": "Edit SSO configuration",
+    "group": "Security & Integrations",
+    "scoped": false,
+    "requires": [
+      "sso.view"
+    ]
+  },
+  {
+    "key": "sso.test",
+    "label": "Test SSO configuration",
+    "group": "Security & Integrations",
+    "scoped": false,
+    "requires": [
+      "sso.view"
+    ]
+  },
+  {
+    "key": "sso.toggle",
+    "label": "Enable or disable SSO configuration",
+    "group": "Security & Integrations",
+    "scoped": false,
+    "requires": [
+      "sso.view"
+    ]
+  },
+  {
+    "key": "email.view",
+    "label": "View email configuration",
+    "group": "Security & Integrations",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "email.edit",
+    "label": "Edit email configuration",
+    "group": "Security & Integrations",
+    "scoped": false,
+    "requires": [
+      "email.view"
+    ]
+  },
+  {
+    "key": "email.test",
+    "label": "Test email configuration",
+    "group": "Security & Integrations",
+    "scoped": false,
+    "requires": [
+      "email.view"
+    ]
+  },
+  {
+    "key": "email.toggle",
+    "label": "Enable or disable email configuration",
+    "group": "Security & Integrations",
+    "scoped": false,
+    "requires": [
+      "email.view"
+    ]
+  },
+  {
+    "key": "sso.clear",
+    "label": "Clear SSO configuration",
+    "group": "Security & Integrations",
+    "scoped": false,
+    "requires": [
+      "sso.view"
+    ]
+  },
+  {
+    "key": "audit.view",
+    "label": "View ticket audit logs",
+    "group": "Audit Logs",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "audit.admin",
+    "label": "View administrative audit logs",
+    "group": "Audit Logs",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "audit.retention",
+    "label": "Manage audit retention",
+    "group": "Audit Logs",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "roles.view",
+    "label": "View and compare roles",
+    "group": "Roles",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "roles.create",
+    "label": "Create and copy roles",
+    "group": "Roles",
+    "scoped": false,
+    "requires": [
+      "roles.view"
+    ]
+  },
+  {
+    "key": "roles.edit",
+    "label": "Rename roles and edit responsibilities",
+    "group": "Roles",
+    "scoped": false,
+    "requires": [
+      "roles.view"
+    ]
+  },
+  {
+    "key": "roles.permissions",
+    "label": "Change role permissions and delegation",
+    "group": "Roles",
+    "scoped": false,
+    "requires": [
+      "roles.view"
+    ]
+  },
+  {
+    "key": "roles.status",
+    "label": "Activate or deactivate roles",
+    "group": "Roles",
+    "scoped": false,
+    "requires": [
+      "roles.view"
+    ]
+  },
+  {
+    "key": "roles.delete",
+    "label": "Delete unused custom roles",
+    "group": "Roles",
+    "scoped": false,
+    "requires": [
+      "roles.view"
+    ]
+  },
+  {
+    "key": "roles.history",
+    "label": "View role change history",
+    "group": "Roles",
+    "scoped": false,
+    "requires": [
+      "roles.view"
+    ]
+  },
+  {
+    "key": "profile.view",
+    "label": "View own profile",
+    "group": "Profile & Notifications",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "profile.edit",
+    "label": "Edit own profile",
+    "group": "Profile & Notifications",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "profile.password",
+    "label": "Change own password",
+    "group": "Profile & Notifications",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "notifications.view",
+    "label": "View own notifications",
+    "group": "Profile & Notifications",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "notifications.read",
+    "label": "Mark own notifications read",
+    "group": "Profile & Notifications",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "tickets.history",
+    "label": "View ticket activity history",
+    "group": "Tickets",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
+    ]
+  },
+  {
+    "key": "users.activity",
+    "label": "View user administration activity",
+    "group": "Users",
+    "scoped": false,
+    "requires": [
+      "users.view"
+    ]
+  },
+  {
+    "key": "email.history",
+    "label": "View email delivery history",
+    "group": "Security & Integrations",
+    "scoped": false,
+    "requires": [
+      "email.view"
+    ]
+  },
+  {
+    "key": "email.retry",
+    "label": "Retry failed email deliveries",
+    "group": "Security & Integrations",
+    "scoped": false,
+    "requires": [
+      "email.history",
+      "email.test"
+    ]
+  }
+]

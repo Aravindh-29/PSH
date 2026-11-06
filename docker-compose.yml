@@ -35,6 +35,7 @@ services:
     container_name: psh-db-init
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/psh_ticketing
+      EMAIL_ENCRYPTION_KEY: ${EMAIL_ENCRYPTION_KEY:?Set EMAIL_ENCRYPTION_KEY in .env}
       NODE_ENV: production
     command: node database/init.js
     working_dir: /app
@@ -56,7 +57,8 @@ services:
       - "5000:5000"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/psh_ticketing
-      SESSION_SECRET: psh-super-secret-change-in-production-2024
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
+      EMAIL_ENCRYPTION_KEY: ${EMAIL_ENCRYPTION_KEY:?Set EMAIL_ENCRYPTION_KEY in .env}
       NODE_ENV: production
       PORT: "5000"
       CLIENT_URL: http://localhost:5000

@@ -20,4 +20,11 @@ pool.on('error', (err) => {
   console.error('Unexpected database error', err);
 });
 
+// Every SELECT issued through the shared pool is scoped to the current request.
+// Transaction writes are separately authorized before their controller executes.
+const { scopedSQL } = require('../access/context');
+pool.rawQuery = pool.query.bind(pool);
+pool.query = function(text, ...args) {
+  return pool.rawQuery(typeof text === 'string' ? scopedSQL(text) : { ...text, text: scopedSQL(text.text) }, ...args);
+};
 module.exports = pool;

@@ -1,3 +1,4 @@
+import useAccess from '../../hooks/useAccess';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { Upload, Download, X, Trash2, Paperclip, ArrowLeft } from 'lucide-react';
@@ -50,11 +51,12 @@ const ASSIGN_GROUP_DEFAULTS = [
 
 export default function EditTicket() {
   const { id } = useParams();
+  const {can}=useAccess();
   const navigate = useNavigate();
   const templateState = useTicketTemplate();
   const { user: currentUser } = useAuth();
   const { refetch: refetchNotifications } = useNotifications();
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = can('tickets.owner');
 
   const [fields, setFields]           = useState([]);
   const [categories, setCategories]   = useState([]);
@@ -163,9 +165,7 @@ export default function EditTicket() {
         await Promise.all([...pendingDeletes].map(attId => api.delete(`/attachments/${attId}`)));
         setPendingDeletes(new Set());
       }
-      if (saveNote.trim()) {
-        await api.post(`/tickets/${id}/comments`, { body: saveNote.trim(), type: 'WORK_NOTE' });
-      }
+
       const payload = {
         ...form,
         typeId:            form.typeId            || undefined,
@@ -176,6 +176,7 @@ export default function EditTicket() {
         assignedTo:        form.assignedTo        || null,
         ...(isAdmin ? { ticketOwner: form.ticketOwner || null } : {}),
         customData,
+        workNote:saveNote.trim(),
         ...templateState.payload,
       };
       await api.put(`/tickets/${id}`, payload);
@@ -325,7 +326,7 @@ export default function EditTicket() {
             <h1 className="ip-title">Edit: {ticketNumber}</h1>
           </div>
           <div className="ip-short-desc-head">{form.shortDescription}</div>
-          <TemplateSelector state={templateState} disabled={loading} />
+          <TemplateSelector state={templateState} disabled={loading || !can('tickets.template')} />
         </div>
         <div className="ip-header-actions">
           <button type="button" className="ip-btn" onClick={() => setAttachOpen(true)}>
@@ -335,7 +336,7 @@ export default function EditTicket() {
               <span className="ip-attach-count-badge">{totalAttachCount}</span>
             )}
           </button>
-          <button type="button" className="ip-btn ip-btn-danger" onClick={() => setDeleteModal(true)}>
+          <button type="button" className="ip-btn ip-btn-danger" disabled={!can('tickets.delete')} onClick={() => setDeleteModal(true)}>
             <Trash2 size={13} /> Delete
           </button>
           <button type="button" className="ip-btn" onClick={() => { setPendingDeletes(new Set()); navigate(-1); }} disabled={loading}>Cancel</button>
@@ -362,7 +363,7 @@ export default function EditTicket() {
                 <div className="ip-pair">
                   <span className="ip-lc">State</span>
                   <span className="ip-vc ip-input-cell">
-                    <select value={form.status} onChange={e => set('status', e.target.value)}>
+                    <select disabled={!can('tickets.status')} value={form.status} onChange={e => set('status', e.target.value)}>
                       {statusOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </span>
@@ -373,7 +374,7 @@ export default function EditTicket() {
                   <span className="ip-lc">{fieldByKey['customer_name']?.label || 'Customer'}{fieldByKey['customer_name']?.is_required && <span className="ip-req"> *</span>}</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
-                      value={form.customerName}
+                      disabled={!can('tickets.edit')} value={form.customerName}
                       onChange={v => set('customerName', v)}
                       options={customerOpts}
                       placeholder="Customer name"
@@ -385,6 +386,7 @@ export default function EditTicket() {
                   <span className="ip-lc">{fieldByKey['priority']?.label || 'Priority'}</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
+                      disabled={!can('tickets.priority')}
                       value={form.priority}
                       onChange={v => set('priority', v)}
                       options={priorityOpts}
@@ -398,7 +400,7 @@ export default function EditTicket() {
                   <span className="ip-lc">{fieldByKey['module_text']?.label || 'Module'}{fieldByKey['module_text']?.is_required && <span className="ip-req"> *</span>}</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
-                      value={form.moduleText}
+                      disabled={!can('tickets.edit')} value={form.moduleText}
                       onChange={v => set('moduleText', v)}
                       options={moduleOpts}
                       placeholder="Select module"
@@ -410,6 +412,7 @@ export default function EditTicket() {
                   <span className="ip-lc">{fieldByKey['impact']?.label || 'Impact'}</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
+                      disabled={!can('tickets.impact')}
                       value={form.impact}
                       onChange={v => set('impact', v)}
                       options={impactOpts}
@@ -423,6 +426,7 @@ export default function EditTicket() {
                   <span className="ip-lc">{fieldByKey['category_id']?.label || 'Category'}{fieldByKey['category_id']?.is_required && <span className="ip-req"> *</span>}</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
+                      disabled={!can('tickets.category')}
                       value={form.categoryId}
                       onChange={v => set('categoryId', v)}
                       options={categoryOpts}
@@ -434,6 +438,7 @@ export default function EditTicket() {
                   <span className="ip-lc">{fieldByKey['urgency']?.label || 'Urgency'}</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
+                      disabled={!can('tickets.urgency')}
                       value={form.urgency}
                       onChange={v => set('urgency', v)}
                       options={urgencyOpts}
@@ -450,7 +455,8 @@ export default function EditTicket() {
                       <input readOnly value="" placeholder="" />
                     ) : subcategories.length > 0 ? (
                       <SearchSelect
-                        value={form.subcategoryId}
+                        disabled={!can('tickets.category')}
+                      value={form.subcategoryId}
                         onChange={v => set('subcategoryId', v)}
                         options={subcategories.map(s => ({ value: String(s.id), label: s.name }))}
                         placeholder="Select subcategory"
@@ -464,6 +470,7 @@ export default function EditTicket() {
                   <span className="ip-lc">Classification</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
+                      disabled={!can('tickets.classification')}
                       value={form.classification}
                       onChange={v => set('classification', v)}
                       options={classOpts}
@@ -477,6 +484,7 @@ export default function EditTicket() {
                   <span className="ip-lc">Type</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
+                      disabled={!can('tickets.type')}
                       value={form.typeId}
                       onChange={v => set('typeId', v)}
                       options={typeOpts}
@@ -488,6 +496,7 @@ export default function EditTicket() {
                   <span className="ip-lc">{fieldByKey['assignment_group']?.label || 'Assignment Group'}</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
+                      disabled={!can('tickets.assign')}
                       value={form.assignmentGroupId || form.assignmentGroup}
                       onChange={v => {
                         const grp = groups.find(g => g.id === v);
@@ -509,6 +518,7 @@ export default function EditTicket() {
                   <span className="ip-lc">Assign to</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
+                      disabled={!can('tickets.assign')}
                       value={form.assignedTo}
                       onChange={v => set('assignedTo', v)}
                       options={[{ value: '', label: 'Unassigned' }, ...userOpts]}
@@ -559,7 +569,7 @@ export default function EditTicket() {
               <span>Short Description{fieldByKey['short_description']?.is_required && <span className="ip-req"> *</span>}</span>
             </div>
             <input
-              className="ip-standalone-input"
+              disabled={!can('tickets.edit')} className="ip-standalone-input"
               value={form.shortDescription}
               onChange={e => set('shortDescription', e.target.value)}
               maxLength={500}
@@ -573,7 +583,7 @@ export default function EditTicket() {
               <span>Full Description{fieldByKey['description']?.is_required && <span className="ip-req"> *</span>}</span>
             </div>
             <textarea
-              className="ip-standalone-textarea"
+              disabled={!can('tickets.edit')} className="ip-standalone-textarea"
               value={form.description}
               onChange={e => set('description', e.target.value)}
               rows={6}
@@ -581,7 +591,7 @@ export default function EditTicket() {
             />
           </div>
 
-          <TemplateFields template={templateState.template} values={templateState.values} onChange={templateState.setValues} disabled={loading} />
+          <TemplateFields template={templateState.template} values={templateState.values} onChange={templateState.setValues} disabled={loading || !can('tickets.template')} />
 
           {/* COMMENTS & WORK NOTES */}
           <div className="ip-section">
@@ -601,7 +611,7 @@ export default function EditTicket() {
                   : 'Add a work note or comment (optional)...'
                 }
                 value={saveNote}
-                onChange={e => setSaveNote(e.target.value)}
+                disabled={!can('comments.work_note')} onChange={e => setSaveNote(e.target.value)}
               />
             </div>
           </div>
@@ -634,7 +644,7 @@ export default function EditTicket() {
                 )}
                 <label className="ip-btn" style={{ cursor: 'pointer', fontSize: 12, padding: '6px 12px' }}>
                   <Upload size={13} /> Upload
-                  <input ref={fileInputRef} type="file" multiple hidden onChange={handleUpload} />
+                  <input ref={fileInputRef} type="file" disabled={!can('attachments.upload')} multiple hidden onChange={handleUpload} />
                 </label>
                 <button className="ip-btn-icon" onClick={() => setAttachOpen(false)} title="Close"><X size={14} /></button>
               </div>

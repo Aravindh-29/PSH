@@ -1,103 +1,62 @@
-const nodemailer = require('nodemailer');
 const pool = require('../db/pool');
+const settings = require('../services/emailSettings');
+const { need } = require('../access/policy');
+const { uuid } = require('../access/context');
 const { logAdminAudit } = require('./adminAuditController');
+const escape = value => String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-const MASKED = '••••••••';
-
-async function getConfig(req, res, next) {
-  try {
-    const { rows } = await pool.query('SELECT * FROM email_config WHERE id = 1');
-    const cfg = rows[0] || {};
-    res.json({
-      success: true,
-      config: {
-        smtp_host:   cfg.smtp_host   || '',
-        smtp_port:   cfg.smtp_port   || 587,
-        smtp_user:   cfg.smtp_user   || '',
-        smtp_pass:   cfg.smtp_pass   ? MASKED : '',
-        from_name:   cfg.from_name   || '',
-        from_email:  cfg.from_email  || '',
-        encryption:  cfg.encryption  || 'tls',
-        is_enabled:  cfg.is_enabled  ?? false,
-        updated_at:  cfg.updated_at  || null,
-      },
-    });
-  } catch (err) { next(err); }
+async function getConfig(req,res,next) {
+  try { res.json({success:true,config:settings.publicConfig((await pool.query('SELECT * FROM email_config WHERE id=1')).rows[0])}); }
+  catch(error){next(error);}
 }
-
-async function saveConfig(req, res, next) {
+async function saveConfig(req,res,next) {
+  const client=await pool.connect();
   try {
-    const { smtp_host, smtp_port, smtp_user, smtp_pass, from_name, from_email, encryption, is_enabled } = req.body;
-
-    let actualPass = smtp_pass;
-    if (smtp_pass === MASKED) {
-      const { rows } = await pool.query('SELECT smtp_pass FROM email_config WHERE id = 1');
-      actualPass = rows[0]?.smtp_pass || '';
-    }
-
-    await pool.query(`
-      INSERT INTO email_config (id, smtp_host, smtp_port, smtp_user, smtp_pass, from_name, from_email, encryption, is_enabled, updated_at, updated_by)
-      VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9)
-      ON CONFLICT (id) DO UPDATE SET
-        smtp_host  = $1, smtp_port   = $2, smtp_user  = $3, smtp_pass  = $4,
-        from_name  = $5, from_email  = $6, encryption = $7, is_enabled = $8,
-        updated_at = NOW(), updated_by = $9
-    `, [smtp_host || '', parseInt(smtp_port) || 587, smtp_user || '', actualPass || '',
-        from_name || '', from_email || '', encryption || 'tls', is_enabled !== false,
-        req.session.userId]);
-
-    logAdminAudit(req.session?.userId, 'EMAIL_CONFIG_UPDATED', 'email_config', '1', 'Email Configuration', { smtp_host, smtp_port, from_email, is_enabled }, req.ip);
-    res.json({ success: true, message: 'Email configuration saved' });
-  } catch (err) { next(err); }
+    await client.query('BEGIN');
+    const prior=(await client.query('SELECT * FROM email_config WHERE id=1 FOR UPDATE')).rows[0]||settings.defaults;
+    const {cfg,changed}=settings.prepare(req.body,prior);
+    if(!changed.length){need(req,'email.view');await client.query('ROLLBACK');return res.json({success:true,message:'No changes',config:settings.publicConfig(prior)});}
+    if(changed.some(name=>name!=='is_enabled'))need(req,'email.edit');
+    if(changed.includes('is_enabled'))need(req,'email.toggle');
+    const names=settings.fields,values=names.map(name=>cfg[name]);values.push(req.session.userId);
+    await client.query('UPDATE email_config SET '+names.map((name,i)=>name+'=$'+(i+1)).join(',')+',updated_at=NOW(),updated_by=$'+values.length+' WHERE id=1',values);
+    await client.query('COMMIT');
+    logAdminAudit(req.session.userId,'EMAIL_CONFIG_UPDATED','email_config','1','Email Configuration',{changedFields:changed},req.ip);
+    res.json({success:true,message:'Email configuration saved',config:settings.publicConfig(cfg)});
+  } catch(error){await client.query('ROLLBACK');next(error);} finally {client.release();}
 }
-
-async function testConfig(req, res, next) {
+async function testConfig(req,res,next) {
+  let transporter;
   try {
-    const { smtp_host, smtp_port, smtp_user, smtp_pass, from_name, from_email, encryption, test_to } = req.body;
-
-    let actualPass = smtp_pass;
-    if (smtp_pass === MASKED) {
-      const { rows } = await pool.query('SELECT smtp_pass FROM email_config WHERE id = 1');
-      actualPass = rows[0]?.smtp_pass || '';
-    }
-
-    const transporter = nodemailer.createTransport({
-      host: smtp_host,
-      port: parseInt(smtp_port) || 587,
-      secure: encryption === 'ssl',
-      requireTLS: encryption === 'tls',
-      auth: { user: smtp_user, pass: actualPass },
-      tls: { rejectUnauthorized: false },
-    });
-
+    need(req,'email.test');
+    const prior=(await pool.query('SELECT * FROM email_config WHERE id=1')).rows[0]||settings.defaults;
+    const {cfg,changed}=settings.prepare(req.body,prior,true);
+    if(changed.some(name=>name!=='is_enabled'))need(req,'email.edit');
+    const recipient=req.body.test_to||cfg.smtp_user;
+    if(!settings.address(recipient))throw Object.assign(new Error('Enter one valid test recipient email address.'),{status:400});
+    transporter=settings.transport(cfg,changed.length?undefined:async(next,previous)=>{await pool.query('UPDATE email_config SET oauth_refresh_token=$1 WHERE id=1 AND oauth_refresh_token=$2',[next,previous]);});
     await transporter.verify();
-
-    const recipient = test_to || smtp_user;
-    await transporter.sendMail({
-      from: `"${from_name || 'PSH Notifications'}" <${from_email || smtp_user}>`,
-      to: recipient,
-      subject: 'Test Email — Pure Storage Horizon',
-      html: `<!DOCTYPE html><html><head><style>
-body{margin:0;padding:0;font-family:Arial,sans-serif;background:#f1f5f9}
-.wrap{max-width:520px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden}
-.head{background:#0D1B2A;padding:20px 28px}
-.head h1{margin:0;color:#fff;font-size:18px;font-weight:700}
-.head span{color:#E85D04}
-.body{padding:24px 28px}
-</style></head><body>
-<div class="wrap">
-  <div class="head"><h1>Pure Storage <span>Horizon</span></h1></div>
-  <div class="body">
-    <p style="font-size:15px;font-weight:600;color:#0D1B2A;margin:0 0 12px">Email configuration is working!</p>
-    <p style="font-size:13px;color:#475569;margin:0">This test email confirms that your SMTP settings are configured correctly. Email notifications for ticket actions will now be delivered.</p>
-  </div>
-</div></body></html>`,
-    });
-
-    res.json({ success: true, message: `Test email sent to ${recipient}` });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
+    const result=await transporter.sendMail({from:{name:cfg.from_name||'SERV-IT Notifications',address:cfg.from_email},to:recipient,subject:'SERV-IT email configuration test',
+      html:'<h2>SERV-IT email configuration test</h2><p>The SMTP server accepted this test message for '+escape(recipient)+'.</p><p>This test does not enable or save notification settings.</p>'});
+    if(!result.accepted?.length)throw new Error('Message not accepted');
+    logAdminAudit(req.session.userId,'EMAIL_TEST_SENT','email_config','1','Email Configuration',{recipient},req.ip);
+    res.json({success:true,message:'SMTP server accepted the test email for '+recipient+'. Check the recipient mailbox and spam folder.'});
+  }catch(error){if(error.status)return next(error);res.status(400).json({success:false,message:settings.safeError(error)});}finally{transporter?.close();}
 }
-
-module.exports = { getConfig, saveConfig, testConfig };
+async function deliveries(req,res,next) {
+  try {
+    const {rows}=await pool.query('SELECT id,recipient,subject,status,attempts,last_error,created_at,sent_at FROM email_outbox ORDER BY created_at DESC LIMIT 50');
+    res.json({success:true,deliveries:rows});
+  }catch(error){next(error);}
+}
+async function retry(req,res,next) {
+  try {
+    need(req,'email.retry');
+    if(!uuid(req.params.id))throw Object.assign(new Error('Invalid delivery identifier.'),{status:400});
+    const result=await pool.query("UPDATE email_outbox SET status='pending',attempts=0,next_attempt_at=NOW(),last_error=NULL WHERE id=$1 AND status='failed' RETURNING id",[req.params.id]);
+    if(!result.rowCount)return res.status(409).json({success:false,message:'Only failed deliveries can be retried.'});
+    logAdminAudit(req.session.userId,'EMAIL_DELIVERY_RETRY','email_outbox',req.params.id,'Email delivery',{},req.ip);
+    res.json({success:true,message:'Delivery queued for retry.'});
+  }catch(error){next(error);}
+}
+module.exports={getConfig,saveConfig,testConfig,deliveries,retry};

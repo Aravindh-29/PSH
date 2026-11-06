@@ -1,3 +1,5 @@
+import useAccess from '../../hooks/useAccess';
+import AccessDenied from '../../components/AccessDenied';
 import { TemplateFields } from '../../components/TicketTemplate';
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
@@ -13,6 +15,8 @@ import './IncidentPage.css';
 
 export default function TicketDetail() {
   const { id } = useParams();
+  const {can,record}=useAccess();
+  const [denied,setDenied]=useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
@@ -36,7 +40,7 @@ export default function TicketDetail() {
         ));
       })
       .catch((err) => {
-        if (err?.response?.status === 403) navigate('/tickets');
+        if (err?.response?.status === 403) setDenied(true);
         else toast.error('Ticket not found');
       })
       .finally(() => setLoading(false));
@@ -55,11 +59,12 @@ export default function TicketDetail() {
 
 
   if (loading) return <div style={{ padding: 48, textAlign: 'center', color: '#64748b' }}>Loading ticket...</div>;
+  if (denied) return <AccessDenied />;
   if (!data) return <div style={{ padding: 48, textAlign: 'center', color: '#64748b' }}>Ticket not found.</div>;
 
   const { ticket, attachments, comments, audit } = data;
   const isAdmin = user?.role === 'admin';
-  const canEdit = isAdmin || ticket.created_by === user?.id || ticket.assigned_to === user?.id;
+  const canEdit = ['edit','priority','impact','urgency','category','type','classification','template','status','assign','owner'].some(key=>record('tickets.'+key,ticket));
 
   const fmtBytes = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KB` : `${(n/1048576).toFixed(1)} MB`;
 
@@ -145,7 +150,7 @@ export default function TicketDetail() {
               <Link to={`/tickets/${id}/edit`} className="ip-btn">
                 <Pencil size={13} /> Edit
               </Link>
-              <button className="ip-btn ip-btn-danger" onClick={() => setDeleteModal(true)}>
+              <button disabled={!record('tickets.delete',ticket)} title={can('tickets.delete')?'Delete':"You don't have permission to perform this action."} className="ip-btn ip-btn-danger" onClick={() => setDeleteModal(true)}>
                 <Trash2 size={13} /> Delete
               </button>
             </>
@@ -317,7 +322,7 @@ export default function TicketDetail() {
                       const isFirst = idx === 0;
                       const isLast  = idx === arr.length - 1;
                       const isWorkNote = c.type === 'WORK_NOTE';
-                      const roleLabel = c.author_role === 'admin' ? 'Admin' : 'Employee';
+                      const roleLabel = c.author_role_name || (c.author_role === 'admin' ? 'Admin' : 'Employee');
                       return (
                         <div key={c.id} className={`ct-item${isLast ? ' ct-last' : ''}${isWorkNote ? ' ct-work-note' : ''}${isFirst ? ' ct-first' : ''}`}>
                           <div className="ct-gutter">
@@ -395,7 +400,7 @@ export default function TicketDetail() {
               </span>
               <div className="attach-popup-actions">
                 {attachments.length > 0 && (
-                  <button className="ip-btn" style={{ fontSize: 12, padding: '6px 12px' }} onClick={handleDownloadZip} title="Download all as ZIP">
+                  <button className="ip-btn" style={{ fontSize: 12, padding: '6px 12px' }} disabled={!can('attachments.zip')} onClick={handleDownloadZip} title="Download all as ZIP">
                     <Download size={13} /> Download All
                   </button>
                 )}

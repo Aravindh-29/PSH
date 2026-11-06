@@ -10,6 +10,7 @@ router.put('/me', requireAuth, userCtrl.updateMe);
 
 router.get('/', requireAuth, userCtrl.list);
 router.post('/', requireAdmin, userCtrl.create);
+router.get('/:id/activity', requireAuth, userCtrl.activity);
 router.get('/:id', requireAdmin, userCtrl.getOne);
 router.put('/:id', requireAdmin, userCtrl.update);
 router.post('/:id/reset-password', requireAdmin, userCtrl.resetPassword);

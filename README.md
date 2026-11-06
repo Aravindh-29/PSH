@@ -5,7 +5,7 @@ Internal IT ticketing platform built with React 18 + Node.js/Express + PostgreSQ
 - **Frontend** — React 18, Vite, Recharts, ExcelJS
 - **Backend** — Node.js, Express, Argon2id passwords, HTTP-only session cookies
 - **Database** — PostgreSQL 14+, JSONB custom fields, full audit logging
-- **Auth** — Role-based (Admin / Employee), session-based + optional SSO (OIDC)
+- **Auth** — Configurable roles and per-action permissions, scoped team access, session-based authentication and optional SSO (OIDC)
 
 Default credentials after first boot:
 | Role | Username | Password |
@@ -25,6 +25,7 @@ Create a `.env` file at the project root (copy from `.env.example`):
 # ── Required ──────────────────────────────────────────────────────────────────
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/psh_ticketing
 SESSION_SECRET=replace-with-64-char-random-hex-string
+EMAIL_ENCRYPTION_KEY=replace-with-generated-32-byte-base64-key
 
 # ── Server ────────────────────────────────────────────────────────────────────
 PORT=5000
@@ -823,3 +824,43 @@ When `SSO_AUTO_PROVISION=false` (default), the admin must create the user accoun
 | `sso_user_not_found` after login | Email not found + auto-provision off | Admin must pre-create the user in Admin → Users with the exact email from the identity provider; or set `SSO_AUTO_PROVISION=true` |
 | SSO user can't log in with password | SSO-provisioned users have no password | Use SSO login; or admin can set a password via the Users management page |
 | OIDC discovery fails at startup | Provider URL unreachable | Check `SSO_ISSUER_URL` is correct and the server has outbound internet access to the provider |
+
+
+## Email configuration and delivery
+
+Generate a persistent encryption key before starting the upgraded server:
+
+```sh
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+Put the generated value in `EMAIL_ENCRYPTION_KEY` in the root `.env` file. Keep the key in your deployment secret manager and with protected backups. Do not commit it or regenerate it on every restart. Losing it makes saved SMTP/OAuth credentials unreadable. The startup migration encrypts legacy SMTP passwords and creates the delivery queue automatically.
+
+Open **Email Config** and provide the approved SMTP host, port, encryption and sender address. Choose one authentication method:
+
+| Method | Required details |
+| --- | --- |
+| SMTP password / app password | SMTP username and provider-approved password; app passwords require provider support |
+| OAuth2 | Account email, client ID, client secret, refresh token and HTTPS token endpoint |
+| No authentication | An approved internal SMTP relay that accepts this deployment |
+
+Microsoft 365's preset uses OAuth2. Replace `YOUR_TENANT_ID` in its token endpoint. Obtain delegated SMTP authorization and a refresh token from the identity administrator; this application does not perform initial OAuth consent. Gmail uses its OAuth token endpoint. See [Microsoft's SMTP OAuth instructions](https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth) and [Nodemailer's OAuth2 reference](https://nodemailer.com/smtp/oauth2). Rotated refresh tokens are stored encrypted when testing saved settings or delivering queued messages.
+
+TLS certificates are verified. For a private CA, supply a PEM CA certificate under Advanced TLS settings; this trust also applies to the OAuth token endpoint. An optional TLS server name supports SMTP connections by IP. Unencrypted mode is for approved trusted networks only.
+
+Blank credential fields preserve saved secrets; clearing is explicit. Changing the SMTP server or account requires entering credentials again. Save and enable are distinct permissions. Testing can use saved settings with only the Test permission; overriding settings also needs Edit permission. Test success means SMTP acceptance, not guaranteed inbox delivery.
+
+Enabled event notifications enter the PostgreSQL outbox. A worker polls every 15 seconds, retries failures for up to three attempts with backoff, and records acceptance or safe failure details in delivery history. Delivery history and manual retries have their own permissions; retry also requires the Test permission prerequisite. Disabled configurations pause queued delivery. SMTP cannot guarantee exactly-once inbox delivery after an ambiguous connection failure; administrators should review history before a manual resend. Retain and protect outbox data according to your organization's retention requirements.
+
+Validation commands (PostgreSQL and OpenSSL required for the email suite):
+
+```sh
+node server/scripts/test-email.js
+node server/scripts/test-rbac.js
+node server/scripts/test-templates.js
+cd client
+node scripts/test-markdown.mjs
+npm run build
+```
+
+The email suite uses a disposable database schema and loopback SMTP/HTTPS services. On Windows it uses Git's OpenSSL; set `TEST_OPENSSL` if installed elsewhere. The RBAC/Template suites require `TEST_USERNAME` and `TEST_PASSWORD` for an authorized local administrator with MFA disabled. Test accounts, records and schemas are removed afterward. Real provider delivery requires your actual approved credentials and a mailbox test.

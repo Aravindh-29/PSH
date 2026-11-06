@@ -1,3 +1,4 @@
+import useAccess from '../../hooks/useAccess';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Upload, X, Paperclip, Download } from 'lucide-react';
@@ -34,6 +35,7 @@ const MODULE_DEFAULTS = [
 
 export default function CreateTicket() {
   const navigate = useNavigate();
+  const {can}=useAccess();
   const templateState = useTicketTemplate();
   const location = useLocation();
   const { user } = useAuth();
@@ -77,6 +79,7 @@ export default function CreateTicket() {
       setTicketTypes(tt.data.types || []);
       setUsers(u.data.users || []);
       setGroups((g.data.groups || []).filter(gr => gr.is_active));
+      if(user?.permissions?.['tickets.view']==='groups'){const selected=(g.data.groups||[]).find(gr=>gr.is_active&&user.managedGroups?.includes(gr.id));if(selected)setForm(p=>({...p,assignmentGroup:selected.name,assignmentGroupId:selected.id}));}
       setNextNumber(''); // cleared until user selects a type
     }).catch(() => {});
   }, [location.key]); // re-fetch on every navigation to this page so config changes reflect immediately
@@ -264,7 +267,7 @@ export default function CreateTicket() {
               : <span className="ip-ticket-num-preview ip-ticket-num-pending">Select type…</span>
             }
           </div>
-          <TemplateSelector state={templateState} disabled={loading} />
+          <TemplateSelector state={templateState} disabled={loading || !can('tickets.template')} />
         </div>
         <div className="ip-header-actions">
           <button type="button" className="ip-btn" onClick={() => setAttachOpen(true)}>
@@ -419,6 +422,7 @@ export default function CreateTicket() {
                   <span className="ip-lc">{fieldByKey['assignment_group']?.label || 'Assignment Group'}</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
+                      disabled={!can('tickets.assign')}
                       value={form.assignmentGroupId || form.assignmentGroup}
                       onChange={v => {
                         const grp = groups.find(g => g.id === v);
@@ -441,6 +445,7 @@ export default function CreateTicket() {
                   <span className="ip-lc">Assign to</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
+                      disabled={!can('tickets.assign')}
                       value={form.assignedTo}
                       onChange={v => set('assignedTo', v)}
                       options={[{ value: '', label: 'Unassigned' }, ...userOpts]}

@@ -1,3 +1,4 @@
+import useAccess from '../../hooks/useAccess';
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, ChevronDown, ChevronsUpDown, Calendar, ChevronDown as ChevDown } from 'lucide-react';
@@ -44,6 +45,7 @@ function SortIcon({ field, sort }) {
 }
 
 export default function TicketList({ myTickets }) {
+  const {can,record}=useAccess();
   const [urlParams, setUrlParams] = useSearchParams();
 
   // Initialise from URL params so dashboard Quick Access links auto-filter
@@ -185,12 +187,12 @@ export default function TicketList({ myTickets }) {
           <h1>{myTickets ? (activeTab === 'group' ? 'Group Tickets' : 'My Tickets') : 'All Tickets'}</h1>
           <p>{pagination.total} total tickets</p>
         </div>
-        <Link to="/tickets/new" className="btn-create">
+        {can('tickets.create') && <Link to="/tickets/new" className="btn-create">
           <Plus size={15} /> New Ticket
-        </Link>
+        </Link>}
       </div>
 
-      {myTickets && hasGroups && (
+      {myTickets && hasGroups && can('tickets.group_view') && (
         <div className="tl-tabs">
           <button
             className={`tl-tab${activeTab === 'mine' ? ' tl-tab-active' : ''}`}
@@ -321,8 +323,8 @@ export default function TicketList({ myTickets }) {
                 <td>
                   <div className="tl-actions">
                     <Link to={`/tickets/${t.id}`} className="tl-action-btn" title="View"><Eye size={14} /></Link>
-                    <Link to={`/tickets/${t.id}/edit`} className="tl-action-btn" title="Edit"><Pencil size={14} /></Link>
-                    <button className="tl-action-btn danger" title="Delete" onClick={() => setDeleteId(t.id)}><Trash2 size={14} /></button>
+                    {['edit','priority','status','assign','template','category','type','impact','urgency','classification','owner'].some(key=>record('tickets.'+key,t)) && <Link to={`/tickets/${t.id}/edit`} className="tl-action-btn" title="Edit"><Pencil size={14} /></Link>}
+                    <button disabled={!record('tickets.delete',t)} className="tl-action-btn danger" title={record('tickets.delete',t)?'Delete':"You don't have permission to perform this action."} onClick={() => setDeleteId(t.id)}><Trash2 size={14} /></button>
                   </div>
                 </td>
               </tr>

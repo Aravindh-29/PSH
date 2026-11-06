@@ -1,33 +1,28 @@
-const nodemailer = require('nodemailer');
+const delivery = require('./emailDelivery');
 const pool = require('../db/pool');
 const logger = require('../utils/logger');
 
 async function loadConfig() {
   const { rows } = await pool.query('SELECT * FROM email_config WHERE id = 1');
-  return rows[0] || null;
+  const cfg=rows[0];
+  if(!cfg)return null;
+  const branding=(await pool.query('SELECT customize,organization_name,service_desk_name FROM organization_branding WHERE id=1')).rows[0];
+  return {...cfg,brand_name:branding?.customize?(branding.organization_name||branding.service_desk_name||'SERV-IT'):'SERV-IT'};
 }
 
-function createTransporter(cfg) {
-  return nodemailer.createTransport({
-    host: cfg.smtp_host,
-    port: parseInt(cfg.smtp_port) || 587,
-    secure: cfg.encryption === 'ssl',
-    requireTLS: cfg.encryption === 'tls',
-    auth: { user: cfg.smtp_user, pass: cfg.smtp_pass },
-    tls: { rejectUnauthorized: false },
-  });
-}
-
+const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const safeTicket = ticket => Object.fromEntries(Object.entries(ticket).map(([key,value])=>[key,typeof value==='string'?escape(value):value]));
 function ticketUrl(ticketId) {
-  const base = process.env.CLIENT_URL || 'http://localhost:5173';
-  return `${base}/tickets/${ticketId}`;
+  const base=new URL(process.env.CLIENT_URL || 'http://localhost:5173');
+  if(!['http:','https:'].includes(base.protocol))throw new Error('Invalid CLIENT_URL');
+  return escape(new URL('/tickets/'+encodeURIComponent(ticketId),base).href);
 }
 
 function row(label, value) {
   return `<div class="field-row"><span class="label">${label}</span><span class="value">${value || '—'}</span></div>`;
 }
 
-function baseTemplate(title, bodyHtml) {
+function baseTemplate(title, bodyHtml, cfg) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 body{margin:0;padding:0;font-family:Inter,Arial,sans-serif;background:#f1f5f9}
 .wrap{max-width:600px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)}
@@ -47,32 +42,22 @@ body{margin:0;padding:0;font-family:Inter,Arial,sans-serif;background:#f1f5f9}
 p{color:#475569;font-size:13px;margin:0 0 14px;line-height:1.6}
 </style></head><body>
 <div class="wrap">
-  <div class="header"><h1>Pure Storage <span>Horizon</span></h1></div>
+  <div class="header"><h1>${escape(cfg?.brand_name||'SERV-IT')}</h1></div>
   <div class="body">
     <div class="title">${title}</div>
     ${bodyHtml}
   </div>
-  <div class="footer">Pure Storage Horizon &mdash; Internal Ticketing System &mdash; Do not reply to this email</div>
+  <div class="footer">${escape(cfg?.brand_name||'SERV-IT')} &mdash; Service Desk &mdash; Do not reply to this email</div>
 </div></body></html>`;
 }
 
 async function sendMail(cfg, to, subject, html) {
-  if (!cfg?.is_enabled || !to) return;
-  try {
-    const transporter = createTransporter(cfg);
-    await transporter.sendMail({
-      from: `"${cfg.from_name || 'PSH Notifications'}" <${cfg.from_email}>`,
-      to,
-      subject,
-      html,
-    });
-    logger.info(`Email sent to ${to}: ${subject}`);
-  } catch (err) {
-    logger.error(`Email send failed to ${to}: ${err.message}`);
-  }
+  return delivery.enqueue(cfg,to,subject,html);
 }
 
 async function notifyTicketCreated(ticket, actorName, recipientEmail) {
+  actorName=escape(actorName);
+  ticket=safeTicket(ticket);
   const cfg = await loadConfig();
   const html = baseTemplate(`New Ticket Assigned: ${ticket.ticket_number}`, `
     <p>${actorName} created a new ticket and assigned it to you.</p>
@@ -83,11 +68,13 @@ async function notifyTicketCreated(ticket, actorName, recipientEmail) {
     ${row('Status', ticket.status)}
     ${row('Created By', actorName)}
     <a href="${ticketUrl(ticket.id)}" class="btn">View Ticket &rarr;</a>
-  `);
+  `, cfg);
   await sendMail(cfg, recipientEmail, `[${ticket.ticket_number}] New ticket assigned to you`, html);
 }
 
 async function notifyTicketAssigned(ticket, actorName, recipientEmail) {
+  actorName=escape(actorName);
+  ticket=safeTicket(ticket);
   const cfg = await loadConfig();
   const html = baseTemplate(`Ticket Assigned: ${ticket.ticket_number}`, `
     <p>${actorName} has assigned ticket <strong>${ticket.ticket_number}</strong> to you.</p>
@@ -97,12 +84,15 @@ async function notifyTicketAssigned(ticket, actorName, recipientEmail) {
     ${row('Priority', ticket.priority)}
     ${row('Status', ticket.status)}
     <a href="${ticketUrl(ticket.id)}" class="btn">View Ticket &rarr;</a>
-  `);
+  `, cfg);
   await sendMail(cfg, recipientEmail, `[${ticket.ticket_number}] Ticket assigned to you by ${actorName}`, html);
 }
 
 async function notifyStatusChanged(ticket, oldStatus, newStatus, actorName, recipientEmails) {
+  actorName=escape(actorName);
+  ticket=safeTicket(ticket);
   const cfg = await loadConfig();
+  oldStatus=escape(oldStatus);newStatus=escape(newStatus);
   const html = baseTemplate(`Status Updated: ${ticket.ticket_number}`, `
     <p>${actorName} updated the status of ticket <strong>${ticket.ticket_number}</strong>.</p>
     ${row('Ticket ID', `<strong>${ticket.ticket_number}</strong>`)}
@@ -116,13 +106,15 @@ async function notifyStatusChanged(ticket, oldStatus, newStatus, actorName, reci
       </div>
     </div>
     <a href="${ticketUrl(ticket.id)}" class="btn">View Ticket &rarr;</a>
-  `);
-  for (const email of (recipientEmails || []).filter(Boolean)) {
+  `, cfg);
+  for (const email of [...new Set((recipientEmails || []).filter(Boolean).map(email=>email.toLowerCase()))]) {
     await sendMail(cfg, email, `[${ticket.ticket_number}] Status changed to ${newStatus}`, html);
   }
 }
 
 async function notifyTicketResolved(ticket, actorName, recipientEmails) {
+  actorName=escape(actorName);
+  ticket=safeTicket(ticket);
   const cfg = await loadConfig();
   const html = baseTemplate(`Ticket Resolved: ${ticket.ticket_number}`, `
     <p>${actorName} has resolved ticket <strong>${ticket.ticket_number}</strong>.</p>
@@ -131,14 +123,17 @@ async function notifyTicketResolved(ticket, actorName, recipientEmails) {
     ${row('Customer', ticket.customer_name)}
     ${row('Resolved By', actorName)}
     <a href="${ticketUrl(ticket.id)}" class="btn">View Ticket &rarr;</a>
-  `);
-  for (const email of (recipientEmails || []).filter(Boolean)) {
+  `, cfg);
+  for (const email of [...new Set((recipientEmails || []).filter(Boolean).map(email=>email.toLowerCase()))]) {
     await sendMail(cfg, email, `[${ticket.ticket_number}] Ticket has been resolved`, html);
   }
 }
 
 async function notifyCommentAdded(ticket, commentBody, actorName, commentType, recipientEmails) {
+  actorName=escape(actorName);
+  ticket=safeTicket(ticket);
   const cfg = await loadConfig();
+  commentBody=escape(commentBody).replace(/\r?\n/g,'<br>');
   const typeLabel = commentType === 'WORK_NOTE' ? 'Work Note' : 'Comment';
   const html = baseTemplate(`New ${typeLabel}: ${ticket.ticket_number}`, `
     <p>${actorName} added a ${typeLabel.toLowerCase()} to ticket <strong>${ticket.ticket_number}</strong>.</p>
@@ -149,8 +144,8 @@ async function notifyCommentAdded(ticket, commentBody, actorName, commentType, r
       <div style="font-size:13px;color:#334155;line-height:1.6">${commentBody}</div>
     </div>
     <a href="${ticketUrl(ticket.id)}" class="btn">View Ticket &rarr;</a>
-  `);
-  for (const email of (recipientEmails || []).filter(Boolean)) {
+  `, cfg);
+  for (const email of [...new Set((recipientEmails || []).filter(Boolean).map(email=>email.toLowerCase()))]) {
     await sendMail(cfg, email, `[${ticket.ticket_number}] New ${typeLabel.toLowerCase()} from ${actorName}`, html);
   }
 }
@@ -170,6 +165,8 @@ function slaBar(pct, stage) {
 }
 
 async function notifySLAWarn(ticket, slaName, pct, remainingMinutes, recipientEmails) {
+  slaName=escape(slaName);
+  ticket=safeTicket(ticket);
   const cfg = await loadConfig();
   const rem = remainingMinutes > 60
     ? `${Math.floor(remainingMinutes / 60)}h ${Math.round(remainingMinutes % 60)}m`
@@ -182,13 +179,15 @@ async function notifySLAWarn(ticket, slaName, pct, remainingMinutes, recipientEm
     ${row('Remaining', `<strong style="color:#f59e0b">${rem}</strong>`)}
     ${slaBar(pct, 'warn')}
     <a href="${ticketUrl(ticket.id)}" class="btn">View Ticket &rarr;</a>
-  `);
-  for (const email of (recipientEmails || []).filter(Boolean)) {
+  `, cfg);
+  for (const email of [...new Set((recipientEmails || []).filter(Boolean).map(email=>email.toLowerCase()))]) {
     await sendMail(cfg, email, `⚠ SLA Warning [${ticket.ticket_number}] — ${rem} remaining`, html);
   }
 }
 
 async function notifySLACritical(ticket, slaName, pct, remainingMinutes, recipientEmails) {
+  slaName=escape(slaName);
+  ticket=safeTicket(ticket);
   const cfg = await loadConfig();
   const rem = remainingMinutes > 60
     ? `${Math.floor(remainingMinutes / 60)}h ${Math.round(remainingMinutes % 60)}m`
@@ -201,13 +200,15 @@ async function notifySLACritical(ticket, slaName, pct, remainingMinutes, recipie
     ${row('Remaining', `<strong style="color:#f97316">${rem}</strong>`)}
     ${slaBar(pct, 'critical')}
     <a href="${ticketUrl(ticket.id)}" class="btn" style="background:#f97316">View Ticket &rarr;</a>
-  `);
-  for (const email of (recipientEmails || []).filter(Boolean)) {
+  `, cfg);
+  for (const email of [...new Set((recipientEmails || []).filter(Boolean).map(email=>email.toLowerCase()))]) {
     await sendMail(cfg, email, `🔴 SLA Critical [${ticket.ticket_number}] — only ${rem} remaining`, html);
   }
 }
 
 async function notifySLABreach(ticket, slaName, overdueMinutes, recipientEmails) {
+  slaName=escape(slaName);
+  ticket=safeTicket(ticket);
   const cfg = await loadConfig();
   const over = overdueMinutes > 60
     ? `${Math.floor(overdueMinutes / 60)}h ${Math.round(overdueMinutes % 60)}m`
@@ -220,8 +221,8 @@ async function notifySLABreach(ticket, slaName, overdueMinutes, recipientEmails)
     ${row('Overdue By', `<strong style="color:#dc2626">${over}</strong>`)}
     ${slaBar(105, 'breached')}
     <a href="${ticketUrl(ticket.id)}" class="btn" style="background:#dc2626">View Ticket &rarr;</a>
-  `);
-  for (const email of (recipientEmails || []).filter(Boolean)) {
+  `, cfg);
+  for (const email of [...new Set((recipientEmails || []).filter(Boolean).map(email=>email.toLowerCase()))]) {
     await sendMail(cfg, email, `🚨 SLA BREACHED [${ticket.ticket_number}] — overdue by ${over}`, html);
   }
 }

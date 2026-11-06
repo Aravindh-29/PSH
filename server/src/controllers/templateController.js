@@ -4,7 +4,7 @@ const { logAdminAudit } = require('./adminAuditController');
 
 async function list(req, res, next) {
   try {
-    const adminView = req.session.role === 'admin' && req.query.all === 'true';
+    const adminView = (req.access.admin || req.access.permissions['templates.view']) && req.query.all === 'true';
     const { rows } = await pool.query(`SELECT id, name, fields, is_active, updated_at FROM ticket_templates ${adminView ? '' : 'WHERE is_active = true'} ORDER BY LOWER(name)`);
     res.json({ success: true, templates: rows });
   } catch (error) { next(error); }

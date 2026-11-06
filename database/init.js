@@ -64,6 +64,8 @@ async function init() {
       );
     }
 
+    await require('../server/src/access/init')(appClient);
+    await require('../server/src/services/emailSettings').init(appClient);
     await appClient.end();
 
     console.log('\n✅ Database initialized successfully!');

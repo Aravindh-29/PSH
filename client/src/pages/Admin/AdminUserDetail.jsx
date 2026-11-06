@@ -92,7 +92,7 @@ export default function AdminUserDetail() {
               <h1 style={{ marginBottom: 3 }}>{user.full_name}</h1>
               <p style={{ margin: 0 }}>
                 {user.email} &nbsp;·&nbsp; @{user.username} &nbsp;·&nbsp;
-                <span className={`role-badge ${user.role}`}>{user.role}</span>
+                <span className={`role-badge ${user.role_name||user.role}`}>{user.role_name||user.role}</span>
               </p>
             </div>
           </div>

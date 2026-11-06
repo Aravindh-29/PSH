@@ -1,3 +1,4 @@
+import useAccess from '../../hooks/useAccess';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -75,8 +76,9 @@ const SUMMARY_CARDS = [
 ];
 
 export default function Reports() {
+  const {can}=useAccess();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = can('reports.global');
   const [mode, setMode] = useState('personal');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -140,6 +142,8 @@ export default function Reports() {
   });
 
   const exportToExcel = useCallback(async () => {
+    if(!can('reports.export')) return toast.error("You don't have permission to perform this action.");
+    await api.get('/reports?export=true');
     if (!data) return;
     setExporting(true);
 
@@ -469,7 +473,7 @@ export default function Reports() {
       {/* Header */}
       <div className="rpt-header">
         <div>
-          <h1 className="rpt-title">My Reports</h1>
+          <h1 className="rpt-title">{user?.permissions?.['reports.view']==='groups'?'Team Reports':'My Reports'}</h1>
           <p className="rpt-sub">Personal activity overview for {user?.fullName}</p>
         </div>
         <div className="rpt-header-right">
@@ -529,7 +533,7 @@ export default function Reports() {
           <button
             className="rpt-export-btn"
             onClick={exportToExcel}
-            disabled={!data || exporting}
+            disabled={!can('reports.export') || !data || exporting}
           >
             <Download size={15} />
             {exporting ? 'Exporting…' : 'Export to Excel'}
@@ -689,7 +693,7 @@ export default function Reports() {
           <div className="rpt-table-card">
             <div className="rpt-chart-header">
               <h3>All My Tickets ({allTickets.length})</h3>
-              <button className="rpt-export-btn rpt-export-sm" onClick={exportToExcel} disabled={!data || exporting}>
+              <button className="rpt-export-btn rpt-export-sm" onClick={exportToExcel} disabled={!can('reports.export') || !data || exporting}>
                 <Download size={13} />
                 Export
               </button>

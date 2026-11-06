@@ -247,3 +247,20 @@
 /* ── Spinner ─────────────────────────────────────────────────── */
 .ec-spin { animation: ec-rotate 0.8s linear infinite; }
 @keyframes ec-rotate { to { transform: rotate(360deg); } }
+
+.ec-field {margin-bottom:12px;}
+.ec-field textarea {width:100%;border:1px solid #dce4ee;border-radius:7px;padding:10px;font:12px/1.5 monospace;box-sizing:border-box;}
+.ec-field select {padding:10px;border:1px solid #dce4ee;border-radius:7px;max-width:100%;background:white;}
+.ec-clear {display:flex!important;flex-direction:row;gap:8px;font-size:11px!important;text-transform:none!important;align-items:center;}
+.ec-clear input {width:auto!important;}
+.ec-page button:disabled,.ec-page input:disabled,.ec-page select:disabled {opacity:.55;cursor:not-allowed;}
+.ec-warning {color:#9a3412;background:#fff3e9;padding:12px;border-radius:7px;font-size:12px;}
+.ec-history-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.ec-history {overflow-x:auto;}
+.ec-history table {width:100%;border-collapse:collapse;font-size:12px;}
+.ec-history th,.ec-history td {padding:10px;border-bottom:1px solid #e5eaf1;text-align:left;vertical-align:top;}
+.ec-history th {background:#f8fafc;}
+.ec-page summary {cursor:pointer;font-weight:600;}
+.ec-page .ec-actions {align-items:center;justify-content:space-between;}
+.ec-enable-toggle:has(input:focus-visible) {outline:2px solid var(--orange);outline-offset:4px;}
+.ec-page .ec-enable-toggle input[type=checkbox] {display:block;position:absolute;opacity:0;width:1px;height:1px;}

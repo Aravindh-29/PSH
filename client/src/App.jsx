@@ -1,6 +1,8 @@
 import React from 'react';
+import useAccess from './hooks/useAccess';
+import AccessDenied from './components/AccessDenied';
 import { BrandingProvider } from './context/BrandingContext';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/Login/LoginPage';
@@ -34,12 +36,12 @@ function RequireAuth({ children }) {
   return children;
 }
 
-function RequireAdmin({ children }) {
-  const { user } = useAuth();
-  if (user?.role !== 'admin') return <Navigate to="/" replace />;
-  return children;
+function RequirePermission({ children, permission }) {
+  const {can,any}=useAccess();
+  const allowed=Array.isArray(permission)?any(permission):can(permission);
+  return allowed ? children : <AccessDenied />;
 }
-
+const configPermissions=['fields.view','categories.view','types.view','sla_config.view','templates.view','branding.view','roles.view'];
 function AppRoutes() {
   const { user, loading } = useAuth();
   if (loading) return null;
@@ -49,27 +51,27 @@ function AppRoutes() {
       <Route path="/mfa/setup"  element={user ? <Navigate to="/" replace /> : <MFASetup />} />
       <Route path="/mfa/verify" element={user ? <Navigate to="/" replace /> : <MFAVerify />} />
       <Route path="/" element={<RequireAuth><AppLayout /></RequireAuth>}>
-        <Route index element={<Dashboard />} />
-        <Route path="tickets" element={<TicketList />} />
-        <Route path="tickets/new" element={<CreateTicket />} />
-        <Route path="tickets/:id" element={<TicketDetail />} />
-        <Route path="tickets/:id/edit" element={<EditTicket />} />
-        <Route path="my-tickets" element={<TicketList myTickets />} />
-        <Route path="admin/my-dashboard" element={<RequireAdmin><Dashboard personal /></RequireAdmin>} />
-        <Route path="admin/users" element={<RequireAdmin><AdminUsers /></RequireAdmin>} />
-        <Route path="admin/user-tickets" element={<RequireAdmin><UserWiseTickets /></RequireAdmin>} />
-        <Route path="admin/user-tickets/:userId" element={<RequireAdmin><AdminUserDetail /></RequireAdmin>} />
-        <Route path="admin/modules" element={<RequireAdmin><AdminModules /></RequireAdmin>} />
-        <Route path="admin/groups" element={<RequireAdmin><Groups /></RequireAdmin>} />
-        <Route path="audit-logs" element={<RequireAdmin><AuditLogs /></RequireAdmin>} />
-        <Route path="admin/sso" element={<RequireAdmin><SSOConfig /></RequireAdmin>} />
-        <Route path="admin/email" element={<RequireAdmin><EmailConfig /></RequireAdmin>} />
-        <Route path="reports" element={<Reports />} />
-        <Route path="my-query" element={<MyQuery />} />
-        <Route path="knowledge-base" element={<KnowledgeBase />} />
-        <Route path="knowledge-base/:id" element={<KBArticle />} />
-        <Route path="profile" element={<Profile />} />
-        <Route path="qa-analysis" element={<RequireAdmin><QAAnalysis /></RequireAdmin>} />
+        <Route index element={<RequirePermission permission="dashboard.view"><Dashboard /></RequirePermission>} />
+        <Route path="tickets" element={<RequirePermission permission="tickets.view"><TicketList /></RequirePermission>} />
+        <Route path="tickets/new" element={<RequirePermission permission="tickets.create"><CreateTicket /></RequirePermission>} />
+        <Route path="tickets/:id" element={<RequirePermission permission="tickets.view"><TicketDetail /></RequirePermission>} />
+        <Route path="tickets/:id/edit" element={<RequirePermission permission={['tickets.edit','tickets.priority','tickets.impact','tickets.urgency','tickets.category','tickets.type','tickets.classification','tickets.template','tickets.status','tickets.assign','tickets.owner']}><EditTicket /></RequirePermission>} />
+        <Route path="my-tickets" element={<RequirePermission permission="tickets.view"><TicketList myTickets /></RequirePermission>} />
+        <Route path="admin/my-dashboard" element={<RequirePermission permission={'dashboard.view'}><Dashboard personal /></RequirePermission>} />
+        <Route path="admin/users" element={<RequirePermission permission={'users.view'}><AdminUsers /></RequirePermission>} />
+        <Route path="admin/user-tickets" element={<RequirePermission permission={'users.tickets'}><UserWiseTickets /></RequirePermission>} />
+        <Route path="admin/user-tickets/:userId" element={<RequirePermission permission={'users.tickets'}><AdminUserDetail /></RequirePermission>} />
+        <Route path="admin/modules" element={<RequirePermission permission={configPermissions}><AdminModules /></RequirePermission>} />
+        <Route path="admin/groups" element={<RequirePermission permission={'groups.view'}><Groups /></RequirePermission>} />
+        <Route path="audit-logs" element={<RequirePermission permission={'audit.view'}><AuditLogs /></RequirePermission>} />
+        <Route path="admin/sso" element={<RequirePermission permission={'sso.view'}><SSOConfig /></RequirePermission>} />
+        <Route path="admin/email" element={<RequirePermission permission={'email.view'}><EmailConfig /></RequirePermission>} />
+        <Route path="reports" element={<RequirePermission permission="reports.view"><Reports /></RequirePermission>} />
+        <Route path="my-query" element={<RequirePermission permission="query.view"><MyQuery /></RequirePermission>} />
+        <Route path="knowledge-base" element={<RequirePermission permission="kb.view"><KnowledgeBase /></RequirePermission>} />
+        <Route path="knowledge-base/:id" element={<RequirePermission permission="kb.view"><KBArticle /></RequirePermission>} />
+        <Route path="profile" element={<RequirePermission permission="profile.view"><Profile /></RequirePermission>} />
+        <Route path="qa-analysis" element={<RequirePermission permission={'qa.view'}><QAAnalysis /></RequirePermission>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

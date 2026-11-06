@@ -65,7 +65,7 @@ export default function UserWiseTickets() {
               </div>
 
               <div className="uwt-card-right">
-                <span className={`role-badge ${u.role}`}>{u.role}</span>
+                <span className={`role-badge ${u.role_name||u.role}`}>{u.role_name||u.role}</span>
                 {u.deleted_at
                   ? <span className="status-pill" style={{ background: '#fee2e2', color: '#dc2626' }}>Deleted</span>
                   : <span className={`status-pill ${u.is_active ? 'active' : 'inactive'}`}>{u.is_active ? 'Active' : 'Inactive'}</span>

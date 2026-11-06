@@ -6,6 +6,7 @@ import {
   BarChart2, Users, Users2, Settings, ShieldCheck, LogOut, ChevronLeft, LayoutList, KeyRound, Mail, Search
 } from 'lucide-react';
 import './Sidebar.css';
+import useAccess from '../hooks/useAccess';
 import BrandIdentity from './BrandIdentity';
 import { useBranding } from '../context/BrandingContext';
 
@@ -57,6 +58,10 @@ export default function Sidebar({ collapsed, onToggle }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { branding } = useBranding();
+  const {can,any}=useAccess();
+  const navPermissions={'/':'dashboard.view','/admin/my-dashboard':'dashboard.view','/admin/user-tickets':'users.tickets','/my-tickets':'tickets.view','/my-query':'query.view','/tickets/new':'tickets.create','/knowledge-base':'kb.view','/reports':'reports.view','/admin/users':'users.view','/admin/groups':'groups.view','/admin/sso':'sso.view','/admin/email':'email.view','/audit-logs':'audit.view'};
+  const configAllowed=any(['fields.view','categories.view','types.view','templates.view','branding.view','sla_config.view','roles.view']);
+  const visible=item=>item.to==='/admin/modules'?configAllowed:can(navPermissions[item.to]);
   const isAdmin = user?.role === 'admin';
 
   const handleLogout = async () => {
@@ -72,22 +77,22 @@ export default function Sidebar({ collapsed, onToggle }) {
 
       <nav className="sidebar-nav">
         {/* Dashboard links — differ by role */}
-        {(isAdmin ? NAV_TOP_ADMIN : NAV_TOP_EMPLOYEE).map(item => (
+        {(isAdmin ? NAV_TOP_ADMIN : NAV_TOP_EMPLOYEE).filter(visible).map(item => (
           <NavItem key={item.to} {...item} collapsed={collapsed} />
         ))}
 
         {/* User Wise Tickets — admin only, right after Dashboard */}
-        {isAdmin && ADMIN_MAIN.map(item => <NavItem key={item.to} {...item} collapsed={collapsed} />)}
+        {ADMIN_MAIN.filter(visible).map(item => <NavItem key={item.to} {...item} collapsed={collapsed} />)}
 
         {/* Common nav items */}
-        {NAV_COMMON.map(item => <NavItem key={item.to} {...item} collapsed={collapsed} />)}
-        {isAdmin && <NavItem to="/qa-analysis" icon={BarChart2} label="QA Analysis" collapsed={collapsed} />}
+        {NAV_COMMON.filter(visible).map(item => <NavItem key={item.to} {...item} collapsed={collapsed} />)}
+        {can('qa.view') && <NavItem to="/qa-analysis" icon={BarChart2} label="QA Analysis" collapsed={collapsed} />}
 
         {/* Admin section */}
-        {isAdmin && (
+        {(ADMIN_NAV.some(visible)) && (
           <>
             {!collapsed && <div className="nav-section-label">Admin</div>}
-            {ADMIN_NAV.map(item => <NavItem key={item.to} {...item} collapsed={collapsed} />)}
+            {ADMIN_NAV.filter(visible).map(item => <NavItem key={item.to} {...item} collapsed={collapsed} />)}
           </>
         )}
       </nav>
@@ -98,7 +103,7 @@ export default function Sidebar({ collapsed, onToggle }) {
             <div className="sidebar-avatar">{user?.fullName?.[0] || 'U'}</div>
             <div className="sidebar-user-info">
               <div className="sidebar-user-name">{user?.fullName}</div>
-              <div className="sidebar-user-role">{isAdmin ? 'Administrator' : 'Employee'}</div>
+              <div className="sidebar-user-role">{user?.roleName || (isAdmin ? 'Administrator' : 'Employee')}</div>
             </div>
             <button className="sidebar-logout-btn" onClick={handleLogout} title="Logout">
               <LogOut size={16} />

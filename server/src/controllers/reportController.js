@@ -2,6 +2,7 @@ const pool = require('../db/pool');
 
 async function getReport(req, res, next) {
   try {
+    const customScope = req.access?.custom;
     const userId    = req.session.userId;
     const startDate = req.query.startDate || null;
     const endDate   = req.query.endDate   || null;
@@ -32,7 +33,7 @@ async function getReport(req, res, next) {
         AVG(EXTRACT(EPOCH FROM (t.updated_at - t.created_at)) / 3600)
           FILTER (WHERE t.status IN ('RESOLVED','CLOSED'))                   AS avg_resolution_hours
       FROM tickets t
-      WHERE t.deleted_at IS NULL AND t.created_by = $1 ${dateCond}
+      WHERE t.deleted_at IS NULL AND ${customScope ? '($1::uuid IS NOT NULL)' : 't.created_by = $1'} ${dateCond}
     `, filteredParams);
 
     // Monthly chart: filter to selected range, or last 12 months if no range
@@ -46,7 +47,7 @@ async function getReport(req, res, next) {
                 FROM generate_series($2::date, $3::date, '1 month'::INTERVAL) d) m
           LEFT JOIN tickets t
             ON DATE_TRUNC('month', t.created_at)::date = m.month
-            AND t.deleted_at IS NULL AND t.created_by = $1
+            AND t.deleted_at IS NULL AND ${customScope ? '($1::uuid IS NOT NULL)' : 't.created_by = $1'}
             AND t.created_at >= $2::date
             AND t.created_at < ($3::date + INTERVAL '1 day')
           GROUP BY m.month ORDER BY m.month ASC
@@ -60,7 +61,7 @@ async function getReport(req, res, next) {
                 FROM generate_series(11, 0, -1) n) m
           LEFT JOIN tickets t
             ON DATE_TRUNC('month', t.created_at)::date = m.month
-            AND t.deleted_at IS NULL AND t.created_by = $1
+            AND t.deleted_at IS NULL AND ${customScope ? '($1::uuid IS NOT NULL)' : 't.created_by = $1'}
           GROUP BY m.month ORDER BY m.month ASC
         `, baseParams);
 
@@ -74,7 +75,7 @@ async function getReport(req, res, next) {
                 FROM generate_series($2::date, $3::date, '1 week'::INTERVAL) d) w
           LEFT JOIN tickets t
             ON DATE_TRUNC('week', t.created_at)::date = w.week_start
-            AND t.deleted_at IS NULL AND t.created_by = $1
+            AND t.deleted_at IS NULL AND ${customScope ? '($1::uuid IS NOT NULL)' : 't.created_by = $1'}
             AND t.created_at >= $2::date
             AND t.created_at < ($3::date + INTERVAL '1 day')
           GROUP BY w.week_start ORDER BY w.week_start ASC
@@ -87,14 +88,14 @@ async function getReport(req, res, next) {
                 FROM generate_series(11, 0, -1) n) w
           LEFT JOIN tickets t
             ON DATE_TRUNC('week', t.created_at)::date = w.week_start
-            AND t.deleted_at IS NULL AND t.created_by = $1
+            AND t.deleted_at IS NULL AND ${customScope ? '($1::uuid IS NOT NULL)' : 't.created_by = $1'}
           GROUP BY w.week_start ORDER BY w.week_start ASC
         `, baseParams);
 
     const statusResult = await pool.query(`
       SELECT t.status AS name, COUNT(*) AS value
       FROM tickets t
-      WHERE t.deleted_at IS NULL AND t.created_by = $1 ${dateCond}
+      WHERE t.deleted_at IS NULL AND ${customScope ? '($1::uuid IS NOT NULL)' : 't.created_by = $1'} ${dateCond}
       GROUP BY t.status
       ORDER BY value DESC
     `, filteredParams);
@@ -102,7 +103,7 @@ async function getReport(req, res, next) {
     const priorityResult = await pool.query(`
       SELECT t.priority AS name, COUNT(*) AS value
       FROM tickets t
-      WHERE t.deleted_at IS NULL AND t.created_by = $1 ${dateCond}
+      WHERE t.deleted_at IS NULL AND ${customScope ? '($1::uuid IS NOT NULL)' : 't.created_by = $1'} ${dateCond}
       GROUP BY t.priority
       ORDER BY CASE t.priority WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END
     `, filteredParams);
@@ -123,7 +124,7 @@ async function getReport(req, res, next) {
       LEFT JOIN categories c ON t.category_id = c.id
       LEFT JOIN users u2     ON t.created_by = u2.id
       LEFT JOIN users u3     ON t.ticket_owner = u3.id
-      WHERE t.deleted_at IS NULL AND t.created_by = $1 ${dateCond}
+      WHERE t.deleted_at IS NULL AND ${customScope ? '($1::uuid IS NOT NULL)' : 't.created_by = $1'} ${dateCond}
       ORDER BY t.created_at DESC
     `, filteredParams);
 

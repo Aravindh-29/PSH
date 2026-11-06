@@ -19,7 +19,8 @@ async function list(req, res, next) {
       GROUP BY g.id
       ORDER BY g.name
     `);
-    res.json({ success: true, groups: rows });
+    const visible=req.query.picker==='true' && !req.access.admin ? rows.filter(g=>req.access.managedGroups.includes(g.id)) : rows;
+    res.json({ success: true, groups: visible });
   } catch (err) { next(err); }
 }
 
@@ -165,14 +166,14 @@ async function listWithMembers(req, res, next) {
       GROUP BY g.id
       ORDER BY g.name
     `);
-    res.json({ success: true, groups: rows });
+    res.json({ success: true, groups: !req.access.admin && req.access.permissions['tickets.assign'] !== 'all' ? rows.filter(g=>req.access.managedGroups.includes(g.id)) : rows });
   } catch (err) { next(err); }
 }
 
 async function myGroups(req, res, next) {
   try {
     const { rows } = await pool.query(
-      'SELECT group_id FROM user_groups WHERE user_id = $1',
+      'SELECT group_id FROM user_groups WHERE user_id = $1 UNION SELECT group_id FROM user_managed_groups WHERE user_id=$1',
       [req.session.userId]
     );
     res.json({ success: true, groups: rows });

@@ -1,3 +1,4 @@
+import useAccess from '../../hooks/useAccess';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -54,6 +55,7 @@ const SUMMARY_CARDS = [
 ];
 
 export default function GlobalReports() {
+  const {can}=useAccess();
   const [data, setData]               = useState(null);
   const [loading, setLoading]         = useState(true);
   const [exporting, setExporting]     = useState(false);
@@ -120,6 +122,8 @@ export default function GlobalReports() {
   }, [dateRange]);
 
   const exportToExcel = useCallback(async () => {
+    if(!can('reports.export')) return toast.error("You don't have permission to perform this action.");
+    await api.get('/reports?export=true');
     if (!data) return;
     setExporting(true);
 
@@ -462,7 +466,7 @@ export default function GlobalReports() {
               </div>
             )}
           </div>
-          <button className="rpt-export-btn" onClick={exportToExcel} disabled={!data || exporting}>
+          <button className="rpt-export-btn" onClick={exportToExcel} disabled={!can('reports.export') || !data || exporting}>
             <Download size={15} />
             {exporting ? 'Exporting…' : 'Export Global Report'}
           </button>

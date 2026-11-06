@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const {recordCan}=require('../access/policy');
 const logger = require('../utils/logger');
 const emailService = require('../services/emailService');
 const { resolveTicketTemplate } = require('../services/templateService');
@@ -21,7 +22,7 @@ async function logAudit(client, ticketId, userId, action, fieldName, oldValue, n
 
 async function list(req, res, next) {
   try {
-    const isAdmin = req.session.role === 'admin';
+    const isAdmin = req.session.role === 'admin' || !!req.authorizedTicket || !!req.access?.custom;
     const userId = req.session.userId;
     const { page = 1, limit = 25, status, priority, module: mod, category, search, assignedTo, myTickets, groupView, createdBy, sortBy, sortDir, startDate, endDate } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -92,7 +93,7 @@ async function list(req, res, next) {
     params.push(offset);
 
     const dataResult = await pool.query(`
-      SELECT t.id, t.ticket_number, t.short_description, t.customer_name, t.status, t.priority,
+      SELECT t.id, t.created_by, t.assigned_to, t.ticket_owner, t.assignment_group_id, t.ticket_number, t.short_description, t.customer_name, t.status, t.priority,
              t.created_at, t.updated_at,
              COALESCE(t.module_text, m.name) AS module_name, c.name AS category_name,
              u1.full_name AS assigned_to_name, u1.id AS assigned_to_id,
@@ -123,7 +124,7 @@ async function create(req, res, next) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const isAdmin = req.session.role === 'admin';
+    const isAdmin = req.session.role === 'admin' || !!req.authorizedTicket;
     const {
       customerName, moduleText, categoryId, subcategoryId = null, shortDescription, description,
       priority = 'MEDIUM', impact = 'MEDIUM', urgency = 'MEDIUM',
@@ -294,7 +295,7 @@ async function getOne(req, res, next) {
     }
 
     const ticket = result.rows[0];
-    const isAdmin = req.session.role === 'admin';
+    const isAdmin = req.session.role === 'admin' || !!req.authorizedTicket;
     if (!isAdmin) {
       const uid = req.session.userId;
       const isOwner = ticket.created_by === uid || ticket.ticket_owner === uid || ticket.assigned_to === uid;
@@ -313,7 +314,7 @@ async function getOne(req, res, next) {
 
     const [attachments, comments, auditRaw] = await Promise.all([
       pool.query('SELECT id, file_name, mime_type, file_size, uploaded_by, uploaded_at, (SELECT full_name FROM users WHERE id = uploaded_by) AS uploader_name FROM ticket_attachments WHERE ticket_id = $1 ORDER BY uploaded_at DESC', [id]),
-      pool.query('SELECT tc.*, u.full_name AS author_name, u.role AS author_role FROM ticket_comments tc JOIN users u ON tc.user_id = u.id WHERE tc.ticket_id = $1 ORDER BY tc.created_at ASC', [id]),
+      pool.query('SELECT tc.*, u.full_name AS author_name, u.role AS author_role, (SELECT name FROM access_roles WHERE key=u.role) AS author_role_name FROM ticket_comments tc JOIN users u ON tc.user_id = u.id WHERE tc.ticket_id = $1 ORDER BY tc.created_at ASC', [id]),
       pool.query('SELECT tal.*, u.full_name AS user_name, u.username AS user_username FROM ticket_audit_logs tal LEFT JOIN users u ON tal.user_id = u.id WHERE tal.ticket_id = $1 ORDER BY tal.created_at ASC', [id]),
     ]);
 
@@ -354,9 +355,9 @@ async function getOne(req, res, next) {
     res.json({
       success: true,
       ticket,
-      attachments: attachments.rows,
-      comments: comments.rows,
-      audit,
+      attachments: ['attachments.preview','attachments.download','attachments.upload'].some(key=>recordCan(req,key,ticket)) ? attachments.rows : [],
+      comments: recordCan(req,'comments.view',ticket) ? comments.rows : [],
+      audit: recordCan(req,'tickets.history',ticket) || recordCan(req,'audit.view',ticket) ? audit : [],
     });
   } catch (err) {
     next(err);
@@ -374,7 +375,7 @@ async function update(req, res, next) {
       return res.status(404).json({ success: false, message: 'Ticket not found' });
     }
     const ticket = existing.rows[0];
-    const isAdmin = req.session.role === 'admin';
+    const isAdmin = req.session.role === 'admin' || !!req.authorizedTicket;
     if (!isAdmin && ticket.created_by !== req.session.userId && ticket.assigned_to !== req.session.userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
@@ -389,7 +390,7 @@ async function update(req, res, next) {
       assignmentGroup: 'assignment_group', assignmentGroupId: 'assignment_group_id',
       classification: 'classification', typeId: 'type_id',
       assignedTo: 'assigned_to',
-      ...(isAdmin ? { ticketOwner: 'ticket_owner' } : {}),
+      ...(req.access?.admin || req.access?.permissions['tickets.owner'] ? { ticketOwner: 'ticket_owner' } : {}),
     };
 
     const sets = [];
@@ -433,7 +434,7 @@ async function update(req, res, next) {
       }
     }
 
-    if (sets.length === 0) {
+    if (sets.length === 0 && !req.body.workNote?.trim()) {
       await client.query('ROLLBACK');
       return res.json({ success: true, message: 'No changes' });
     }
@@ -450,6 +451,11 @@ async function update(req, res, next) {
 
     for (const change of auditChanges) {
       await logAudit(client, id, req.session.userId, 'UPDATED', change.field, change.old, change.new, req.ip);
+    }
+
+    if(req.body.workNote?.trim()) {
+      await client.query("INSERT INTO ticket_comments(ticket_id,user_id,body,type) VALUES($1,$2,$3,'WORK_NOTE')",[id,req.session.userId,req.body.workNote.trim()]);
+      await logAudit(client,id,req.session.userId,'COMMENT_ADDED','work_note',null,req.body.workNote.trim(),req.ip);
     }
 
     // Trigger SLA engine on status change
@@ -479,7 +485,8 @@ async function update(req, res, next) {
     await client.query('COMMIT');
 
     // Fire email notifications (non-blocking)
-    const capturedTicket = ticket;
+    const capturedTicket = updated.rows[0];
+    const capturedWorkNote = req.body.workNote?.trim();
     const capturedChanges = auditChanges;
     const actorId = req.session.userId;
     fireEmail(async () => {
@@ -490,6 +497,14 @@ async function update(req, res, next) {
       if (assignChange?.new) {
         const assigneeRow = await pool.query('SELECT email FROM users WHERE id = $1', [assignChange.new]);
         await emailService.notifyTicketAssigned(capturedTicket, actorName, assigneeRow.rows[0]?.email);
+      }
+
+      if(capturedWorkNote) {
+        const ids=[...new Set([capturedTicket.created_by,capturedTicket.assigned_to].filter(uid=>uid&&uid!==actorId))];
+        if(ids.length) {
+          const recipients=await pool.query('SELECT email FROM users WHERE id=ANY($1)',[ids]);
+          await emailService.notifyCommentAdded(capturedTicket,capturedWorkNote,actorName,'WORK_NOTE',recipients.rows.map(row=>row.email));
+        }
       }
 
       const statusChange = capturedChanges.find(c => c.field === 'status');
@@ -526,7 +541,7 @@ async function remove(req, res, next) {
       return res.status(404).json({ success: false, message: 'Ticket not found' });
     }
     const ticket = existing.rows[0];
-    const isAdmin = req.session.role === 'admin';
+    const isAdmin = req.session.role === 'admin' || !!req.authorizedTicket;
     if (!isAdmin && ticket.created_by !== req.session.userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
@@ -552,7 +567,7 @@ async function addComment(req, res, next) {
     const ticket = await pool.query('SELECT id, created_by, assigned_to FROM tickets WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (ticket.rows.length === 0) return res.status(404).json({ success: false, message: 'Ticket not found' });
 
-    const isAdmin = req.session.role === 'admin';
+    const isAdmin = req.session.role === 'admin' || !!req.authorizedTicket;
     const t = ticket.rows[0];
     if (!isAdmin && t.created_by !== req.session.userId && t.assigned_to !== req.session.userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
