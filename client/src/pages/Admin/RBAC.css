@@ -101,3 +101,23 @@
 .rbac-group-picker>small { display:block; margin-top:8px; line-height:1.5; }
 .rbac-group-picker:disabled .rbac-group-option { opacity:.6; cursor:not-allowed; }
 .rbac-group-empty { margin:8px 10px; color:#7b899b; }
+
+/* Account setup: complete both steps before creating a user. */
+.rbac-tabs [role=tab] { display:inline-flex; align-items:center; gap:7px; }
+.rbac-step-description { margin:8px 0 0; color:#7b899b; font-size:12px!important; }
+.rbac-password-field { margin-bottom:19px; }
+.rbac-user-form .rbac-password-field>label { margin-bottom:8px; }
+.rbac-password-control { position:relative; display:flex; align-items:center; }
+.rbac .rbac-password-control input { width:100%; padding-right:46px; }
+.rbac-password-control button { position:absolute; right:7px; display:grid; place-items:center; padding:7px; border:0; border-radius:6px; color:#748399; background:transparent; cursor:pointer; }
+.rbac-password-control button:hover { background:#f0f4f9; color:#263d5a; }
+.rbac-user-form .rbac-field-hint { font-size:11px; color:#7b899b; margin:-9px 0 20px; }
+.rbac-access-review { background:#f8fafc; border:1px solid #dce4ee; border-radius:9px; padding:16px; margin:8px 0 0; }
+.rbac-user-form .rbac-access-review label { margin:0 0 8px; align-items:flex-start; line-height:1.6; }
+.rbac-access-review input { flex-shrink:0; margin-top:2px; }
+.rbac-access-review small { display:block; padding-left:25px; line-height:1.6; }
+.rbac-setup-status { display:flex; gap:16px; flex-wrap:wrap; padding:16px 0; margin-top:9px; border-top:1px solid #edf1f6; }
+.rbac-setup-status span { display:flex; align-items:center; gap:6px; color:#8390a2; font-size:11px; }
+.rbac-setup-status .is-complete { color:#16836a; }
+.rbac-user-save-actions { justify-content:flex-end; margin-top:8px; }
+.rbac-user-form .cfg-btn-save:disabled { background:#e2e8f0; border-color:#d8e0e9; color:#8a97a9; box-shadow:none; opacity:1; cursor:not-allowed; }
