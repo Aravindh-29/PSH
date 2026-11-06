@@ -1,7 +1,6 @@
 const pool = require('../db/pool');
 const logger = require('../utils/logger');
 const path = require('path');
-const archiver = require('archiver');
 
 const ALLOWED_MIME_TYPES = [
   'image/jpeg','image/png','image/gif','image/webp','image/svg+xml',
@@ -151,7 +150,10 @@ async function downloadZip(req, res, next) {
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
 
-    const archive = archiver('zip', { zlib: { level: 6 } });
+    // Archiver 8 exports ES-module archive classes. Dynamic import also works
+    // on Node 20 versions that do not support require() of ES modules.
+    const { ZipArchive } = await import('archiver');
+    const archive = new ZipArchive({ zlib: { level: 6 } });
     archive.on('error', err => { logger.error('Zip error', err); });
     archive.pipe(res);
 

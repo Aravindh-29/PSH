@@ -4,7 +4,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 // Exercise the real renderer, including its plugins, without starting a browser.
-const server = await createServer({ server: { middlewareMode: true }, appType: 'custom' });
+const server = await createServer({ server: { middlewareMode: true }, appType: 'custom', optimizeDeps: { noDiscovery: true, include: [] } });
 try {
   const { default: ArticleMarkdown } = await server.ssrLoadModule('/src/components/ArticleMarkdown.jsx');
   const render = content => renderToStaticMarkup(React.createElement(ArticleMarkdown, { content }));

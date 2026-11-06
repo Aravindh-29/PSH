@@ -9,9 +9,10 @@
     "install:all": "cd server && npm install && cd ../client && npm install",
     "build:client": "cd client && npm run build",
     "db:init": "cd server && node ../database/init.js",
-    "db:migrate": "node database/migrate.js"
+    "db:migrate": "node database/migrate.js",
+    "security:audit": "npm audit --include=dev --registry=https://registry.npmjs.org && npm --prefix server audit --include=dev --registry=https://registry.npmjs.org && npm --prefix client audit --include=dev --registry=https://registry.npmjs.org"
   },
   "devDependencies": {
-    "concurrently": "^10.0.5"
+    "concurrently": "^10.0.6"
   }
 }

@@ -896,3 +896,25 @@ bash server/scripts/test-update.sh
 ```
 
 The migration suite uses disposable schemas in the configured PostgreSQL database and temporary environment files. It checks fresh setup, legacy upgrades, repeated upgrades, preservation of application data, rollback and encryption-key handling. The shell suite uses mock services/commands to verify success and backup, migration and health failure paths; it does not replace a systemd deployment test on the target Linux host.
+
+
+## Dependency security verification
+
+Run `npm run security:audit` from the project root to check the root, server and client lockfiles against the live npm registry, including development dependencies. The command fails if any audited dependency set reports a known vulnerability or the registry check fails. Do not use `npm audit fix --force` on a running installation: it can select incompatible major upgrades or older Markdown plugins.
+
+The security refresh updates Axios, Vite, Express/body parsing/proxy dependencies, compression, Nodemailer, Multer and the development command runner. Targeted overrides use the patched KaTeX already selected by the application for nested Markdown math renderers, and Minimatch 11 for the two server packages using its object API. Other older matcher APIs are left unchanged. The Archiver 8 ZIP controller uses its ES-module `ZipArchive` class through dynamic import for Node 20 compatibility.
+
+Use the committed lockfiles and `npm ci` to reproduce these versions. The Linux updater installs from those lockfiles. npm deprecation or bundle-size warnings are distinct from audit vulnerabilities; ExcelJS/Recharts may still emit maintenance warnings. A zero audit result describes currently known dependency advisories, not a guarantee that future advisories or application-code issues cannot exist.
+
+Compatibility checks for this dependency set:
+
+```sh
+node server/scripts/test-dependencies.js
+node server/scripts/test-email.js
+node server/scripts/test-migrations.js
+cd client
+node scripts/test-markdown.mjs
+npm run build
+```
+
+The dependency suite verifies loopback JSON/form requests, gzip compression, multiple uploads and upload errors, ZIP selection, the actual ticket ZIP controller including duplicate filenames, Excel round trips and development file matching. It does not send external mail or change application records.

@@ -9,17 +9,17 @@
   "dependencies": {
     "archiver": "^8.0.0",
     "argon2": "^0.31.2",
-    "compression": "^1.7.4",
+    "compression": "^1.8.2",
     "connect-pg-simple": "^9.0.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
+    "express": "^4.22.3",
     "express-rate-limit": "^7.3.1",
     "express-session": "^1.18.0",
     "express-validator": "^7.1.0",
     "helmet": "^7.1.0",
-    "multer": "^1.4.5-lts.1",
-    "nodemailer": "^9.0.5",
+    "multer": "^2.5.0",
+    "nodemailer": "^10.3.1",
     "openid-client": "^5.7.1",
     "otplib": "^12.0.1",
     "pg": "^8.12.0",
@@ -34,6 +34,12 @@
   },
   "overrides": {
     "@mapbox/node-pre-gyp": "^2.0.3",
-    "tar": "^7.5.22"
+    "tar": "^7.5.22",
+    "readdir-glob": {
+      "minimatch": "^11.0.1"
+    },
+    "nodemon": {
+      "minimatch": "^11.0.1"
+    }
   }
 }
