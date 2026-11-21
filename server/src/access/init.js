@@ -17,11 +17,20 @@ module.exports = async function initAccess(client) {
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   ); CREATE TABLE IF NOT EXISTS access_migrations (key TEXT PRIMARY KEY);
   CREATE INDEX IF NOT EXISTS idx_managed_group ON user_managed_groups(group_id);`);
+  await client.query('ALTER TABLE access_roles ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT FALSE');
   await client.query(`INSERT INTO access_roles(key,name,responsibility,permissions,is_system) VALUES
     ('admin','Admin','Full application administration',$1,true),
     ('employee','User / Employee','Create and work on permitted tickets',$2,true)
     ON CONFLICT(key) DO NOTHING`, [JSON.stringify(Object.fromEntries(catalog.map(p => [p.key,'all']))), JSON.stringify(employee)]);
   await client.query("UPDATE access_roles SET permissions=$1 WHERE key='admin'",[JSON.stringify(Object.fromEntries(catalog.map(p=>[p.key,'all'])))]);
+  for (const role of require('./defaultRoles')) {
+    // Any conflict (including an existing custom role with the same name) preserves
+    // the existing record. Never reset permissions, status, names or assignments.
+    await client.query(`INSERT INTO access_roles(key,name,responsibility,permissions,assignable_roles,is_default)
+      VALUES($1,$2,$3,$4,$5,TRUE) ON CONFLICT DO NOTHING`,
+    [role.key, role.name, role.responsibility, JSON.stringify(role.permissions), JSON.stringify(role.assignable_roles)]);
+  }
+  await client.query(require('./teamUsers').managerUpgradeSQL);
   // Drop only the legacy two-role check. All other user constraints are retained.
   const checks = await client.query(`SELECT conname FROM pg_constraint WHERE conrelid='users'::regclass AND contype='c' AND conname='users_role_check'`);
   for (const { conname } of checks.rows) await client.query('ALTER TABLE users DROP CONSTRAINT "' + conname.replace(/"/g,'""') + '"');

@@ -58,11 +58,12 @@ function AppRoutes() {
         <Route path="tickets/:id/edit" element={<RequirePermission permission={['tickets.edit','tickets.priority','tickets.impact','tickets.urgency','tickets.category','tickets.type','tickets.classification','tickets.template','tickets.status','tickets.assign','tickets.owner']}><EditTicket /></RequirePermission>} />
         <Route path="my-tickets" element={<RequirePermission permission="tickets.view"><TicketList myTickets /></RequirePermission>} />
         <Route path="admin/my-dashboard" element={<RequirePermission permission={'dashboard.view'}><Dashboard personal /></RequirePermission>} />
-        <Route path="admin/users" element={<RequirePermission permission={'users.view'}><AdminUsers /></RequirePermission>} />
+        <Route path="admin/users" element={<RequirePermission permission={['users.view','users.team_view']}><AdminUsers /></RequirePermission>} />
         <Route path="admin/user-tickets" element={<RequirePermission permission={'users.tickets'}><UserWiseTickets /></RequirePermission>} />
         <Route path="admin/user-tickets/:userId" element={<RequirePermission permission={'users.tickets'}><AdminUserDetail /></RequirePermission>} />
         <Route path="admin/modules" element={<RequirePermission permission={configPermissions}><AdminModules /></RequirePermission>} />
         <Route path="admin/groups" element={<RequirePermission permission={'groups.view'}><Groups /></RequirePermission>} />
+        <Route path="admin/groups/:groupId" element={<RequirePermission permission={'groups.view'}><Groups /></RequirePermission>} />
         <Route path="audit-logs" element={<RequirePermission permission={'audit.view'}><AuditLogs /></RequirePermission>} />
         <Route path="admin/sso" element={<RequirePermission permission={'sso.view'}><SSOConfig /></RequirePermission>} />
         <Route path="admin/email" element={<RequirePermission permission={'email.view'}><EmailConfig /></RequirePermission>} />

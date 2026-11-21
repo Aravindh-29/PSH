@@ -1,129 +1,23 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Users, Plus, Edit2, Trash2, Save, X, UserPlus, UserMinus, ChevronDown, ChevronUp, Loader, Search, Eye, EyeOff } from 'lucide-react';
+import { Users, Plus, Edit2, Trash2, Save, X, UserPlus, UserMinus, ChevronDown, ChevronRight, ArrowLeft, Loader, Search, Eye, EyeOff, CheckCircle2, Power } from 'lucide-react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import useAccess from '../../hooks/useAccess';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import './Groups.css';
 
 // ── Multi-select searchable user picker ──────────────────────
-function UserSearchPicker({ allUsers, existingMembers, selectedIds, onToggle, onClearAll }) {
-  const [query, setQuery] = useState('');
-  const [open, setOpen]   = useState(false);
-  const wrapRef           = useRef(null);
-  const inputRef          = useRef(null);
-
-  useEffect(() => {
-    function handler(e) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const available = allUsers.filter(u => {
-    if (existingMembers.find(m => m.id === u.id)) return false;
-    const q = query.toLowerCase();
-    return !q || u.full_name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
-  });
-
-  const allVisible   = available.every(u => selectedIds.includes(u.id));
-  const someSelected = selectedIds.length > 0;
-
-  const toggleAll = () => {
-    if (allVisible && available.length > 0) {
-      available.forEach(u => { if (selectedIds.includes(u.id)) onToggle(u.id); });
-    } else {
-      available.forEach(u => { if (!selectedIds.includes(u.id)) onToggle(u.id); });
-    }
-  };
-
-  const inputLabel = selectedIds.length === 0
-    ? ''
-    : selectedIds.length === 1
-      ? (allUsers.find(u => u.id === selectedIds[0])?.full_name || '1 user selected')
-      : `${selectedIds.length} users selected`;
-
-  return (
-    <div className="usp-wrap" ref={wrapRef}>
-      <div
-        className={`usp-input-box ${open ? 'usp-input-box-open' : ''}`}
-        onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); }}
-      >
-        <Search size={15} className="usp-search-icon" />
-        <input
-          ref={inputRef}
-          className="usp-input"
-          placeholder={!open && someSelected ? '' : 'Search users to add…'}
-          value={open ? query : ''}
-          style={!open && someSelected ? { color: 'transparent' } : {}}
-          onChange={e => { setQuery(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)}
-          autoComplete="off"
-          spellCheck={false}
-        />
-        {!open && someSelected && (
-          <span className="usp-pill">{inputLabel}</span>
-        )}
-        {someSelected && (
-          <button
-            className="usp-clear-btn"
-            onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onClearAll(); setQuery(''); }}
-            title="Clear selection"
-          >
-            <X size={13} />
-          </button>
-        )}
-        <ChevronDown size={14} className={`usp-chevron ${open ? 'usp-chevron-up' : ''}`} />
-      </div>
-
-      {open && (
-        <div className="usp-dropdown">
-          {available.length === 0 ? (
-            <div className="usp-empty">
-              {query ? `No users match "${query}"` : 'All users are already members'}
-            </div>
-          ) : (
-            <>
-              {/* Header row: count + select-all */}
-              <div className="usp-count-row">
-                <span className="usp-count">
-                  {available.length} user{available.length !== 1 ? 's' : ''} available
-                  {selectedIds.length > 0 && <span className="usp-sel-badge">{selectedIds.length} selected</span>}
-                </span>
-                <button
-                  className="usp-sel-all-btn"
-                  onMouseDown={e => { e.preventDefault(); toggleAll(); }}
-                >
-                  {allVisible && available.length > 0 ? 'Deselect all' : 'Select all'}
-                </button>
-              </div>
-              <div className="usp-list">
-                {available.map(u => {
-                  const checked = selectedIds.includes(u.id);
-                  return (
-                    <div
-                      key={u.id}
-                      className={`usp-option ${checked ? 'usp-option-checked' : ''}`}
-                      onMouseDown={e => { e.preventDefault(); onToggle(u.id); }}
-                    >
-                      <div className={`usp-checkbox ${checked ? 'usp-checkbox-on' : ''}`}>
-                        {checked && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                      </div>
-                      <div className="usp-option-avatar">{u.full_name.charAt(0).toUpperCase()}</div>
-                      <div className="usp-option-info">
-                        <div className="usp-option-name">{u.full_name}</div>
-                        <div className="usp-option-email">{u.email}</div>
-                      </div>
-                      <span className={`usp-role-badge ${u.role}`}>{u.role}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
-      )}
+function UserSearchPicker({ allUsers, existingMembers, selectedIds, onToggle, onClearAll, disabled=false }) {
+  const [query,setQuery]=useState('');
+  const available=allUsers.filter(user=>!existingMembers.some(member=>member.id===user.id)&&(!query.trim()||[user.full_name,user.email,user.username].some(value=>value?.toLowerCase().includes(query.trim().toLowerCase()))));
+  const allVisible=available.length>0&&available.every(user=>selectedIds.includes(user.id));
+  return <div className="usp-wrap usp-dialog-picker">
+    <div className="usp-input-box"><Search size={16} className="usp-search-icon"/><input autoFocus className="usp-input" aria-label="Search users to add" placeholder="Search name, email or username…" value={query} disabled={disabled} onChange={e=>setQuery(e.target.value)}/></div>
+    <div className="usp-dropdown">
+      <div className="usp-count-row"><span className="usp-count">{available.length} available <span className="usp-sel-badge">{selectedIds.length} selected</span></span><div className="grp-picker-actions"><button type="button" className="usp-sel-all-btn" disabled={disabled||!available.length} onClick={()=>available.forEach(user=>{if(allVisible||!selectedIds.includes(user.id))onToggle(user.id)})}>{allVisible?'Deselect shown':'Select shown'}</button>{selectedIds.length>0&&<button type="button" className="usp-sel-all-btn" disabled={disabled} onClick={onClearAll}>Clear selection</button>}</div></div>
+      <div className="usp-list">{available.length?available.map(user=><label key={user.id} className={'usp-option'+(selectedIds.includes(user.id)?' usp-option-checked':'')}><input type="checkbox" checked={selectedIds.includes(user.id)} disabled={disabled} onChange={()=>onToggle(user.id)} aria-label={`Select ${user.full_name}`}/><span className="usp-option-avatar">{user.full_name.charAt(0).toUpperCase()}</span><span className="usp-option-info"><span className="usp-option-name">{user.full_name}</span><span className="usp-option-email">{user.email}</span></span><span className={`usp-role-badge ${user.role}`}>{user.role_name||user.role}</span></label>):<p className="usp-empty">{query?'No users match your search.':'All available users already belong to this group.'}</p>}</div>
     </div>
-  );
+  </div>;
 }
 
 // ── Delete Group Modal ────────────────────────────────────────
@@ -220,7 +114,7 @@ function MemberList({ memberList, searchQuery, onSearchChange, onRemove }) {
   );
 
   if (memberList.length === 0) {
-    return <div className="grp-no-members">No members yet. Search and add users above.</div>;
+    return <div className="grp-no-members">No members in this group yet.</div>;
   }
 
   return (
@@ -232,7 +126,8 @@ function MemberList({ memberList, searchQuery, onSearchChange, onRemove }) {
         <Search size={13} className="grp-member-search-icon" />
         <input
           className="grp-member-search-input"
-          placeholder="Search members…"
+          aria-label="Search group users"
+          placeholder="Search users in this group…"
           value={searchQuery}
           onChange={e => onSearchChange(e.target.value)}
         />
@@ -253,14 +148,14 @@ function MemberList({ memberList, searchQuery, onSearchChange, onRemove }) {
                 <div className="grp-member-name">{m.full_name}</div>
                 <div className="grp-member-email">{m.email}</div>
               </div>
-              <span className={`grp-role-badge ${m.role}`}>{m.role}</span>
-              <button
+              <span className={`grp-role-badge ${m.role}`}>{m.role_name || m.role}</span>
+              {onRemove && <button
                 className="grp-remove-btn"
                 onClick={() => onRemove(m.id, m.full_name)}
                 title="Remove from group"
               >
                 <UserMinus size={13} />
-              </button>
+              </button>}
             </div>
           ))
         )}
@@ -269,8 +164,23 @@ function MemberList({ memberList, searchQuery, onSearchChange, onRemove }) {
   );
 }
 
+function GroupDialog({children,label,onClose,success=false}) {
+  const dialog=useRef(null);
+  useEffect(()=>{
+    const element=dialog.current;
+    element.showModal();
+    return ()=>{if(element.open)element.close()};
+  },[]);
+  return <dialog ref={dialog} className={'grp-dialog'+(success?' grp-dialog-success':'')} aria-label={label} onCancel={e=>{e.preventDefault();onClose()}}>{children}</dialog>;
+}
+
 // ── Main Groups page ──────────────────────────────────────────
 export default function Groups() {
+  const { groupId } = useParams();
+  const navigate = useNavigate();
+  const { can } = useAccess();
+  const canPickUsers = can('groups.members') && can('users.view');
+  const [error, setError] = useState('');
   const [groups, setGroups]           = useState([]);
   const [allUsers, setAllUsers]       = useState([]);
   const [loading, setLoading]         = useState(true);
@@ -283,21 +193,29 @@ export default function Groups() {
   const [saving, setSaving]           = useState(false);
   const [addUserIds, setAddUserIds]     = useState({});  // groupId → string[]
   const [memberSearch, setMemberSearch] = useState({});  // groupId → query string
+  const [addUsersFor,setAddUsersFor] = useState(null);
+  const [feedback,setFeedback] = useState(null),[prompt,setPrompt] = useState(null),[actionBusy,setActionBusy] = useState(false);
   const [deleteModal, setDeleteModal]   = useState(null); // null | group object
 
-  const load = () => {
-    setLoading(true);
-    Promise.all([
-      api.get('/groups'),
-      api.get('/users'),
+  const load = useCallback(() => {
+    setLoading(true); setError('');
+    return Promise.all([
+      api.get(groupId ? `/groups/${groupId}` : '/groups'),
+      groupId && canPickUsers ? api.get('/users') : Promise.resolve({data:{users:[]}}),
     ]).then(([g, u]) => {
-      setGroups(g.data.groups || []);
+      if (groupId) {
+        setGroups([{...g.data.group, member_count:(g.data.members || []).length}]);
+        setMembers({[groupId]:g.data.members || []});
+      } else setGroups(g.data.groups || []);
       setAllUsers((u.data.users || []).filter(u => !u.deleted_at));
-    }).catch(() => toast.error('Failed to load groups'))
+    }).catch(e => setError(e.response?.data?.message || 'Failed to load group information.'))
     .finally(() => setLoading(false));
-  };
+  }, [groupId, canPickUsers]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    setExpandedId(groupId || null); setShowForm(false); setAddUserIds({}); setMemberSearch({});
+    load();
+  }, [load, groupId]);
 
   const loadMembers = async (groupId) => {
     setMemberLoading(p => ({ ...p, [groupId]: true }));
@@ -308,11 +226,7 @@ export default function Groups() {
     finally { setMemberLoading(p => ({ ...p, [groupId]: false })); }
   };
 
-  const toggleExpand = (groupId) => {
-    if (expandedId === groupId) { setExpandedId(null); return; }
-    setExpandedId(groupId);
-    if (!members[groupId]) loadMembers(groupId);
-  };
+  const toggleExpand = id => navigate(`/admin/groups/${id}`);
 
   const startEdit = (g) => {
     setEditingId(g.id);
@@ -332,10 +246,13 @@ export default function Groups() {
     try {
       if (editingId) {
         await api.put(`/groups/${editingId}`, form);
-        toast.success('Group updated');
+        setFeedback({title:'Group updated successfully',message:`Changes to ${form.name.trim()} have been saved.`});
       } else {
-        await api.post('/groups', form);
-        toast.success('Group created');
+        const { data } = await api.post('/groups', form);
+        setFeedback({title:'Group created successfully',message:`${form.name.trim()} is ready to use.`});
+        setShowForm(false);
+        navigate(`/admin/groups/${data.group.id}`);
+        return;
       }
       setShowForm(false);
       load();
@@ -348,18 +265,22 @@ export default function Groups() {
 
   const confirmDelete = async (password) => {
     await api.delete(`/groups/${deleteModal.id}`, { data: { adminPassword: password } });
-    toast.success('Group deleted');
+    setFeedback({title:'Group deleted successfully',message:`${deleteModal.name} has been deleted.`});
     setDeleteModal(null);
-    load();
+    if (groupId) navigate('/admin/groups'); else load();
   };
 
-  const handleToggleActive = async (g) => {
-    try {
-      await api.put(`/groups/${g.id}`, { is_active: !g.is_active });
-      toast.success(g.is_active ? 'Group deactivated' : 'Group activated');
-      load();
-    } catch { toast.error('Update failed'); }
-  };
+  const handleToggleActive = g => setPrompt({
+    title:`${g.is_active?'Deactivate':'Activate'} group?`,
+    message:g.is_active?`Deactivate ${g.name}? It will no longer be available for new ticket assignments. Existing tickets and membership records are kept.`:`Activate ${g.name} so it is available for ticket assignments again.`,
+    label:g.is_active?'Deactivate Group':'Activate Group',
+    kind:g.is_active?'deactivate':'activate',
+    run:async()=>{
+      await api.put(`/groups/${g.id}`,{is_active:!g.is_active});
+      setFeedback({title:g.is_active?'Group deactivated successfully':'Group activated successfully',message:`${g.name} is now ${g.is_active?'inactive':'active'}.`});
+      await load();
+    },
+  });
 
   const toggleAddUser = (groupId, userId) => {
     setAddUserIds(prev => {
@@ -375,44 +296,56 @@ export default function Groups() {
 
   const handleAddMember = async (groupId) => {
     const ids = addUserIds[groupId] || [];
-    if (!ids.length) { toast.error('Select at least one user'); return; }
+    if (!ids.length || actionBusy) return;
+    setActionBusy(true);
     try {
       await Promise.all(ids.map(userId => api.post(`/groups/${groupId}/members`, { userId })));
       setAddUserIds(p => ({ ...p, [groupId]: [] }));
       await loadMembers(groupId);
       const r = await api.get('/groups');
-      setGroups(r.data.groups || []);
-      toast.success(ids.length === 1 ? 'Member added' : `${ids.length} members added`);
-    } catch { toast.error('Failed to add members'); }
+      setGroups((r.data.groups || []).filter(g => g.id === groupId));
+      setAddUsersFor(null);
+      setFeedback({title:ids.length===1?'User added successfully':'Users added successfully',message:`${ids.length} ${ids.length===1?'user has':'users have'} been added to this group.`});
+    } catch { toast.error('Some users could not be added. Refresh the member list before trying again.'); await loadMembers(groupId); }
+    finally {setActionBusy(false)}
   };
 
-  const handleRemoveMember = async (groupId, userId, userName) => {
-    if (!window.confirm(`Remove ${userName} from this group?`)) return;
-    try {
+  const handleRemoveMember = (groupId,userId,userName) => setPrompt({
+    title:'Remove group member?',message:`Remove ${userName} from this group? Their user account will remain active.`,label:'Remove Member',kind:'delete',
+    run:async()=>{
       await api.delete(`/groups/${groupId}/members/${userId}`);
-      setMembers(p => ({ ...p, [groupId]: p[groupId].filter(m => m.id !== userId) }));
-      const r = await api.get('/groups');
-      setGroups(r.data.groups || []);
-      toast.success('Member removed');
-    } catch { toast.error('Failed to remove member'); }
+      setMembers(p=>({...p,[groupId]:p[groupId].filter(m=>m.id!==userId)}));
+      const r=await api.get('/groups');
+      setGroups((r.data.groups||[]).filter(g=>g.id===groupId));
+      setFeedback({title:'Member removed successfully',message:`${userName} has been removed from this group.`});
+    },
+  });
+  const confirmAction=async()=>{
+    if(!prompt||actionBusy)return;
+    setActionBusy(true);
+    try{await prompt.run();setPrompt(null)}catch(e){toast.error(e.response?.data?.message||'The action could not be completed.')}finally{setActionBusy(false)}
   };
 
   if (loading) return <div className="grp-loading"><Loader size={20} className="spin" /> Loading…</div>;
 
+  if (error) return <div className="grp-page"><Link className="grp-back-link" to="/admin/groups"><ArrowLeft size={15}/>Back to Groups</Link><p role="alert">{error}</p><button className="grp-cancel-btn" onClick={load}>Retry</button></div>;
+
   return (
     <div className="grp-page">
+      {groupId && <Link className="grp-back-link" to="/admin/groups"><ArrowLeft size={15}/>Back to Groups</Link>}
       <div className="grp-header">
         <div>
-          <h1 className="grp-title">Assignment Groups</h1>
-          <p className="grp-sub">Manage groups and their members. Groups control who can be assigned tickets.</p>
+          <h1 className="grp-title">{groupId ? groups[0]?.name : 'Assignment Groups'}</h1>
+          <p className="grp-sub">{groupId ? 'Group details and team membership. Group membership is separate from Managed Groups oversight.' : 'Open a group to view its details and manage its members.'}</p>
         </div>
-        <button className="grp-add-btn" onClick={startNew}>
+        {!groupId && can('groups.create') && <button className="grp-add-btn" onClick={startNew}>
           <Plus size={15} /> New Group
-        </button>
+        </button>}
       </div>
 
       {/* Create / Edit Form */}
       {showForm && (
+        <GroupDialog label={editingId?'Edit Group':'Create Group'} onClose={()=>{if(!saving)setShowForm(false)}}>
         <div className="grp-form-card">
           <div className="grp-form-title">{editingId ? 'Edit Group' : 'Create Group'}</div>
           <div className="grp-form-row">
@@ -439,11 +372,12 @@ export default function Groups() {
               {saving ? <Loader size={13} className="spin" /> : <Save size={13} />}
               {saving ? 'Saving…' : 'Save'}
             </button>
-            <button className="grp-cancel-btn" onClick={() => setShowForm(false)}>
+            <button className="grp-cancel-btn" disabled={saving} onClick={() => setShowForm(false)}>
               <X size={13} /> Cancel
             </button>
           </div>
         </div>
+        </GroupDialog>
       )}
 
       {/* Groups List */}
@@ -451,85 +385,81 @@ export default function Groups() {
         <div className="grp-empty">
           <Users size={36} strokeWidth={1.5} />
           <p>No groups yet.</p>
-          <button className="grp-add-btn" onClick={startNew}><Plus size={14} /> Create First Group</button>
+          {can('groups.create') && <button className="grp-add-btn" onClick={startNew}><Plus size={14} /> Create First Group</button>}
         </div>
       ) : (
         <div className="grp-list">
-          {groups.map(g => (
+          {groups.map(g => {
+            const Info = groupId ? 'div' : Link;
+            return (
             <div key={g.id} className={`grp-item ${!g.is_active ? 'grp-item-inactive' : ''} ${expandedId === g.id ? 'grp-item-expanded' : ''}`}>
               <div className="grp-item-header">
-                <div className="grp-item-info">
+                <Info className={'grp-item-info' + (!groupId ? ' grp-item-link' : '')} {...(!groupId ? {to:`/admin/groups/${g.id}`, 'aria-label':`Open ${g.name}`} : {})}>
                   <div className="grp-item-name">
                     {g.name}
                     {!g.is_active && <span className="grp-inactive-badge">Inactive</span>}
                   </div>
                   {g.description && <div className="grp-item-desc">{g.description}</div>}
-                  <div className="grp-item-meta">{g.member_count} member{g.member_count !== 1 ? 's' : ''}</div>
-                </div>
+                  <div className="grp-item-meta">{g.member_count} member{g.member_count !== 1 ? 's' : ''}{groupId && <span> · {g.is_active ? 'Active' : 'Inactive'}</span>}</div>
+                </Info>
                 <div className="grp-item-actions">
-                  <button className="grp-action-btn" onClick={() => toggleExpand(g.id)} title="Manage members">
+                  {!groupId && <button className="grp-action-btn" onClick={() => toggleExpand(g.id)} title="Open group">
                     <Users size={14} />
-                    {expandedId === g.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                  </button>
-                  <button className="grp-action-btn" onClick={() => startEdit(g)} title="Edit group"><Edit2 size={14} /></button>
-                  <button
-                    className={`grp-action-btn ${g.is_active ? '' : 'grp-action-activate'}`}
+                    Open Group <ChevronRight size={12} />
+                  </button>}
+                  {can('groups.edit') && <button className="grp-action-btn grp-action-edit" disabled={actionBusy} onClick={() => startEdit(g)} title="Edit group"><Edit2 size={15} />Edit Group</button>}
+                  {can('groups.edit') && can('groups.status') && <button
+                    className={`grp-action-btn ${g.is_active ? 'grp-action-deactivate' : 'grp-action-activate'}`}
+                    disabled={actionBusy}
                     onClick={() => handleToggleActive(g)}
                     title={g.is_active ? 'Deactivate' : 'Activate'}
                   >
-                    {g.is_active ? <X size={14} /> : <Save size={14} />}
-                  </button>
-                  <button className="grp-action-btn grp-action-danger" onClick={() => handleDelete(g)} title="Delete group">
-                    <Trash2 size={14} />
-                  </button>
+                    <Power size={15}/>{g.is_active?'Deactivate':'Activate'}
+                  </button>}
+                  {can('groups.delete') && <button className="grp-action-btn grp-action-danger" disabled={actionBusy} onClick={() => handleDelete(g)} title="Delete group">
+                    <Trash2 size={15} />Delete Group
+                  </button>}
                 </div>
               </div>
 
               {/* Members panel */}
               {expandedId === g.id && (
                 <div className="grp-members-panel">
-                  <div className="grp-members-title">Members</div>
+                  <div className="grp-members-heading"><div className="grp-members-title">Users</div>{canPickUsers&&<button type="button" className="grp-add-member-btn" disabled={actionBusy} onClick={()=>{clearAddUsers(g.id);setAddUsersFor(g)}}><UserPlus size={16}/>Add Users</button>}</div>
                   {memberLoading[g.id] ? (
                     <div className="grp-members-loading"><Loader size={14} className="spin" /> Loading…</div>
                   ) : (
                     <>
-                      {/* Add member row — searchable picker */}
-                      <div className="grp-add-member-row">
-                        <UserSearchPicker
-                          allUsers={allUsers}
-                          existingMembers={members[g.id] || []}
-                          selectedIds={addUserIds[g.id] || []}
-                          onToggle={uid => toggleAddUser(g.id, uid)}
-                          onClearAll={() => clearAddUsers(g.id)}
-                        />
-                        <button
-                          className="grp-add-member-btn"
-                          onClick={() => handleAddMember(g.id)}
-                          disabled={!(addUserIds[g.id] || []).length}
-                        >
-                          <UserPlus size={13} />
-                          {(addUserIds[g.id] || []).length > 1
-                            ? `Add (${addUserIds[g.id].length})`
-                            : 'Add'}
-                        </button>
-                      </div>
+                      {can('groups.members') && !canPickUsers && <p className="grp-sub">View users permission is required to search and add members.</p>}
 
                       {/* Member list */}
                       <MemberList
                         groupId={g.id}
-                        memberList={members[g.id] || []}
+                        memberList={(members[g.id] || []).map(member => ({...member, role_name:member.role_name || allUsers.find(u => u.id === member.id)?.role_name}))}
                         searchQuery={memberSearch[g.id] || ''}
                         onSearchChange={q => setMemberSearch(p => ({ ...p, [g.id]: q }))}
-                        onRemove={(uid, name) => handleRemoveMember(g.id, uid, name)}
+                        onRemove={can('groups.members') ? (uid, name) => handleRemoveMember(g.id, uid, name) : undefined}
                       />
                     </>
                   )}
                 </div>
               )}
             </div>
-          ))}
+          );})}
         </div>
       )}
+
+      {addUsersFor && <GroupDialog label={`Add users to ${addUsersFor.name}`} onClose={()=>{if(!actionBusy){clearAddUsers(addUsersFor.id);setAddUsersFor(null)}}}>
+        <div className="grp-add-users-dialog"><h2>Add users to {addUsersFor.name}</h2><p>Search and select users below. They will be added only when you save.</p>
+          <UserSearchPicker allUsers={allUsers} existingMembers={members[addUsersFor.id]||[]} selectedIds={addUserIds[addUsersFor.id]||[]} onToggle={id=>toggleAddUser(addUsersFor.id,id)} onClearAll={()=>clearAddUsers(addUsersFor.id)} disabled={actionBusy}/>
+          <div className="grp-form-actions"><button type="button" className="grp-cancel-btn" disabled={actionBusy} onClick={()=>{clearAddUsers(addUsersFor.id);setAddUsersFor(null)}}>Cancel</button><button type="button" className="grp-save-btn" disabled={actionBusy||!(addUserIds[addUsersFor.id]||[]).length} onClick={()=>handleAddMember(addUsersFor.id)}><Save size={16}/>{actionBusy?'Saving…':`Save Users${(addUserIds[addUsersFor.id]||[]).length?` (${addUserIds[addUsersFor.id].length})`:''}`}</button></div>
+        </div>
+      </GroupDialog>}
+
+      {prompt && <GroupDialog label={prompt.title} onClose={()=>{if(!actionBusy)setPrompt(null)}}>
+        <div className="grp-confirm-body"><h2>{prompt.title}</h2><p>{prompt.message}</p><div className="grp-form-actions"><button className="grp-cancel-btn" disabled={actionBusy} onClick={()=>setPrompt(null)}>Cancel</button><button className={'grp-action-btn grp-action-'+prompt.kind} disabled={actionBusy} onClick={confirmAction}>{prompt.kind==='delete'?<UserMinus size={16}/>:<Power size={16}/>} {actionBusy?'Updating…':prompt.label}</button></div></div>
+      </GroupDialog>}
+      {feedback && !prompt && <GroupDialog label={feedback.title} success onClose={()=>setFeedback(null)}><div className="grp-feedback-icon"><CheckCircle2 size={42}/></div><h2>{feedback.title}</h2><p>{feedback.message}</p><button className="grp-action-btn grp-action-activate" autoFocus onClick={()=>setFeedback(null)}><CheckCircle2 size={16}/>Done</button></GroupDialog>}
 
       {deleteModal && (
         <DeleteGroupModal

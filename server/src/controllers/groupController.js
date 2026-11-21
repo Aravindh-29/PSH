@@ -34,7 +34,8 @@ async function getOne(req, res, next) {
     if (!rows.length) return res.status(404).json({ success: false, message: 'Group not found' });
 
     const { rows: members } = await pool.query(`
-      SELECT u.id, u.full_name, u.email, u.role, u.is_active
+      SELECT u.id, u.full_name, u.email, u.role, u.is_active,
+             (SELECT name FROM access_roles WHERE key=u.role) AS role_name
       FROM users u
       JOIN user_groups ug ON ug.user_id = u.id
       WHERE ug.group_id = $1 AND u.deleted_at IS NULL

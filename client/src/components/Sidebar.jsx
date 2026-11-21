@@ -61,7 +61,7 @@ export default function Sidebar({ collapsed, onToggle }) {
   const {can,any}=useAccess();
   const navPermissions={'/':'dashboard.view','/admin/my-dashboard':'dashboard.view','/admin/user-tickets':'users.tickets','/my-tickets':'tickets.view','/my-query':'query.view','/tickets/new':'tickets.create','/knowledge-base':'kb.view','/reports':'reports.view','/admin/users':'users.view','/admin/groups':'groups.view','/admin/sso':'sso.view','/admin/email':'email.view','/audit-logs':'audit.view'};
   const configAllowed=any(['fields.view','categories.view','types.view','templates.view','branding.view','sla_config.view','roles.view']);
-  const visible=item=>item.to==='/admin/modules'?configAllowed:can(navPermissions[item.to]);
+  const visible=item=>item.to==='/admin/modules'?configAllowed:item.to==='/admin/users'?any(['users.view','users.team_view']):can(navPermissions[item.to]);
   const isAdmin = user?.role === 'admin';
 
   const handleLogout = async () => {
@@ -91,7 +91,7 @@ export default function Sidebar({ collapsed, onToggle }) {
         {/* Admin section */}
         {(ADMIN_NAV.some(visible)) && (
           <>
-            {!collapsed && <div className="nav-section-label">Admin</div>}
+            {!collapsed && <div className="nav-section-label">{!can('users.view')&&can('users.team_view')?'Team Management':'Admin'}</div>}
             {ADMIN_NAV.filter(visible).map(item => <NavItem key={item.to} {...item} collapsed={collapsed} />)}
           </>
         )}

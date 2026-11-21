@@ -99,6 +99,7 @@
 .rbac .rbac-group-option.is-selected { background:#fff3e9; color:#a74608; }
 .rbac-group-option input[type=checkbox] { margin:0; flex-shrink:0; cursor:pointer; }
 .rbac-group-picker>small { display:block; margin-top:8px; line-height:1.5; }
+.rbac .rbac-group-picker>small { color:#15803d; font-size:12px; font-weight:500; line-height:1.7; }
 .rbac-group-picker:disabled .rbac-group-option { opacity:.6; cursor:not-allowed; }
 .rbac-group-empty { margin:8px 10px; color:#7b899b; }
 
@@ -121,3 +122,39 @@
 .rbac-setup-status .is-complete { color:#16836a; }
 .rbac-user-save-actions { justify-content:flex-end; margin-top:8px; }
 .rbac-user-form .cfg-btn-save:disabled { background:#e2e8f0; border-color:#d8e0e9; color:#8a97a9; box-shadow:none; opacity:1; cursor:not-allowed; }
+.rbac-security-section + .rbac-security-section { margin-top:28px; padding-top:24px; border-top:1px solid #e5ebf3; }
+.rbac-security-section h3 { margin:0 0 18px; }
+.rbac-security-section .rbac-field-hint { margin:10px 0 18px; line-height:1.6; }
+.rbac .rbac-security-mfa { background:#2563eb; border-color:#2563eb; box-shadow:0 3px 8px #2563eb20; }
+.rbac .rbac-security-success { position:fixed; inset:0; margin:auto; width:min(430px,calc(100vw - 40px)); max-height:calc(100dvh - 40px); overflow-y:auto; box-sizing:border-box; border:1px solid #ccebdd; border-radius:18px; padding:32px; text-align:center; color:#183047; background:#fff; box-shadow:0 24px 80px #0f172a40; }
+.rbac-security-success::backdrop { background:#0f172a66; backdrop-filter:blur(3px); }
+.rbac-security-success-icon { width:78px; height:78px; margin:0 auto 20px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#e8f8ef; color:#16834e; }
+.rbac .rbac-security-success h2 { margin:0 0 12px; font-size:22px; line-height:1.35; }
+.rbac .rbac-security-success p { margin:0 0 24px; font-size:14px; line-height:1.7; color:#607187; }
+.rbac .rbac-security-success .cfg-btn-save { min-width:130px; background:#16834e; border-color:#16834e; }
+.rbac-activity-heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; }
+.rbac-activity-heading h3 { margin:0 0 5px; }
+.rbac .rbac-activity-heading p,.rbac .rbac-activity-count,.rbac .rbac-activity-footnote { margin:0; color:#7b899b; font-size:11px; line-height:1.6; }
+.rbac-activity-search { display:flex; align-items:center; gap:9px; color:#7b899b; }
+.rbac-activity-search input { flex:1; min-width:0; width:100%; }
+.rbac-activity-search button { flex-shrink:0; }
+.rbac .rbac-activity-count { margin:12px 0; }
+.rbac-activity-scroll { max-height:420px; overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; padding:3px 10px 3px 0; }
+.rbac-activity-scroll:focus-visible { outline:2px solid var(--orange,#ed6500); outline-offset:4px; border-radius:6px; }
+.rbac-activity-timeline { list-style:none; padding:0; margin:0; }
+.rbac-activity-timeline>li { position:relative; display:flex; gap:12px; padding:0 0 22px; min-width:0; }
+.rbac-activity-timeline>li:not(:last-child)::before { content:''; position:absolute; left:15px; top:33px; bottom:3px; width:1px; background:#e2e9f1; }
+.rbac-activity-icon { display:flex; align-items:center; justify-content:center; width:32px; height:32px; flex-shrink:0; border-radius:50%; background:#eaf7ef; color:#16834e; }
+.rbac-activity-icon.is-security { background:#edf3ff; color:#2563eb; }
+.rbac-activity-event { flex:1; min-width:0; padding-top:3px; overflow-wrap:anywhere; }
+.rbac-activity-event>strong { font-size:13px; color:#233952; }
+.rbac .rbac-activity-event>p { margin:6px 0 10px; color:#7b899b; font-size:11px; line-height:1.6; }
+.rbac-activity-event summary { color:#3869b2; font-size:12px; cursor:pointer; padding:3px 0; }
+.rbac-activity-event dl { margin:10px 0 0; padding:12px; border:1px solid #e5ebf3; border-radius:8px; background:#f8fafc; }
+.rbac-activity-event dl>div+div { margin-top:10px; }
+.rbac-activity-event dt { font-size:10px; color:#7b899b; text-transform:capitalize; }
+.rbac-activity-event dd { margin:3px 0 0; font-size:12px; color:#34455d; white-space:pre-wrap; overflow-wrap:anywhere; }
+.rbac-activity-more { margin:0 0 10px 44px; }
+.rbac .rbac-activity-footnote { padding-top:14px; margin-top:12px; border-top:1px solid #edf1f6; }
+.rbac-activity-empty { padding:26px 12px; text-align:center; color:#7b899b; }
+@media(max-width:480px) { .rbac-activity-search { flex-wrap:wrap; } .rbac-activity-search input { flex-basis:75%; } }

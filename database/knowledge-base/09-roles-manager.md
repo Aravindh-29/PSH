@@ -24,7 +24,7 @@ For example, you can create a role called **Manager** for people who supervise s
 | Manager | Supervise support tickets for selected teams | David, a support manager |
 | Reporting Analyst | Read permitted reports | A service reporting colleague |
 
-**Admin** and **User / Employee** are built-in roles. **Manager** and **Reporting Analyst** are examples of custom roles you can create and name yourself. The built-in Admin role has full application access and is protected.
+**Admin** and **User / Employee** are built-in roles. **Manager** is also available as a customizable default role. You can create additional roles such as **Reporting Analyst** and choose their permissions yourself. The built-in Admin role has full application access and is protected.
 
 ### Simple Role Example
 
@@ -195,3 +195,18 @@ Unauthorized pages show **You don't have permission to access this page.** Restr
 | What can David do? | Permissions: the checked actions |
 | Which team does David belong to? | Groups: L1 Support |
 | Which teams do his Selected Groups actions cover? | Managed Groups: L1 Support and L2 Support |
+
+
+## Manager Users Page: HR Department Example
+
+| Setting for Siva | Select | Result |
+| --- | --- | --- |
+| Role | Manager | Receives the Manager role permissions |
+| Groups | HR Department | Is a member of the HR team |
+| Managed Groups | HR Department | Can oversee permitted HR tickets and HR users |
+
+With **View users in Managed Groups** and **Create Employee users in Managed Groups**, Siva sees a **Users** menu and a **My Team Users** page. He sees HR members, searches them, and creates new Employee accounts with at least one of his managed teams selected. MFA remains required. He cannot create another Manager/Admin, grant Managed Groups, reset other users' passwords, or administer outside accounts through these permissions.
+
+To assign work, open **My Tickets → Group Tickets**, open an HR ticket, choose **Edit**, select an active HR member in **Assign to**, add a work note and save. A Finance-only user cannot be assigned to an HR ticket, even when the same manager oversees both departments.
+
+Group membership by itself does not provide management access. If Managed Groups is empty, the Manager has no team users or group-scoped tickets to oversee. These team permissions are separate from global user administration permissions.

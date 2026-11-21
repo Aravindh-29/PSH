@@ -76,6 +76,7 @@ async function remove(req,res,next) {
     await client.query('BEGIN');await lock(client);
     const role=(await client.query('SELECT * FROM access_roles WHERE key=$1 FOR UPDATE',[req.params.key])).rows[0];
     if(!role) throw Object.assign(new Error('Role not found'),{status:404});
+    if(role.is_default) fail('Default roles cannot be deleted. Deactivate an unused default role instead.');
     if(role.is_system || role.key===req.access.role) fail('This role is protected.');
     delegate(req,role.permissions,role.assignable_roles);
     const count=await client.query('SELECT COUNT(*) FROM users WHERE role=$1',[role.key]);

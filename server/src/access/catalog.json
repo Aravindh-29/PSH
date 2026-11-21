@@ -1147,5 +1147,21 @@
       "email.history",
       "email.test"
     ]
+  },
+  {
+    "key": "users.team_view",
+    "label": "View users in Managed Groups",
+    "group": "Users",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "users.team_create",
+    "label": "Create Employee users in Managed Groups",
+    "group": "Users",
+    "scoped": false,
+    "requires": [
+      "users.team_view"
+    ]
   }
 ]

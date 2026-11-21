@@ -58,7 +58,7 @@ export default function KBArticle() {
         <article className="kba-article">
           <div className="kba-article-top">
             <span className="kb-cat-badge" style={catStyle}>{article.category}</span>
-            {isAdmin && (
+            {isAdmin && (article.status !== 'PUBLISHED' || can('kb.publish')) && (
               <button
                 className="kba-edit-btn"
                 onClick={() => navigate('/knowledge-base', { state: { editId: article.id } })}

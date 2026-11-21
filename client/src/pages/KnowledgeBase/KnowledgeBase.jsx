@@ -59,6 +59,7 @@ export default function KnowledgeBase() {
     if (editId && isAdmin) {
       api.get(`/kb/${editId}`).then(r => {
         const art = r.data.article;
+        if (!can('kb.edit') || art.status === 'PUBLISHED' && !can('kb.publish')) return;
         setEditTarget(art);
         setForm({ title: art.title, content: art.content || '', category: art.category, status: art.status });
         setShowModal(true);
@@ -83,7 +84,7 @@ export default function KnowledgeBase() {
 
   useEffect(() => { load(); }, [load]);
 
-  const openCreate = () => { setEditTarget(null); setForm(EMPTY_FORM); setShowModal(true); };
+  const openCreate = () => { setEditTarget(null); setForm({ ...EMPTY_FORM, status: can('kb.publish') ? 'PUBLISHED' : 'DRAFT' }); setShowModal(true); };
   const openEdit = (e, art) => {
     e.stopPropagation();
     setEditTarget(art);
@@ -228,7 +229,7 @@ export default function KnowledgeBase() {
                     )}
                     {isAdmin && (
                       <div className="kb-card-actions" onClick={e => e.stopPropagation()}>
-                        <button disabled={!can('kb.edit')} className="kb-action-btn edit" onClick={e => openEdit(e, art)} title="Edit">
+                        <button disabled={!can('kb.edit') || art.status === 'PUBLISHED' && !can('kb.publish')} className="kb-action-btn edit" onClick={e => openEdit(e, art)} title="Edit">
                           <Edit2 size={13} />
                         </button>
                         <button disabled={!can('kb.delete')} className="kb-action-btn del" onClick={e => handleDelete(e, art.id, art.title)} title="Delete">
@@ -281,7 +282,7 @@ export default function KnowledgeBase() {
                 <div className="kb-field">
                   <label>Status</label>
                   <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
-                    <option value="PUBLISHED">Published</option>
+                    {can('kb.publish') && <option value="PUBLISHED">Published</option>}
                     <option value="DRAFT">Draft</option>
                   </select>
                 </div>

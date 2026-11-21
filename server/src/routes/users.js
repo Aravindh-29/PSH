@@ -1,12 +1,15 @@
 const express = require('express');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const userCtrl = require('../controllers/userController');
+const teamCtrl = require('../controllers/teamUserController');
 
 const router = express.Router();
 
 // Profile routes (self-service, any authenticated user)
 router.get('/me', requireAuth, userCtrl.getMe);
 router.put('/me', requireAuth, userCtrl.updateMe);
+router.get('/team', requireAuth, teamCtrl.list);
+router.post('/team', requireAuth, teamCtrl.create);
 
 router.get('/', requireAuth, userCtrl.list);
 router.post('/', requireAdmin, userCtrl.create);

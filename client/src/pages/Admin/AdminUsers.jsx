@@ -1,9 +1,11 @@
-import React,{useEffect,useState} from 'react';
+import React,{useEffect,useRef,useState} from 'react';
 import {Users, UserCheck, ShieldCheck, LockKeyhole, Plus, Upload, Download, Search, Eye, EyeOff, ArrowRight, ArrowLeft, CheckCircle2} from 'lucide-react';
 import api from '../../api/axios';
 import useAccess from '../../hooks/useAccess';
 import EffectiveAccess from '../../components/EffectiveAccess';
 import BulkUsersReview from './BulkUsersReview';
+import UserActivityHistory from './UserActivityHistory';
+import TeamUsers from './TeamUsers';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import './Admin.css';
@@ -15,12 +17,28 @@ function PasswordField({id,label,value,onChange,disabled=false,...props}) {
   const [visible,setVisible]=useState(false);
   return <div className="rbac-password-field"><label htmlFor={id}>{label}</label><div className="rbac-password-control"><input {...props} id={id} type={visible?'text':'password'} value={value} disabled={disabled} onChange={onChange}/><button type="button" disabled={disabled} aria-label={(visible?'Hide ':'Show ')+(id==='new-user-password'?'password':'new password')} aria-pressed={visible} onClick={()=>setVisible(!visible)}>{visible?<EyeOff size={18} aria-hidden="true"/>:<Eye size={18} aria-hidden="true"/>}</button></div></div>;
 }
-export default function AdminUsers(){
+function SecuritySuccess({result,onDismiss}) {
+  const dialog=useRef(null);
+  useEffect(()=>{
+    const element=dialog.current;
+    element.showModal();
+    return ()=>{if(element.open)element.close()};
+  },[]);
+  const password=result.action==='reset-password';
+  return <dialog ref={dialog} className="rbac-security-success" role="alertdialog" aria-labelledby="security-success-title" aria-describedby="security-success-message" onCancel={e=>{e.preventDefault();onDismiss()}}>
+    <div className="rbac-security-success-icon"><CheckCircle2 size={42} aria-hidden="true"/></div>
+    <h2 id="security-success-title">{password?'Password changed successfully':'MFA reset successfully'}</h2>
+    <p id="security-success-message">{password?`The new password for ${result.name} has been saved. They can use it the next time they sign in.`:`MFA enrollment for ${result.name} has been reset. If MFA is required, they will need to set it up again when they sign in.`}</p>
+    <button type="button" className="cfg-btn-save" autoFocus onClick={onDismiss}>Done</button>
+  </dialog>;
+}
+function GlobalUsers(){
   const {can,user:currentUser}=useAccess();
   const [users,setUsers]=useState([]),[roles,setRoles]=useState([]),[catalog,setCatalog]=useState([]),[groups,setGroups]=useState([]);
   const [search,setSearch]=useState(''),[roleFilter,setRoleFilter]=useState(''),[statusFilter,setStatusFilter]=useState(''),[groupFilter,setGroupFilter]=useState(''),[sort,setSort]=useState('name');
-  const [form,setForm]=useState(null),[target,setTarget]=useState(null),[tab,setTab]=useState('details'),[busy,setBusy]=useState(false),[error,setError]=useState(''),[deleting,setDeleting]=useState(null),[confirm,setConfirm]=useState(''),[deleteTickets,setDeleteTickets]=useState(false),[bulk,setBulk]=useState(null),[bulkInfo,setBulkInfo]=useState({fileName:'',revision:0}),[newPassword,setNewPassword]=useState(''),[check,setCheck]=useState(''),[activity,setActivity]=useState([]);
+  const [form,setForm]=useState(null),[target,setTarget]=useState(null),[tab,setTab]=useState('details'),[busy,setBusy]=useState(false),[error,setError]=useState(''),[deleting,setDeleting]=useState(null),[confirm,setConfirm]=useState(''),[deleteTickets,setDeleteTickets]=useState(false),[bulk,setBulk]=useState(null),[bulkInfo,setBulkInfo]=useState({fileName:'',revision:0}),[newPassword,setNewPassword]=useState(''),[check,setCheck]=useState('');
   const [accessReviewed,setAccessReviewed]=useState(false);
+  const [securityAction,setSecurityAction]=useState(null),[securitySuccess,setSecuritySuccess]=useState(null);
   const load=async()=>{try{const [u,r,g]=await Promise.all([api.get('/users'),api.get('/roles/assignable'),api.get('/groups?picker=true')]);setUsers(u.data.users);setRoles(r.data.roles);setCatalog(r.data.catalog);setGroups(g.data.groups);setError('')}catch(e){setError(errorText(e))}};
   useEffect(()=>{load()},[]);
   const set=(key,value)=>{setForm(f=>({...f,[key]:value}));if(['role','groupIds','managedGroupIds','mfaRequired'].includes(key))setAccessReviewed(false)};
@@ -28,13 +46,29 @@ export default function AdminUsers(){
   const detailsReady=!!form&&!!form.fullName.trim()&&form.fullName.length<=255&&/^[a-zA-Z0-9._-]{1,50}$/.test(form.username)&&form.email.length<=255&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)&&form.password.length>=8&&form.password.length<=256;
   const accessReady=!!selectedRole&&selectedRole.is_active!==false&&accessReviewed&&!!form&&[...form.groupIds,...form.managedGroupIds].every(id=>groups.some(group=>group.id===id));
   const createReady=detailsReady&&accessReady&&can('users.create');
-  const open=(user=null)=>{setAccessReviewed(false);setActivity([]);if(user&&can('users.activity'))api.get(`/users/${user.id}/activity`).then(r=>setActivity(r.data.activity)).catch(e=>toast.error(errorText(e)));setTarget(user);setTab('details');setNewPassword('');setForm(user?{...blank,fullName:user.full_name,username:user.username,email:user.email,role:user.role,mfaRequired:user.mfa_required!==false,groupIds:(user.groups||[]).map(g=>g.id),managedGroupIds:user.managed_group_ids||[],isActive:user.is_active}:{...blank,role:''})};
+  const open=(user=null)=>{setAccessReviewed(false);setTarget(user);setTab('details');setNewPassword('');setForm(user?{...blank,fullName:user.full_name,username:user.username,email:user.email,role:user.role,mfaRequired:user.mfa_required!==false,groupIds:(user.groups||[]).map(g=>g.id),managedGroupIds:user.managed_group_ids||[],isActive:user.is_active}:{...blank,role:''})};
   const save=async e=>{e.preventDefault();if(busy)return;if(!target&&!createReady){toast.error('Complete account details and review the Access settings before creating a user.');return}setBusy(true);try{const body={...form};delete body.password;if(target){if(!can('users.assign_role'))delete body.role;if(!can('users.groups')){delete body.groupIds;delete body.managedGroupIds}if(!can('users.status'))delete body.isActive;if(!can('users.mfa_requirement'))delete body.mfaRequired;await api.put('/users/'+target.id,body)}else await api.post('/users',form);toast.success(target?'User updated':'User created');setForm(null);await load()}catch(e){toast.error(errorText(e))}finally{setBusy(false)}};
-  const security=async action=>{if(!target)return;setBusy(true);try{if(action==='reset-password'){if(newPassword.length<8)return toast.error('Use at least 8 characters');await api.post(`/users/${target.id}/reset-password`,{password:newPassword})}else{if(!window.confirm('Reset MFA enrollment for this user?'))return;await api.post(`/users/${target.id}/reset-mfa`)}toast.success('Account security updated');setNewPassword('');await load()}catch(e){toast.error(errorText(e))}finally{setBusy(false)}};
+  const security=async action=>{
+    if(!target||busy)return;
+    if(action==='reset-password'&&(newPassword.length<8||newPassword.length>256))return toast.error('Use 8–256 characters');
+    if(action==='reset-mfa'&&!window.confirm(`Reset MFA enrollment for ${target.full_name}? If MFA is required, they will need to set it up again when signing in.`))return;
+    setBusy(true);setSecurityAction(action);
+    try{
+      if(action==='reset-password'){
+        await api.post(`/users/${target.id}/reset-password`,{password:newPassword});
+        setNewPassword('');
+      }else{
+        await api.post(`/users/${target.id}/reset-mfa`);
+        setTarget(previous=>({...previous,mfa_enabled:false}));
+      }
+      setSecuritySuccess({action,name:target.full_name});
+      await load();
+    }catch(e){toast.error(errorText(e))}finally{setBusy(false);setSecurityAction(null)}
+  };
   const remove=async()=>{setBusy(true);try{await api.delete('/users/'+deleting.id,{data:{deleteTickets}});toast.success('User deleted');setDeleting(null);await load()}catch(e){toast.error(errorText(e))}finally{setBusy(false)}};
   const choices=roles.some(r=>r.key===form?.role)?roles:form&&target?[...roles,{key:target.role,name:target.role_name||target.role,permissions:{},responsibility:'Role is not assignable by this administrator.'}]:roles;
   const groupPicker = (field, label) => (
-    <fieldset className="rbac-group-picker" disabled={busy || !can('users.groups')}>
+    <fieldset className="rbac-group-picker" aria-describedby={`${field}-help`} disabled={busy || !can('users.groups')}>
       <legend>{label}</legend>
       <div className="rbac-group-options">
         {groups.length ? groups.map(group => (
@@ -50,9 +84,9 @@ export default function AdminUsers(){
           </label>
         )) : <p className="rbac-group-empty">No groups available.</p>}
       </div>
-      <small>{field === 'groupIds'
-        ? 'Teams this user belongs to. Check one or more groups.'
-        : 'Teams whose records this user can manage when their role allows Selected Groups access.'}</small>
+      <small id={`${field}-help`}>{field === 'groupIds'
+        ? 'This user will be a member of the groups you select. Example: select HR Department to make this user part of the HR team.'
+        : 'This user can oversee tickets assigned to these groups when their role allows Selected Groups access. Example: a Manager with HR Department selected can manage HR tickets. With team-user permissions, they can also view and create Employee users in HR. Editing existing user accounts requires separate permission.'}</small>
     </fieldset>
   );
   const download=async()=>{const wb=new ExcelJS.Workbook();const ws=wb.addWorksheet('Users');ws.addRow(['Full Name','Username','Email','Password','Role','Groups','Managed Groups','MFA Required']);ws.columns.forEach(c=>c.width=24);const info=wb.addWorksheet('Roles and Groups');info.addRow(['Assignable role names']);roles.forEach(r=>info.addRow([r.name]));info.addRow([]);info.addRow(['Available group names']);groups.forEach(g=>info.addRow([g.name]));const buffer=await wb.xlsx.writeBuffer();const url=URL.createObjectURL(new Blob([buffer]));const a=document.createElement('a');a.href=url;a.download='SERV-IT-users-template.xlsx';a.click();URL.revokeObjectURL(url)};
@@ -99,9 +133,11 @@ export default function AdminUsers(){
           {!target&&<div className="rbac-access-review"><label className="rbac-inline"><input type="checkbox" checked={accessReviewed} disabled={!selectedRole} onChange={e=>setAccessReviewed(e.target.checked)}/><span>I have reviewed this user's role, groups and MFA settings.</span></label><small>Select a role and confirm the access settings to complete this step.</small></div>}
         </>}
       </fieldset>
-      {tab==='activity'?<><h3>User Activity</h3><div className="rbac-scroll">{activity.length?activity.map((a,i)=><div key={i}><strong>{a.action.replaceAll('_',' ')}</strong><p>{new Date(a.created_at).toLocaleString()} · {a.actor_name}</p><pre>{JSON.stringify(a.details,null,2)}</pre></div>):<p>No recorded administration activity.</p>}</div></>:tab==='security'?<>
-        <h3>Account Security</h3><PasswordField id="reset-user-password" label="New Password" minLength={8} maxLength={256} disabled={!can('users.password')||busy} autoComplete="new-password" value={newPassword} onChange={e=>setNewPassword(e.target.value)}/>
-        <button type="button" className="cfg-btn-cancel" disabled={busy||!can('users.password')||!newPassword} onClick={()=>security('reset-password')}>Reset Password</button>{!can('users.password')&&<p>You don't have permission to perform this action.</p>}<hr/><p>MFA: {target.mfa_enabled?'Enrolled':'Not enrolled'}</p><button type="button" className="cfg-btn-cancel" disabled={busy||!can('users.mfa_reset')} onClick={()=>security('reset-mfa')}>Reset MFA</button>{!can('users.mfa_reset')&&<p>You don't have permission to perform this action.</p>}
+      {tab==='activity'?<UserActivityHistory key={target.id} userId={target.id} roles={roles} groups={groups}/>:tab==='security'?<>
+        <section className="rbac-security-section"><h3>Password</h3><PasswordField id="reset-user-password" label="New Password" minLength={8} maxLength={256} disabled={!can('users.password')||busy} autoComplete="new-password" value={newPassword} onChange={e=>setNewPassword(e.target.value)}/>
+        <p className="rbac-field-hint">Use 8–256 characters. Save to apply the new password immediately.</p>
+        <button type="button" className="cfg-btn-save rbac-security-password" disabled={busy||!can('users.password')||newPassword.length<8||newPassword.length>256} onClick={()=>security('reset-password')}><LockKeyhole size={16} aria-hidden="true"/>{securityAction==='reset-password'?'Saving password…':'Save New Password'}</button>{!can('users.password')&&<p>You don't have permission to perform this action.</p>}</section>
+        <section className="rbac-security-section"><h3>Multi-factor authentication</h3><p>MFA: <strong>{target.mfa_enabled?'Enrolled':'Not enrolled'}</strong></p><p className="rbac-field-hint">Reset enrollment so the user can set up their authenticator again. The Require MFA setting stays unchanged.</p><button type="button" className="cfg-btn-save rbac-security-mfa" disabled={busy||!can('users.mfa_reset')} onClick={()=>security('reset-mfa')}><ShieldCheck size={16} aria-hidden="true"/>{securityAction==='reset-mfa'?'Resetting MFA…':'Reset MFA Enrollment'}</button>{!can('users.mfa_reset')&&<p>You don't have permission to perform this action.</p>}</section>
       </>:<>
         {!target&&<div className="rbac-setup-status" role="status"><span className={detailsReady?'is-complete':''}><CheckCircle2 size={15}/>{detailsReady?'Details complete':'Complete account details'}</span><span className={accessReady?'is-complete':''}><ShieldCheck size={15}/>{accessReady?'Access reviewed':'Review access settings'}</span></div>}
         <div className="rbac-actions rbac-user-save-actions"><button type="button" className="cfg-btn-cancel" disabled={busy} onClick={()=>setForm(null)}>Cancel</button>
@@ -110,9 +146,15 @@ export default function AdminUsers(){
         </div>
       </>}
     </form><div><EffectiveAccess role={selectedRole||choices.find(r=>r.key===form.role)} catalog={catalog.filter(p=>!check||(p.label+' '+p.key).toLowerCase().includes(check.toLowerCase()))} groups={form.managedGroupIds}/><label>Check an action<input placeholder="Search effective access…" value={check} onChange={e=>setCheck(e.target.value)}/></label></div></div>
+    {securitySuccess&&<SecuritySuccess result={securitySuccess} onDismiss={()=>setSecuritySuccess(null)}/>}
   </div>;
   const filterRoles=Array.from(new Map([...roles,...users.map(u=>({key:u.role,name:u.role_name||u.role}))].map(r=>[r.key,r])).values());
   return <div className="admin-page rbac"><div className="rbac-heading"><div><span className="rbac-eyebrow">PEOPLE & ACCESS</span><h1>User Management</h1><p>Create accounts, assign roles and manage user access.</p></div><div className="rbac-actions">{can('users.bulk_template')&&<button className="cfg-btn-cancel" onClick={download}><Download size={16}/> Import Template</button>}{can('users.bulk_validate')&&<label className="cfg-btn-cancel rbac-upload"><Upload size={16}/> Upload Excel<input type="file" accept=".xlsx" className="rbac-file-input" disabled={busy} onChange={upload}/></label>}{can('users.create')&&<button className="cfg-btn-save" disabled={!roles.length} onClick={()=>open()}><Plus size={17}/> Add User</button>}</div></div><div className="rbac-stats">{[[Users,'Total users',users.length,'People in your organization'],[UserCheck,'Active users',users.filter(u=>u.is_active).length,'Enabled accounts'],[ShieldCheck,'Assigned roles',new Set(users.map(u=>u.role)).size,'Roles across your team'],[LockKeyhole,'MFA required',users.filter(u=>u.mfa_required!==false).length,'Additional account protection']].map(([Icon,label,value,note])=><div className="rbac-stat" key={label}><span className="rbac-stat-icon"><Icon size={21}/></span><div><span>{label}</span><strong>{value}</strong><small>{note}</small></div></div>)}</div><div className="rbac-toolbar"><Search size={18}/><input aria-label="Search users" placeholder="Search name, username, email or role…" value={search} onChange={e=>setSearch(e.target.value)}/><select aria-label="Filter users by role" value={roleFilter} onChange={e=>setRoleFilter(e.target.value)}><option value="">All Roles</option>{filterRoles.map(r=><option key={r.key} value={r.key}>{r.name}</option>)}</select><select aria-label="Filter users by status" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="">All Statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></select><select aria-label="Filter users by group" value={groupFilter} onChange={e=>setGroupFilter(e.target.value)}><option value="">All Groups</option>{groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></div><div className="rbac-card rbac-table-wrap"><div className="rbac-section-title"><h3>All users</h3><span>{filtered.length} results</span></div><table className="cfg-table"><thead><tr><th><button onClick={()=>setSort('name')}>Name</button></th><th>Username</th><th>Email</th><th><button onClick={()=>setSort(sort==='role'?'role-desc':'role')}>Role {sort==='role'?'↑':sort==='role-desc'?'↓':''}</button></th><th>Groups</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filtered.map(u=><tr key={u.id}><td><div className="rbac-identity"><span className="rbac-avatar">{u.full_name?.slice(0,1).toUpperCase()}</span><strong>{u.full_name}</strong></div></td><td>{u.username}</td><td>{u.email}</td><td><span className="rbac-status">{u.role_name||u.role}</span></td><td>{(u.groups||[]).map(g=>g.name).join(', ')||'—'}</td><td><span className={'rbac-badge '+(u.is_active?'is-active':'is-inactive')}>{u.is_active?'Active':'Inactive'}</span></td><td><div className="rbac-actions"><button className="cfg-btn-cancel" onClick={()=>open(u)}>View / Edit</button>{can('users.delete')&&u.id!==currentUser.id&&<button className="cfg-btn-cancel" onClick={()=>{setDeleting(u);setDeleteTickets(false);setConfirm('')}}>Delete</button>}</div></td></tr>)}</tbody></table>{!filtered.length&&<p>No users match these filters.</p>}<p>Showing {filtered.length} users</p></div>
     {deleting&&<div className="rbac-modal" role="dialog" aria-modal="true" aria-label="Delete User"><div className="rbac-card"><h2>Delete User: {deleting.full_name}</h2><p>This removes the account from the active users list.</p><label className="rbac-inline"><input type="checkbox" checked={deleteTickets} disabled={!can('users.delete_tickets')||busy} onChange={e=>setDeleteTickets(e.target.checked)}/>Also delete this user's tickets</label>{!can('users.delete_tickets')&&<p>You don't have permission to delete this user's tickets.</p>}<label>Type {deleting.username} to confirm<input value={confirm} onChange={e=>setConfirm(e.target.value)}/></label><div className="rbac-actions" style={{marginTop:20}}><button className="cfg-btn-cancel" disabled={busy} onClick={()=>setDeleting(null)}>Cancel</button><button className="cfg-btn-save" disabled={busy||confirm!==deleting.username} onClick={remove}>Delete User</button></div></div></div>}
   </div>;
+}
+
+export default function AdminUsers(){
+  const {can}=useAccess();
+  return can('users.view')?<GlobalUsers/>:<TeamUsers/>;
 }

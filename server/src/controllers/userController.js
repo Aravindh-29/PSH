@@ -60,13 +60,22 @@ async function getOne(req, res, next) {
   } catch (err) { next(err); }
 }
 
-async function createAccount(client, req, body) {
+async function createAccount(client, req, body, {team=false}={}) {
   const {username,email,fullName,password,role='employee',mfaRequired=true}=body;
   if(typeof username!=='string' || !/^[a-z0-9._-]{1,50}$/i.test(username) || typeof email!=='string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length>255 || typeof fullName!=='string' || !fullName.trim() || fullName.length>255 || typeof password!=='string' || password.length<8 || password.length>256) accessUsers.fail('Enter valid account details and a password of 8–256 characters.');
   if(typeof mfaRequired!=='boolean')accessUsers.fail('Invalid MFA requirement.');
-  const selected=await accessUsers.assignRole(client,req,role);
+  let selected;
+  if(team){
+    need(req,'users.team_create'); need(req,'users.team_view');
+    if(role!=='employee' || body.managedGroupIds!==undefined && (!Array.isArray(body.managedGroupIds)||body.managedGroupIds.length)) throw forbidden();
+    if(!Array.isArray(body.groupIds)||!body.groupIds.length) accessUsers.fail('Select at least one of your Managed Groups.');
+    if(mfaRequired!==true) throw forbidden();
+    await accessUsers.groups(client,req,body.groupIds);
+    selected=(await client.query("SELECT key FROM access_roles WHERE key='employee' AND is_active=true")).rows[0];
+    if(!selected) accessUsers.fail('The Employee role is inactive. Contact your administrator.');
+  }else selected=await accessUsers.assignRole(client,req,role);
   if(mfaRequired===false) need(req,'users.mfa_requirement');
-  if((body.groupIds?.length || body.managedGroupIds?.length)) need(req,'users.groups');
+  if(!team && (body.groupIds?.length || body.managedGroupIds?.length)) need(req,'users.groups');
   const hash=await argon2.hash(password,{type:argon2.argon2id});
   const result=await client.query('INSERT INTO users(username,email,full_name,password_hash,role,mfa_required) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,username,email,full_name,role,is_active',[username.toLowerCase().trim(),email.toLowerCase().trim(),fullName.trim(),hash,selected.key,mfaRequired!==false]);
   await accessUsers.setGroups(client,req,result.rows[0].id,body);
@@ -275,6 +284,6 @@ async function bulkCheck(req, res, next) {
   } catch (err) { next(err); }
 }
 
-async function activity(req,res,next){try{const {rows}=await pool.query('SELECT action,details,created_at,(SELECT full_name FROM users WHERE id=al.user_id) AS actor_name FROM admin_audit_logs al WHERE entity_type=$1 AND entity_id=$2 ORDER BY created_at DESC LIMIT 100',['user',req.params.id]);res.json({success:true,activity:rows})}catch(e){next(e)}}
+async function activity(req,res,next){try{const {rows}=await pool.query('SELECT id,action,details,created_at,(SELECT full_name FROM users WHERE id=al.user_id) AS actor_name FROM admin_audit_logs al WHERE entity_type=$1 AND entity_id=$2 ORDER BY created_at DESC,id DESC LIMIT 100',['user',req.params.id]);res.json({success:true,activity:rows})}catch(e){next(e)}}
 
-module.exports = { activity, list, getOne, create, update, resetPassword, resetMfa, deleteUser, deleteAllTickets, bulkCreate, bulkCheck, getMe, updateMe };
+module.exports = { createAccount, activity, list, getOne, create, update, resetPassword, resetMfa, deleteUser, deleteAllTickets, bulkCreate, bulkCheck, getMe, updateMe };

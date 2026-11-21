@@ -18,6 +18,7 @@ function routePermission(req) {
   }
   if (area === 'attachments') return method === 'DELETE' ? 'attachments.delete' : req.query.preview === 'true' ? 'attachments.preview' : 'attachments.download';
   if (area === 'users') {
+    if (p === '/team') return read ? 'users.team_view' : 'users.team_create';
     if(p.endsWith('/activity'))return 'users.activity';
     if (p === '/me') return read ? 'profile.view' : req.body.newPassword ? 'profile.password' : 'profile.edit';
     if (p === '/bulk-check') return 'users.bulk_validate';
@@ -117,8 +118,11 @@ async function authorize(req, pool) {
     if (assignmentChanged && !access.admin && access.permissions['tickets.assign'] !== 'all') {
       if (req.body.assignmentGroup && !req.body.assignmentGroupId) throw forbidden();
       if (req.body.assignmentGroupId && !access.managedGroups.includes(req.body.assignmentGroupId)) throw forbidden();
-      if (req.body.assignedTo && req.body.assignedTo !== access.userId) {
-        const member = await pool.rawQuery('SELECT 1 FROM user_groups WHERE user_id=$1 AND group_id=ANY($2::uuid[])',[req.body.assignedTo,access.managedGroups]);
+      if (req.body.assignedTo && (req.body.assignedTo !== access.userId || access.permissions['tickets.assign'] === 'groups')) {
+        const destination = req.body.assignmentGroupId || req.authorizedTicket?.assignment_group_id;
+        if (!destination || !access.managedGroups.includes(destination)) throw forbidden();
+        const member = await pool.rawQuery(`SELECT 1 FROM user_groups ug JOIN users u ON u.id=ug.user_id
+          WHERE ug.user_id=$1 AND ug.group_id=$2 AND u.is_active=true AND u.deleted_at IS NULL`,[req.body.assignedTo,destination]);
         if (!member.rowCount) throw forbidden();
       }
     }
@@ -129,11 +133,13 @@ async function authorize(req, pool) {
   }
   if (area === 'kb') {
     if (req.method === 'POST' && (req.body.status || 'PUBLISHED') === 'PUBLISHED') need(req,'kb.publish');
-    if (req.method === 'PUT' && req.body.status !== undefined) {
+    if (req.method === 'PUT') {
       const prior=await pool.rawQuery('SELECT status FROM kb_articles WHERE id=$1',[p.split('/')[1]]);
-      if(prior.rows[0] && changed(prior.rows[0].status,req.body.status)) need(req,'kb.publish');
+      // Editing a published article changes live content even when its status
+      // stays PUBLISHED. Draft-only authors must not bypass publishing access.
+      if(prior.rows[0] && (prior.rows[0].status==='PUBLISHED' || req.body.status!==undefined && changed(prior.rows[0].status,req.body.status))) need(req,'kb.publish');
     }
-    if(req.method==='GET' && uuid(p.slice(1))) {
+    if(req.method==='GET' && /^\/\d+$/.test(p)) {
       const row=await pool.rawQuery('SELECT status FROM kb_articles WHERE id=$1',[p.slice(1)]);
       if(row.rows[0]?.status==='DRAFT') need(req,'kb.drafts');
     }
