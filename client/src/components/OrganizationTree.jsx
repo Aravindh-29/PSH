@@ -1,0 +1,11 @@
+import React,{useEffect,useRef,useState} from 'react';
+function Check({partial,...props}){const ref=useRef();useEffect(()=>{if(ref.current)ref.current.indeterminate=partial},[partial]);return <input ref={ref} type="checkbox" aria-checked={partial?"mixed":props.checked} {...props}/>}
+export default function OrganizationTree({groups,value=[],onChange,disabled=false}){
+ const [expanded,setExpanded]=useState({});
+ const toggle=(id,checked)=>onChange(checked?[...new Set([...value,id])]:value.filter(v=>v!==id));
+ return <div className="org-tree">{groups.filter(g=>!g.parent_id).map(parent=>{
+   const children=groups.filter(g=>g.parent_id===parent.id),whole=value.includes(parent.id),some=children.some(g=>value.includes(g.id));
+   return <div className="org-tree-department" key={parent.id}><div className="org-tree-parent"><button type="button" aria-label={`${expanded[parent.id]?'Collapse':'Expand'} ${parent.name}`} aria-expanded={!!expanded[parent.id]} onClick={()=>setExpanded(p=>({...p,[parent.id]:!p[parent.id]}))}>{expanded[parent.id]?'▾':'▸'}</button><label><Check checked={whole} partial={!whole&&some} disabled={disabled||(parent.is_active===false&&!whole)||parent.full_control===false} onChange={e=>toggle(parent.id,e.target.checked)}/><span>{parent.name}{parent.region_name&&<small>{parent.region_name}</small>}</span></label>{whole&&<span className="org-tag">Whole department</span>}</div>
+   {expanded[parent.id]&&<div className="org-tree-children">{children.length?children.map(child=><label key={child.id}><input type="checkbox" checked={whole||value.includes(child.id)} disabled={disabled||whole||(child.is_active===false&&!value.includes(child.id))||child.full_control===false} onChange={e=>toggle(child.id,e.target.checked)}/><span>{child.name}{child.country_name&&<small>{child.country_name}</small>}</span>{whole&&<span className="org-tag">Inherited</span>}</label>):<p>No sub departments yet.</p>}</div>}</div>
+ })}{!groups.length&&<p>No departments available.</p>}<p className="org-help">A whole-department selection includes current and future sub departments. Independently selected sub departments remain selected when whole-department access is removed. Select any number of departments or sub departments using the checkboxes.</p></div>;
+}

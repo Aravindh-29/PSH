@@ -4,6 +4,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const SEED_ARTICLES = [
   [
+    "Gmail Ticket Automation - Message ID and Thread ID Matching",
+    "How-To Guide",
+    "11-gmail-ticket-matching.md",
+    "gmail-ticket-matching"
+  ],
+  [
     "Getting Started with PSH Ticketing System",
     "General",
     "01-getting-started.md",
@@ -52,7 +58,7 @@ const SEED_ARTICLES = [
     "sso-configuration"
   ],
   [
-    "Roles, Permissions, Groups and Managed Groups - Manager Example",
+    "Roles, Permissions, Departments and Managed Departments - Manager Example",
     "How-To Guide",
     "09-roles-manager.md",
     null
@@ -63,7 +69,7 @@ const SEED_ARTICLES = [
     "10-templates.md",
     null
   ]
-].map(([title, category, file, slug]) => ({title, category, slug, content: fs.readFileSync(path.join(__dirname, '../../../database/knowledge-base', file), 'utf8')}));
+].map(([title, category, file, slug]) => ({title, category, file, slug, content: fs.readFileSync(path.join(__dirname, '../../../database/knowledge-base', file), 'utf8')}));
 
 async function initTable() {
   await pool.query(`
@@ -83,7 +89,8 @@ async function initTable() {
   `);
   await pool.query(`ALTER TABLE kb_articles ADD COLUMN IF NOT EXISTS slug VARCHAR(100) UNIQUE`);
   for (const art of SEED_ARTICLES) {
-    const { rows } = await pool.query('SELECT id FROM kb_articles WHERE title = $1 LIMIT 1', [art.title]);
+    const legacyTitle=art.file==='09-roles-manager.md'?'Roles, Permissions, Groups and Managed Groups - Manager Example':null;
+    const { rows } = await pool.query('SELECT id FROM kb_articles WHERE title=$1 OR title=$2 ORDER BY (title=$1) DESC LIMIT 1', [art.title,legacyTitle]);
     if (!rows.length) {
       await pool.query(
         'INSERT INTO kb_articles (title, content, category, status, slug) VALUES ($1, $2, $3, $4, $5)',

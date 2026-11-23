@@ -12,6 +12,7 @@ import {
 import XLSX from '../../utils/xlsxShim';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
+import toast from 'react-hot-toast';
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import GlobalReports from './GlobalReports';
 import './Reports.css';
@@ -82,6 +83,8 @@ export default function Reports() {
   const [mode, setMode] = useState('personal');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error,setError]=useState('');
+  const [retry,setRetry]=useState(0);
   const [exporting, setExporting] = useState(false);
   const [rptPage, setRptPage] = useState(1);
   const [customFieldDefs, setCustomFieldDefs] = useState([]);
@@ -102,21 +105,24 @@ export default function Reports() {
 
   useEffect(() => {
     if (mode !== 'personal') return;
-    setLoading(true);
+    let active=true;const controller=new AbortController();
+    setLoading(true);setError('');
     const params = new URLSearchParams();
     if (dateRange) {
       params.set('startDate', format(dateRange.start, 'yyyy-MM-dd'));
       params.set('endDate',   format(dateRange.end,   'yyyy-MM-dd'));
     }
-    Promise.all([api.get(`/reports?${params}`), api.get('/config/fields')])
+    Promise.all([api.get(`/reports?${params}`,{signal:controller.signal}), api.get('/config/fields',{signal:controller.signal})])
       .then(([res, fRes]) => {
+        if(!active)return;
         setData(res.data);
         setRptPage(1);
         setCustomFieldDefs((fRes.data.fields || []).filter(f => !SYSTEM_KEYS.includes(f.field_key)));
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [mode, dateRange]);
+      .catch(err => {if(active&&!controller.signal.aborted){setData(null);setError(err.response?.data?.message||'Could not load reports. Please retry.')}})
+      .finally(() => {if(active)setLoading(false)});
+    return()=>{active=false;controller.abort()};
+  }, [mode, dateRange, retry, user?.id]);
 
   const applyPreset = (preset) => {
     setDateRange(preset.getRange());
@@ -143,9 +149,12 @@ export default function Reports() {
 
   const exportToExcel = useCallback(async () => {
     if(!can('reports.export')) return toast.error("You don't have permission to perform this action.");
-    await api.get('/reports?export=true');
-    if (!data) return;
+    if (!data||exporting) return;
     setExporting(true);
+    try {
+    const params={export:true};
+    if(dateRange){params.startDate=format(dateRange.start,'yyyy-MM-dd');params.endDate=format(dateRange.end,'yyyy-MM-dd')}
+    const {data}=await api.get('/reports',{params});
 
     // ── Style constants ───────────────────────────────────────────────────────
     const ORANGE = 'E85D04', NAVY = '0D1B2A', WHITE = 'FFFFFF';
@@ -215,7 +224,7 @@ export default function Reports() {
       [cs('METRIC', hdr(NAVY)), cs('VALUE', hdr(NAVY, WHITE, 11)), cs('VISUAL', hdr(NAVY)), cs('DETAILS', hdr(NAVY))],
       ...sumMetrics.map(([label, val, fg, bg]) => [
         cs(label, dat(LIGHT, '334155', 'left', true)),
-        cn(typeof val === 'number' ? val : 0, { fill: fill(bg), font: font({ bold: true, color: fg }), alignment: align('center'), border: borders }),
+        cs(val, { fill: fill(bg), font: font({ bold: true, color: fg }), alignment: align('center'), border: borders }),
         cs(typeof val === 'number' ? bar(val, data.summary.total || 1) : '', { fill: fill(bg), font: font({ color: fg }), alignment: align('center'), border: borders }),
         cs(typeof val === 'number' ? `${data.summary.total ? ((val / data.summary.total) * 100).toFixed(1) : 0}% of total` : val, dat(WHITE, '64748B', 'center')),
       ]),
@@ -393,8 +402,8 @@ export default function Reports() {
       return String(raw);
     };
     const ticketHeaders = [
-      'Ticket ID', 'Subject', 'Customer', 'Module', 'Status', 'Priority',
-      'Impact', 'Urgency', 'Assignment Group', 'Classification',
+      'Ticket ID', 'Department / Sub Department', 'Customer', 'Module', 'Status', 'Priority',
+      'Impact', 'Urgency', 'Department', 'Sub Department', 'Classification',
       'Owner', 'Created By', 'Created At', 'Last Updated',
       ...customFieldDefs.map(f => f.label),
     ];
@@ -408,7 +417,7 @@ export default function Reports() {
         const prPal = PRI_PALETTE[t.priority] || { bg: 'F1F5F9', fg: '64748B' };
         return [
           cs(t.ticket_number, { fill: fill(rowBg), font: font({ bold: true, color: '6366F1', sz: 9 }), alignment: align('center'), border: borders }),
-          cs(t.short_description, { fill: fill(rowBg), font: font({ color: '0F172A' }), alignment: align('left', 'center', true), border: borders }),
+          cs([t.assignment_group,t.sub_department_name].filter(Boolean).join(' / ') || '—', { fill: fill(rowBg), font: font({ color: '0F172A' }), alignment: align('left', 'center', true), border: borders }),
           cs(t.customer_name, dat(rowBg)),
           cs(t.module_name || '—', dat(rowBg, '64748B')),
           cs(t.status?.replace(/_/g, ' '), { fill: fill(stPal.bg), font: font({ bold: true, color: stPal.fg, sz: 9 }), alignment: align('center'), border: borders }),
@@ -416,6 +425,7 @@ export default function Reports() {
           cs(t.impact || '—', dat(rowBg, '334155')),
           cs(t.urgency || '—', dat(rowBg, '334155')),
           cs(t.assignment_group || '—', dat(rowBg, '334155')),
+          cs(t.sub_department_name || '—', dat(rowBg, '334155')),
           cs(t.classification || '—', dat(rowBg, '334155')),
           cs(t.ticket_owner_name || '—', dat(rowBg, '334155')),
           cs(t.created_by_name || '—', dat(rowBg, '334155')),
@@ -429,7 +439,7 @@ export default function Reports() {
     ws7['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: ticketHeaders.length - 1 } }];
     ws7['!cols'] = [
       { wch: 14 }, { wch: 32 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 11 },
-      { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 20 },
+      { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 24 }, { wch: 20 },
       { wch: 22 }, { wch: 22 }, { wch: 18 }, { wch: 18 },
       ...customFieldDefs.map(() => ({ wch: 20 })),
     ];
@@ -439,8 +449,9 @@ export default function Reports() {
 
     const filename = `PSH_Report_${(user?.fullName || 'User').replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
     await XLSX.writeFile(wb, filename);
-    setExporting(false);
-  }, [data, user, customFieldDefs]);
+    }catch(err){toast.error(err.response?.data?.message||'Could not export the report. Please try again.')}
+    finally{setExporting(false)}
+  }, [data, user, customFieldDefs, dateRange, exporting]);
 
   const summary = data?.summary || {};
 
@@ -474,7 +485,7 @@ export default function Reports() {
       <div className="rpt-header">
         <div>
           <h1 className="rpt-title">{user?.permissions?.['reports.view']==='groups'?'Team Reports':'My Reports'}</h1>
-          <p className="rpt-sub">Personal activity overview for {user?.fullName}</p>
+          <p className="rpt-sub">{user?.permissions?.['reports.view']==='groups'?'Activity within your permitted team access':'Tickets currently assigned to you'} · {user?.fullName}</p>
         </div>
         <div className="rpt-header-right">
           {/* Date picker */}
@@ -533,7 +544,7 @@ export default function Reports() {
           <button
             className="rpt-export-btn"
             onClick={exportToExcel}
-            disabled={!can('reports.export') || !data || exporting}
+            disabled={!can('reports.export') || !data || loading || exporting}
           >
             <Download size={15} />
             {exporting ? 'Exporting…' : 'Export to Excel'}
@@ -541,6 +552,7 @@ export default function Reports() {
         </div>
       </div>
 
+      {error&&<div role="alert" className="rbac-note">{error} <button type="button" className="rpt-export-btn" onClick={()=>setRetry(n=>n+1)}>Retry</button></div>}
       {/* Summary Cards */}
       <div className="rpt-cards">
         {SUMMARY_CARDS.map(cfg => (
@@ -584,7 +596,7 @@ export default function Reports() {
                 contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E2E8F0', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
               />
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="Created"  fill="#6366F1" radius={[3, 3, 0, 0]} maxBarSize={20} />
+              <Bar name="Tickets" dataKey="Created"  fill="#6366F1" radius={[3, 3, 0, 0]} maxBarSize={20} />
               <Bar dataKey="Resolved" fill="#14B8A6" radius={[3, 3, 0, 0]} maxBarSize={20} />
               <Bar dataKey="Closed"   fill="#8B5CF6" radius={[3, 3, 0, 0]} maxBarSize={20} />
             </BarChart>
@@ -640,7 +652,7 @@ export default function Reports() {
                 contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E2E8F0', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
               />
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="Created"  fill="#6366F1" radius={[3, 3, 0, 0]} maxBarSize={24} />
+              <Bar name="Tickets" dataKey="Created"  fill="#6366F1" radius={[3, 3, 0, 0]} maxBarSize={24} />
               <Bar dataKey="Resolved" fill="#14B8A6" radius={[3, 3, 0, 0]} maxBarSize={24} />
             </BarChart>
           </ResponsiveContainer>
@@ -693,7 +705,7 @@ export default function Reports() {
           <div className="rpt-table-card">
             <div className="rpt-chart-header">
               <h3>All My Tickets ({allTickets.length})</h3>
-              <button className="rpt-export-btn rpt-export-sm" onClick={exportToExcel} disabled={!can('reports.export') || !data || exporting}>
+              <button className="rpt-export-btn rpt-export-sm" onClick={exportToExcel} disabled={!can('reports.export') || !data || loading || exporting}>
                 <Download size={13} />
                 Export
               </button>
@@ -703,7 +715,7 @@ export default function Reports() {
                 <thead>
                   <tr>
                     <th>TICKET ID</th>
-                    <th>SUBJECT</th>
+                    <th>DEPARTMENT / SUB DEPARTMENT</th>
                     <th>CUSTOMER</th>
                     <th>STATUS</th>
                     <th>PRIORITY</th>
@@ -718,7 +730,7 @@ export default function Reports() {
                   {pageSlice.map((t, i) => (
                     <tr key={start + i}>
                       <td className="rpt-ticket-num">{t.ticket_number}</td>
-                      <td className="rpt-subject">{t.short_description}</td>
+                      <td className="rpt-subject">{[t.assignment_group,t.sub_department_name].filter(Boolean).join(' / ') || '—'}</td>
                       <td>{t.customer_name}</td>
                       <td>
                         <span className="rpt-status-pill" style={{

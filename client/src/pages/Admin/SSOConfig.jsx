@@ -78,7 +78,7 @@ export default function SSOConfig() {
           setSecretSet(c.clientSecretSet || false);
         }
       })
-      .catch(() => {})
+      .catch(err => toast.error(err.response?.data?.message||'Could not load SSO configuration. Please refresh.'))
       .finally(() => setLoading(false));
   }, []);
 

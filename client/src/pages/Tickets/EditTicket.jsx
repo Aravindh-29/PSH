@@ -1,12 +1,14 @@
 import useAccess from '../../hooks/useAccess';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { Upload, Download, X, Trash2, Paperclip, ArrowLeft } from 'lucide-react';
+import { Upload, Download, X, Trash2, Undo2, Paperclip, ArrowLeft } from 'lucide-react';
 import api from '../../api/axios';
+import {selectAttachments,uploadTicketFiles} from '../../utils/ticketAttachments';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { fmt } from '../../utils/dateUtils';
 import SearchSelect from '../../components/SearchSelect';
+import TicketOrganization from '../../components/TicketOrganization';
 import { useTicketTemplate, TemplateSelector, TemplateFields } from '../../components/TicketTemplate';
 import toast from 'react-hot-toast';
 import './TicketDetail.css';
@@ -51,12 +53,13 @@ const ASSIGN_GROUP_DEFAULTS = [
 
 export default function EditTicket() {
   const { id } = useParams();
-  const {can}=useAccess();
+  const {can,record}=useAccess();
   const navigate = useNavigate();
   const templateState = useTicketTemplate();
   const { user: currentUser } = useAuth();
   const { refetch: refetchNotifications } = useNotifications();
-  const isAdmin = can('tickets.owner');
+  const [accessTicket,setAccessTicket]=useState(null);
+  const isAdmin = record('tickets.owner',accessTicket);
 
   const [fields, setFields]           = useState([]);
   const [categories, setCategories]   = useState([]);
@@ -70,6 +73,8 @@ export default function EditTicket() {
   const [customData, setCustomData]   = useState({});
   const [attachments, setAttachments] = useState([]);
   const [uploadQueue, setUploadQueue] = useState([]);
+  const attachmentUploadActive=useRef(false),uploadQueueTimer=useRef(null);
+  useEffect(()=>()=>clearTimeout(uploadQueueTimer.current),[]);
   const [pendingDeletes, setPendingDeletes] = useState(new Set());
   const [saveNote, setSaveNote]       = useState('');
   const [originalAssignedTo, setOriginalAssignedTo] = useState('');
@@ -88,6 +93,7 @@ export default function EditTicket() {
       api.get('/groups/with-members'),
     ]).then(([t, f, c, u, tt, g]) => {
       const ticket = t.data.ticket;
+      setAccessTicket(ticket);
       templateState.hydrate(ticket);
       setTicketNumber(ticket.ticket_number);
       const catId = ticket.category_id ? String(ticket.category_id) : '';
@@ -108,6 +114,7 @@ export default function EditTicket() {
         classification:    ticket.classification     || '',
         assignmentGroup:   ticket.assignment_group   || '',
         assignmentGroupId: ticket.assignment_group_id ? String(ticket.assignment_group_id) : '',
+        subgroupId: ticket.subgroup_id || '',
       });
       setOriginalAssignedTo(ticket.assigned_to ? String(ticket.assigned_to) : '');
       setOriginalStatus(ticket.status || 'NEW');
@@ -151,6 +158,7 @@ export default function EditTicket() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if(attachmentUploadActive.current)return toast.error('Wait for attachments to finish uploading before saving.');
     if (!templateState.validate()) return;
     if (noteRequired && !saveNote.trim()) {
       toast.error('A work note is required when changing status or reassigning.');
@@ -161,26 +169,24 @@ export default function EditTicket() {
     }
     setLoading(true);
     try {
-      if (pendingDeletes.size > 0) {
-        await Promise.all([...pendingDeletes].map(attId => api.delete(`/attachments/${attId}`)));
-        setPendingDeletes(new Set());
-      }
-
       const payload = {
         ...form,
         typeId:            form.typeId            || undefined,
         classification:    form.classification    || undefined,
         assignmentGroup:   form.assignmentGroup   || undefined,
         assignmentGroupId: form.assignmentGroupId || undefined,
+        subgroupId: form.subgroupId || null,
         subcategoryId:     form.subcategoryId     || undefined,
         assignedTo:        form.assignedTo        || null,
         ...(isAdmin ? { ticketOwner: form.ticketOwner || null } : {}),
         customData,
         workNote:saveNote.trim(),
+        removeAttachmentIds: [...pendingDeletes],
         ...templateState.payload,
       };
       await api.put(`/tickets/${id}`, payload);
-      toast.success('Ticket updated');
+      toast.success(pendingDeletes.size ? 'Ticket saved and selected attachments permanently removed' : 'Ticket updated');
+      setPendingDeletes(new Set());
       refetchNotifications();
       navigate(isAdmin ? `/tickets/${id}` : '/tickets');
     } catch (err) {
@@ -201,41 +207,21 @@ export default function EditTicket() {
   };
 
   const handleUpload = async (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    const queue = files.map((f, i) => ({ id: i, name: f.name, progress: 0, status: 'uploading' }));
-    setUploadQueue(queue);
-    const fd = new FormData();
-    files.forEach(f => fd.append('files', f));
-    try {
-      const res = await api.post(`/tickets/${id}/attachments`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: (evt) => {
-          if (evt.total) {
-            const pct = Math.round((evt.loaded * 100) / evt.total);
-            setUploadQueue(prev => prev.map(q => ({ ...q, progress: pct, status: pct < 100 ? 'uploading' : 'processing' })));
-          }
-        },
-      });
-      const errors   = res.data.errors   || [];
-      const uploaded = res.data.attachments || [];
-      setUploadQueue(prev => prev.map(q => {
-        const hasError = errors.find(e => e.startsWith(q.name));
-        return { ...q, progress: 100, status: hasError ? 'error' : 'done' };
-      }));
-      if (errors.length)   errors.forEach(e => toast.error(e));
-      if (uploaded.length) {
-        toast.success(`${uploaded.length} file${uploaded.length > 1 ? 's' : ''} uploaded`);
-        const fresh = await api.get(`/tickets/${id}`);
-        setAttachments(fresh.data.attachments || []);
-      }
-    } catch (err) {
-      setUploadQueue(prev => prev.map(q => ({ ...q, status: 'error' })));
-      toast.error(err?.response?.data?.message || 'Upload failed');
-    } finally {
-      setTimeout(() => setUploadQueue([]), 3000);
+    if(attachmentUploadActive.current)return toast.error('Wait for the current upload to finish.');
+    const selection=selectAttachments(Array.from(e.target.files));
+    if(fileInputRef.current)fileInputRef.current.value='';
+    selection.errors.forEach(message=>toast.error(message));
+    if(!selection.files.length)return;
+    clearTimeout(uploadQueueTimer.current);attachmentUploadActive.current=true;
+    setUploadQueue(selection.files.map((f,index)=>({id:index,name:f.name,progress:0,status:'uploading'})));
+    const result=await uploadTicketFiles(id,selection.files,(index,update)=>setUploadQueue(prev=>prev.map(q=>q.id===index?{...q,...update}:q)));
+    result.errors.forEach(message=>toast.error(message));
+    if(result.attachments.length){
+      setAttachments(prev=>[...result.attachments.map(file=>({...file,uploader_name:currentUser?.fullName||currentUser?.username})),...prev]);
+      toast.success(`${result.attachments.length} file(s) uploaded`);
     }
+    attachmentUploadActive.current=false;
+    uploadQueueTimer.current=setTimeout(()=>setUploadQueue([]),3000);
   };
 
   const markForDelete = (attId) => {
@@ -274,7 +260,7 @@ export default function EditTicket() {
     : parseOpts(fieldByKey['assignment_group']?.options).length
       ? parseOpts(fieldByKey['assignment_group']?.options) : ASSIGN_GROUP_DEFAULTS;
 
-  const selectedGroup  = form.assignmentGroupId ? groups.find(g => g.id === form.assignmentGroupId) : null;
+  const selectedGroup  = form.assignmentGroupId ? groups.find(g => g.id === (form.subgroupId || form.assignmentGroupId)) : null;
   const groupMemberIds = selectedGroup ? new Set((selectedGroup.members || []).map(m => String(m.id))) : null;
 
   const categoryOpts    = categories.map(c => ({ value: String(c.id), label: c.name }));
@@ -336,7 +322,7 @@ export default function EditTicket() {
               <span className="ip-attach-count-badge">{totalAttachCount}</span>
             )}
           </button>
-          <button type="button" className="ip-btn ip-btn-danger" disabled={!can('tickets.delete')} onClick={() => setDeleteModal(true)}>
+          <button type="button" className="ip-btn ip-btn-danger" disabled={!record('tickets.delete',accessTicket)} onClick={() => setDeleteModal(true)}>
             <Trash2 size={13} /> Delete
           </button>
           <button type="button" className="ip-btn" onClick={() => { setPendingDeletes(new Set()); navigate(-1); }} disabled={loading}>Cancel</button>
@@ -492,29 +478,10 @@ export default function EditTicket() {
                     />
                   </span>
                 </div>
-                <div className="ip-pair">
-                  <span className="ip-lc">{fieldByKey['assignment_group']?.label || 'Assignment Group'}</span>
-                  <span className="ip-vc ip-input-cell">
-                    <SearchSelect
-                      disabled={!can('tickets.assign')}
-                      value={form.assignmentGroupId || form.assignmentGroup}
-                      onChange={v => {
-                        const grp = groups.find(g => g.id === v);
-                        if (grp) {
-                          setForm(f => ({ ...f, assignmentGroup: grp.name, assignmentGroupId: grp.id, assignedTo: '' }));
-                        } else {
-                          setForm(f => ({ ...f, assignmentGroup: v, assignmentGroupId: '', assignedTo: '' }));
-                        }
-                      }}
-                      options={assignGroupOpts}
-                      placeholder="Select group"
-                      searchPlaceholder="Search group..."
-                    />
-                  </span>
-                </div>
               </div>
+              <TicketOrganization form={form} setForm={setForm} disabled={!can('tickets.assign')}/>
               <div className="ip-row">
-                <div className="ip-pair">
+                <div className="ip-pair ip-assignee-right">
                   <span className="ip-lc">Assign to</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
@@ -650,6 +617,8 @@ export default function EditTicket() {
               </div>
             </div>
 
+            <p style={{padding:"10px 16px",margin:0,fontSize:12,color:"#334155"}}>Up to 10 files per selection · 25 MB per file. Files are saved immediately after selection. Use the bin to mark a file for removal, then click Save Changes to delete it permanently. Cancel keeps marked files.</p>
+
             {uploadQueue.length > 0 && (
               <div className="attach-popup-queue">
                 {uploadQueue.map(item => (
@@ -673,6 +642,7 @@ export default function EditTicket() {
                   <span style={{ fontSize: 12 }}>Click Upload to attach files.</span>
                 </div>
               )}
+              {pendingDeletes.size > 0 && <p role="status" style={{padding:'10px 16px',color:'#b91c1c',fontWeight:600}}>{pendingDeletes.size} attachment(s) marked for removal. Click Save Changes to permanently delete, or use Undo to keep them.</p>}
               {attachments.map(att => {
                 const isImage = att.mime_type?.startsWith('image/');
                 const isPending = pendingDeletes.has(att.id);
@@ -690,8 +660,8 @@ export default function EditTicket() {
                       {!isPending && (
                         <a href={`/api/attachments/${att.id}/download`} className="ip-btn-icon" title="Download"><Download size={13} /></a>
                       )}
-                      <button type="button" className="ip-btn-icon danger" onClick={() => markForDelete(att.id)} title={isPending ? 'Undo removal' : 'Mark for removal'}>
-                        <X size={13} />
+                      <button type="button" className="ip-btn-icon danger" onClick={() => markForDelete(att.id)} disabled={loading} aria-label={isPending ? `Undo removal of ${att.file_name}` : `Remove ${att.file_name}`} title={isPending ? 'Undo removal' : 'Remove on Save Changes'}>
+                        {isPending ? <Undo2 size={16} /> : <Trash2 size={16} />}
                       </button>
                     </div>
                   </div>

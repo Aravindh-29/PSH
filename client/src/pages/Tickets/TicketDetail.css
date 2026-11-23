@@ -1,5 +1,7 @@
 .ticket-detail { max-width: 1200px; }
 .td-loading { padding: 48px; text-align: center; color: var(--text-muted); }
+.ip-ticket-view .ip-breadcrumb,
+.ip-ticket-view .ip-breadcrumb-sep { color: #000000; }
 .td-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
 .td-breadcrumb { font-size: 12.5px; color: var(--text-muted); margin-bottom: 4px; }
 .td-breadcrumb a { color: var(--orange); text-decoration: none; }

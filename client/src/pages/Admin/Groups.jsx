@@ -15,7 +15,7 @@ function UserSearchPicker({ allUsers, existingMembers, selectedIds, onToggle, on
     <div className="usp-input-box"><Search size={16} className="usp-search-icon"/><input autoFocus className="usp-input" aria-label="Search users to add" placeholder="Search name, email or username…" value={query} disabled={disabled} onChange={e=>setQuery(e.target.value)}/></div>
     <div className="usp-dropdown">
       <div className="usp-count-row"><span className="usp-count">{available.length} available <span className="usp-sel-badge">{selectedIds.length} selected</span></span><div className="grp-picker-actions"><button type="button" className="usp-sel-all-btn" disabled={disabled||!available.length} onClick={()=>available.forEach(user=>{if(allVisible||!selectedIds.includes(user.id))onToggle(user.id)})}>{allVisible?'Deselect shown':'Select shown'}</button>{selectedIds.length>0&&<button type="button" className="usp-sel-all-btn" disabled={disabled} onClick={onClearAll}>Clear selection</button>}</div></div>
-      <div className="usp-list">{available.length?available.map(user=><label key={user.id} className={'usp-option'+(selectedIds.includes(user.id)?' usp-option-checked':'')}><input type="checkbox" checked={selectedIds.includes(user.id)} disabled={disabled} onChange={()=>onToggle(user.id)} aria-label={`Select ${user.full_name}`}/><span className="usp-option-avatar">{user.full_name.charAt(0).toUpperCase()}</span><span className="usp-option-info"><span className="usp-option-name">{user.full_name}</span><span className="usp-option-email">{user.email}</span></span><span className={`usp-role-badge ${user.role}`}>{user.role_name||user.role}</span></label>):<p className="usp-empty">{query?'No users match your search.':'All available users already belong to this group.'}</p>}</div>
+      <div className="usp-list">{available.length?available.map(user=><label key={user.id} className={'usp-option'+(selectedIds.includes(user.id)?' usp-option-checked':'')}><input type="checkbox" checked={selectedIds.includes(user.id)} disabled={disabled} onChange={()=>onToggle(user.id)} aria-label={`Select ${user.full_name}`}/><span className="usp-option-avatar">{user.full_name.charAt(0).toUpperCase()}</span><span className="usp-option-info"><span className="usp-option-name">{user.full_name}</span><span className="usp-option-email">{user.email}</span></span><span className={`usp-role-badge ${user.role}`}>{user.role_name||user.role}</span></label>):<p className="usp-empty">{query?'No users match your search.':'All available users already belong to this department.'}</p>}</div>
     </div>
   </div>;
 }
@@ -31,7 +31,7 @@ function DeleteGroupModal({ group, onConfirm, onClose }) {
   const nameMatch = nameInput.trim() === group.name.trim();
 
   const handleSubmit = async () => {
-    if (!nameMatch) { setError('Group name does not match'); return; }
+    if (!nameMatch) { setError('Department name does not match'); return; }
     if (!password.trim()) { setError('Admin password is required'); return; }
     setLoading(true); setError('');
     try {
@@ -52,7 +52,7 @@ function DeleteGroupModal({ group, onConfirm, onClose }) {
             <Trash2 size={18} />
           </div>
           <div>
-            <h3 className="grp-modal-title">Delete Group</h3>
+            <h3 className="grp-modal-title">Delete Department</h3>
             <p className="grp-modal-sub">This action cannot be undone. All member assignments will be removed.</p>
           </div>
           <button className="grp-modal-close" onClick={onClose}><X size={16} /></button>
@@ -98,7 +98,7 @@ function DeleteGroupModal({ group, onConfirm, onClose }) {
             onClick={handleSubmit}
             disabled={loading || !nameMatch || !password.trim()}
           >
-            {loading ? <><Loader size={13} className="spin" /> Deleting…</> : <><Trash2 size={13} /> Delete Group</>}
+            {loading ? <><Loader size={13} className="spin" /> Deleting…</> : <><Trash2 size={13} /> Delete Department</>}
           </button>
         </div>
       </div>
@@ -114,7 +114,7 @@ function MemberList({ memberList, searchQuery, onSearchChange, onRemove }) {
   );
 
   if (memberList.length === 0) {
-    return <div className="grp-no-members">No members in this group yet.</div>;
+    return <div className="grp-no-members">No members in this department yet.</div>;
   }
 
   return (
@@ -126,8 +126,8 @@ function MemberList({ memberList, searchQuery, onSearchChange, onRemove }) {
         <Search size={13} className="grp-member-search-icon" />
         <input
           className="grp-member-search-input"
-          aria-label="Search group users"
-          placeholder="Search users in this group…"
+          aria-label="Search department users"
+          placeholder="Search users in this department…"
           value={searchQuery}
           onChange={e => onSearchChange(e.target.value)}
         />
@@ -152,7 +152,7 @@ function MemberList({ memberList, searchQuery, onSearchChange, onRemove }) {
               {onRemove && <button
                 className="grp-remove-btn"
                 onClick={() => onRemove(m.id, m.full_name)}
-                title="Remove from group"
+                title="Remove from department"
               >
                 <UserMinus size={13} />
               </button>}
@@ -208,7 +208,7 @@ export default function Groups() {
         setMembers({[groupId]:g.data.members || []});
       } else setGroups(g.data.groups || []);
       setAllUsers((u.data.users || []).filter(u => !u.deleted_at));
-    }).catch(e => setError(e.response?.data?.message || 'Failed to load group information.'))
+    }).catch(e => setError(e.response?.data?.message || 'Failed to load department information.'))
     .finally(() => setLoading(false));
   }, [groupId, canPickUsers]);
 
@@ -241,15 +241,15 @@ export default function Groups() {
   };
 
   const handleSave = async () => {
-    if (!form.name.trim()) { toast.error('Group name is required'); return; }
+    if (!form.name.trim()) { toast.error('Department name is required'); return; }
     setSaving(true);
     try {
       if (editingId) {
         await api.put(`/groups/${editingId}`, form);
-        setFeedback({title:'Group updated successfully',message:`Changes to ${form.name.trim()} have been saved.`});
+        setFeedback({title:'Department updated successfully',message:`Changes to ${form.name.trim()} have been saved.`});
       } else {
         const { data } = await api.post('/groups', form);
-        setFeedback({title:'Group created successfully',message:`${form.name.trim()} is ready to use.`});
+        setFeedback({title:'Department created successfully',message:`${form.name.trim()} is ready to use.`});
         setShowForm(false);
         navigate(`/admin/groups/${data.group.id}`);
         return;
@@ -265,19 +265,19 @@ export default function Groups() {
 
   const confirmDelete = async (password) => {
     await api.delete(`/groups/${deleteModal.id}`, { data: { adminPassword: password } });
-    setFeedback({title:'Group deleted successfully',message:`${deleteModal.name} has been deleted.`});
+    setFeedback({title:'Department deleted successfully',message:`${deleteModal.name} has been deleted.`});
     setDeleteModal(null);
     if (groupId) navigate('/admin/groups'); else load();
   };
 
   const handleToggleActive = g => setPrompt({
-    title:`${g.is_active?'Deactivate':'Activate'} group?`,
+    title:`${g.is_active?'Deactivate':'Activate'} department?`,
     message:g.is_active?`Deactivate ${g.name}? It will no longer be available for new ticket assignments. Existing tickets and membership records are kept.`:`Activate ${g.name} so it is available for ticket assignments again.`,
-    label:g.is_active?'Deactivate Group':'Activate Group',
+    label:g.is_active?'Deactivate Department':'Activate Department',
     kind:g.is_active?'deactivate':'activate',
     run:async()=>{
       await api.put(`/groups/${g.id}`,{is_active:!g.is_active});
-      setFeedback({title:g.is_active?'Group deactivated successfully':'Group activated successfully',message:`${g.name} is now ${g.is_active?'inactive':'active'}.`});
+      setFeedback({title:g.is_active?'Department deactivated successfully':'Department activated successfully',message:`${g.name} is now ${g.is_active?'inactive':'active'}.`});
       await load();
     },
   });
@@ -305,19 +305,19 @@ export default function Groups() {
       const r = await api.get('/groups');
       setGroups((r.data.groups || []).filter(g => g.id === groupId));
       setAddUsersFor(null);
-      setFeedback({title:ids.length===1?'User added successfully':'Users added successfully',message:`${ids.length} ${ids.length===1?'user has':'users have'} been added to this group.`});
+      setFeedback({title:ids.length===1?'User added successfully':'Users added successfully',message:`${ids.length} ${ids.length===1?'user has':'users have'} been added to this department.`});
     } catch { toast.error('Some users could not be added. Refresh the member list before trying again.'); await loadMembers(groupId); }
     finally {setActionBusy(false)}
   };
 
   const handleRemoveMember = (groupId,userId,userName) => setPrompt({
-    title:'Remove group member?',message:`Remove ${userName} from this group? Their user account will remain active.`,label:'Remove Member',kind:'delete',
+    title:'Remove department member?',message:`Remove ${userName} from this department? Their user account will remain active.`,label:'Remove Member',kind:'delete',
     run:async()=>{
       await api.delete(`/groups/${groupId}/members/${userId}`);
       setMembers(p=>({...p,[groupId]:p[groupId].filter(m=>m.id!==userId)}));
       const r=await api.get('/groups');
       setGroups((r.data.groups||[]).filter(g=>g.id===groupId));
-      setFeedback({title:'Member removed successfully',message:`${userName} has been removed from this group.`});
+      setFeedback({title:'Member removed successfully',message:`${userName} has been removed from this department.`});
     },
   });
   const confirmAction=async()=>{
@@ -328,29 +328,29 @@ export default function Groups() {
 
   if (loading) return <div className="grp-loading"><Loader size={20} className="spin" /> Loading…</div>;
 
-  if (error) return <div className="grp-page"><Link className="grp-back-link" to="/admin/groups"><ArrowLeft size={15}/>Back to Groups</Link><p role="alert">{error}</p><button className="grp-cancel-btn" onClick={load}>Retry</button></div>;
+  if (error) return <div className="grp-page"><Link className="grp-back-link" to="/admin/groups"><ArrowLeft size={15}/>Back to Departments</Link><p role="alert">{error}</p><button className="grp-cancel-btn" onClick={load}>Retry</button></div>;
 
   return (
     <div className="grp-page">
-      {groupId && <Link className="grp-back-link" to="/admin/groups"><ArrowLeft size={15}/>Back to Groups</Link>}
+      {groupId && <Link className="grp-back-link" to="/admin/groups"><ArrowLeft size={15}/>Back to Departments</Link>}
       <div className="grp-header">
         <div>
-          <h1 className="grp-title">{groupId ? groups[0]?.name : 'Assignment Groups'}</h1>
-          <p className="grp-sub">{groupId ? 'Group details and team membership. Group membership is separate from Managed Groups oversight.' : 'Open a group to view its details and manage its members.'}</p>
+          <h1 className="grp-title">{groupId ? groups[0]?.name : 'Department'}</h1>
+          <p className="grp-sub">{groupId ? 'Department details and team membership. Department membership is separate from Managed Departments oversight.' : 'Open a department to view its details and manage its members.'}</p>
         </div>
         {!groupId && can('groups.create') && <button className="grp-add-btn" onClick={startNew}>
-          <Plus size={15} /> New Group
+          <Plus size={15} /> New Department
         </button>}
       </div>
 
       {/* Create / Edit Form */}
       {showForm && (
-        <GroupDialog label={editingId?'Edit Group':'Create Group'} onClose={()=>{if(!saving)setShowForm(false)}}>
+        <GroupDialog label={editingId?'Edit Department':'Create Department'} onClose={()=>{if(!saving)setShowForm(false)}}>
         <div className="grp-form-card">
-          <div className="grp-form-title">{editingId ? 'Edit Group' : 'Create Group'}</div>
+          <div className="grp-form-title">{editingId ? 'Edit Department' : 'Create Department'}</div>
           <div className="grp-form-row">
             <div className="grp-field">
-              <label>Group Name <span className="grp-req">*</span></label>
+              <label>Department Name <span className="grp-req">*</span></label>
               <input
                 value={form.name}
                 onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
@@ -384,8 +384,8 @@ export default function Groups() {
       {groups.length === 0 && !showForm ? (
         <div className="grp-empty">
           <Users size={36} strokeWidth={1.5} />
-          <p>No groups yet.</p>
-          {can('groups.create') && <button className="grp-add-btn" onClick={startNew}><Plus size={14} /> Create First Group</button>}
+          <p>No departments yet.</p>
+          {can('groups.create') && <button className="grp-add-btn" onClick={startNew}><Plus size={14} /> Create First Department</button>}
         </div>
       ) : (
         <div className="grp-list">
@@ -403,11 +403,11 @@ export default function Groups() {
                   <div className="grp-item-meta">{g.member_count} member{g.member_count !== 1 ? 's' : ''}{groupId && <span> · {g.is_active ? 'Active' : 'Inactive'}</span>}</div>
                 </Info>
                 <div className="grp-item-actions">
-                  {!groupId && <button className="grp-action-btn" onClick={() => toggleExpand(g.id)} title="Open group">
+                  {!groupId && <button className="grp-action-btn" onClick={() => toggleExpand(g.id)} title="Open department">
                     <Users size={14} />
-                    Open Group <ChevronRight size={12} />
+                    Open Department <ChevronRight size={12} />
                   </button>}
-                  {can('groups.edit') && <button className="grp-action-btn grp-action-edit" disabled={actionBusy} onClick={() => startEdit(g)} title="Edit group"><Edit2 size={15} />Edit Group</button>}
+                  {can('groups.edit') && <button className="grp-action-btn grp-action-edit" disabled={actionBusy} onClick={() => startEdit(g)} title="Edit department"><Edit2 size={15} />Edit Department</button>}
                   {can('groups.edit') && can('groups.status') && <button
                     className={`grp-action-btn ${g.is_active ? 'grp-action-deactivate' : 'grp-action-activate'}`}
                     disabled={actionBusy}
@@ -416,8 +416,8 @@ export default function Groups() {
                   >
                     <Power size={15}/>{g.is_active?'Deactivate':'Activate'}
                   </button>}
-                  {can('groups.delete') && <button className="grp-action-btn grp-action-danger" disabled={actionBusy} onClick={() => handleDelete(g)} title="Delete group">
-                    <Trash2 size={15} />Delete Group
+                  {can('groups.delete') && <button className="grp-action-btn grp-action-danger" disabled={actionBusy} onClick={() => handleDelete(g)} title="Delete department">
+                    <Trash2 size={15} />Delete Department
                   </button>}
                 </div>
               </div>

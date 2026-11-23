@@ -92,3 +92,6 @@
 
 .sidebar-logo-branded { flex-direction:column; flex-shrink:0; gap:8px; }
 .sidebar-organization-name { max-width:100%; text-align:center; overflow-wrap:anywhere; color:var(--sb-text-active); font-size:14px; font-weight:600; line-height:1.4; padding:0 6px 4px; }
+
+.nav-unopened-count{margin-left:auto;min-width:24px;height:24px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;background:#dc2626;color:#fff;font-size:12px;font-weight:800;flex-shrink:0}
+.sidebar.collapsed .nav-query{position:relative}.sidebar.collapsed .nav-unopened-count{position:absolute;right:1px;top:-3px;min-width:18px;height:18px;font-size:10px;padding:0 3px}

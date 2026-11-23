@@ -27,10 +27,10 @@ const ADMIN_ACTION_META = {
   USER_DELETED:          { label: 'User Deleted',         color: '#dc2626', bg: '#fee2e2',  icon: <Trash2 size={11}/> },
   USER_BULK_CREATED:     { label: 'Bulk User Import',     color: '#7c3aed', bg: '#f3e8ff',  icon: <Users size={11}/> },
   USER_PASSWORD_RESET:   { label: 'Password Reset',       color: '#b45309', bg: '#fef3c7',  icon: <Key size={11}/> },
-  GROUP_CREATED:         { label: 'Group Created',        color: '#16a34a', bg: '#dcfce7',  icon: <Plus size={11}/> },
-  GROUP_UPDATED:         { label: 'Group Updated',        color: '#2563eb', bg: '#dbeafe',  icon: <Edit2 size={11}/> },
-  GROUP_DELETED:         { label: 'Group Deleted',        color: '#dc2626', bg: '#fee2e2',  icon: <Trash2 size={11}/> },
-  GROUP_MEMBERS_SET:     { label: 'Group Members Updated',color: '#0891b2', bg: '#cffafe',  icon: <Users size={11}/> },
+  GROUP_CREATED:         { label: 'Department Created',        color: '#16a34a', bg: '#dcfce7',  icon: <Plus size={11}/> },
+  GROUP_UPDATED:         { label: 'Department Updated',        color: '#2563eb', bg: '#dbeafe',  icon: <Edit2 size={11}/> },
+  GROUP_DELETED:         { label: 'Department Deleted',        color: '#dc2626', bg: '#fee2e2',  icon: <Trash2 size={11}/> },
+  GROUP_MEMBERS_SET:     { label: 'Department Members Updated',color: '#0891b2', bg: '#cffafe',  icon: <Users size={11}/> },
   TICKET_TYPE_CREATED:   { label: 'Type Created',         color: '#16a34a', bg: '#dcfce7',  icon: <Plus size={11}/> },
   TICKET_TYPE_UPDATED:   { label: 'Type Updated',         color: '#2563eb', bg: '#dbeafe',  icon: <Edit2 size={11}/> },
   TICKET_TYPE_DELETED:   { label: 'Type Deleted',         color: '#dc2626', bg: '#fee2e2',  icon: <Trash2 size={11}/> },
@@ -49,7 +49,7 @@ const ADMIN_ACTION_META = {
 };
 
 const ENTITY_TYPE_LABEL = {
-  user: 'User', group: 'Group', category: 'Category', subcategory: 'Subcategory',
+  user: 'User', group: 'Department', category: 'Category', subcategory: 'Subcategory',
   ticket_type: 'Ticket Type', ticket_field: 'Ticket Field',
   email_config: 'Email Config', sso_config: 'SSO Config', retention_settings: 'Retention',
 };
@@ -218,8 +218,8 @@ const FIELD_LABELS = {
   status: 'Status', priority: 'Priority', impact: 'Impact', urgency: 'Urgency',
   short_description: 'Title', customer_name: 'Customer',
   description: 'Description', ticket_owner: 'Owner', category_id: 'Category',
-  type_id: 'Type', classification: 'Classification', assignment_group: 'Assignment Group',
-  assignment_group_id: 'Assignment Group', assigned_to: 'Assignee', custom_data: 'Custom Fields',
+  type_id: 'Type', classification: 'Classification', assignment_group: 'Department',
+  assignment_group_id: 'Department', assigned_to: 'Assignee', custom_data: 'Custom Fields',
   module_text: 'Module',
 };
 const fieldLabel = (f) => f ? (FIELD_LABELS[f] || f.replace(/_/g, ' ')) : '—';
@@ -274,9 +274,9 @@ function buildActivity(log) {
       return { text: `Owner changed to ${nv}`, sub: `from ${ov}` };
     }
     if (field_name === 'assignment_group' || field_name === 'assignment_group_id') {
-      if (!ov && nv)  return { text: `Assigned to group: ${nv}` };
-      if (ov && !nv)  return { text: `Group assignment removed`, sub: `was ${ov}` };
-      return { text: `Group changed to ${nv}`, sub: `from ${ov}` };
+      if (!ov && nv)  return { text: `Assigned to department: ${nv}` };
+      if (ov && !nv)  return { text: `Department assignment removed`, sub: `was ${ov}` };
+      return { text: `Department changed to ${nv}`, sub: `from ${ov}` };
     }
     if (field_name === 'category_id')  return { text: `Category → ${nv || '—'}`, sub: ov ? `from ${ov}` : null };
     if (field_name === 'type_id')      return { text: `Type → ${nv || '—'}`, sub: ov ? `from ${ov}` : null };

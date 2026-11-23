@@ -1,10 +1,11 @@
 import useAccess from '../../hooks/useAccess';
 import AccessDenied from '../../components/AccessDenied';
 import { TemplateFields } from '../../components/TicketTemplate';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Pencil, Trash2, Download, X, Clock, Paperclip, ShieldAlert, ArrowLeft } from 'lucide-react';
+import { Pencil, Download, X, Clock, Paperclip, ShieldAlert, ArrowLeft } from 'lucide-react';
 import { StatusBadge, PriorityBadge } from '../../components/Badge';
+import {useNotifications} from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -15,22 +16,34 @@ import './IncidentPage.css';
 
 export default function TicketDetail() {
   const { id } = useParams();
+  const {markTicketOpened}=useNotifications();
+  const [openReceiptError,setOpenReceiptError]=useState(false);
   const {can,record}=useAccess();
   const [denied,setDenied]=useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
+  const loadRequest=useRef(0);
   const [loading, setLoading] = useState(true);
-  const [deleteModal, setDeleteModal] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
   const [customFieldDefs, setCustomFieldDefs] = useState([]);
   const [fieldByKey, setFieldByKey] = useState({});
   const [slaInstances, setSlaInstances] = useState([]);
 
   const load = () => {
+    const request=++loadRequest.current;
     setLoading(true);
-    Promise.all([api.get(`/tickets/${id}`), api.get('/config/fields'), api.get(`/sla/ticket/${id}`).catch(() => ({ data: { instances: [] } }))])
-      .then(([res, f, sla]) => {
+    Promise.all([
+      api.get(`/tickets/${id}`).then(async res => {
+        const sla = request===loadRequest.current && record('sla.view',res.data.ticket)
+          ? await api.get(`/sla/ticket/${id}`).catch(() => ({data:{instances:[]}}))
+          : {data:{instances:[]}};
+        return {res,sla};
+      }),
+      api.get('/config/fields')
+    ])
+      .then(([{res,sla}, f]) => {
+        if(request!==loadRequest.current)return;
         setData(res.data);
         setSlaInstances(sla.data.instances || []);
         const allFields = f.data.fields || [];
@@ -40,25 +53,18 @@ export default function TicketDetail() {
         ));
       })
       .catch((err) => {
+        if(request!==loadRequest.current)return;
         if (err?.response?.status === 403) setDenied(true);
         else toast.error('Ticket not found');
       })
-      .finally(() => setLoading(false));
+      .finally(() => {if(request===loadRequest.current)setLoading(false)});
   };
-  useEffect(() => { load(); }, [id]);
-
-  const handleDelete = async () => {
-    try {
-      await api.delete(`/tickets/${id}`);
-      toast.success('Ticket deleted');
-      navigate('/tickets');
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'Delete failed');
-    }
-  };
+  useEffect(() => {setDenied(false);setData(null);setOpenReceiptError(false);load();return()=>{loadRequest.current++}}, [id]);
+  useEffect(()=>{let active=true;if(data?.ticket?.id===id&&data.ticket.inbox_revision)markTicketOpened(data.ticket.id,data.ticket.inbox_revision).then(ok=>{if(active)setOpenReceiptError(!ok)});return()=>{active=false}},[id,data?.ticket?.id,data?.ticket?.inbox_revision,markTicketOpened]);
 
 
-  if (loading) return <div style={{ padding: 48, textAlign: 'center', color: '#64748b' }}>Loading ticket...</div>;
+
+  if (loading||data&&data.ticket.id!==id) return <div style={{ padding: 48, textAlign: 'center', color: '#64748b' }}>Loading ticket...</div>;
   if (denied) return <AccessDenied />;
   if (!data) return <div style={{ padding: 48, textAlign: 'center', color: '#64748b' }}>Ticket not found.</div>;
 
@@ -83,7 +89,7 @@ export default function TicketDetail() {
     status: 'Status', priority: 'Priority', impact: 'Impact', urgency: 'Urgency',
     short_description: 'Short Description', description: 'Description',
     customer_name: 'Customer', module_text: 'Module',
-    assignment_group: 'Assignment Group', classification: 'Classification',
+    assignment_group: 'Department', classification: 'Classification',
     attachment: 'Attachment', template: 'Template', template_id: 'Template', template_snapshot: 'Template Definition', template_values: 'Template Fields',
   };
 
@@ -118,7 +124,7 @@ export default function TicketDetail() {
   const Val = ({ v }) => v ? <span>{v}</span> : <span className="ip-val-empty">—</span>;
 
   return (
-    <div className="ip-page">
+    <div className="ip-page ip-ticket-view">{openReceiptError&&<p role="alert">Could not update your unopened ticket count. <button type="button" onClick={()=>markTicketOpened(ticket.id,ticket.inbox_revision).then(ok=>setOpenReceiptError(!ok))}>Retry</button></p>}
 
       {/* ── Header ── */}
       <div className="ip-header">
@@ -146,14 +152,9 @@ export default function TicketDetail() {
             </button>
           )}
           {canEdit && (
-            <>
               <Link to={`/tickets/${id}/edit`} className="ip-btn">
                 <Pencil size={13} /> Edit
               </Link>
-              <button disabled={!record('tickets.delete',ticket)} title={can('tickets.delete')?'Delete':"You don't have permission to perform this action."} className="ip-btn ip-btn-danger" onClick={() => setDeleteModal(true)}>
-                <Trash2 size={13} /> Delete
-              </button>
-            </>
           )}
         </div>
       </div>
@@ -238,8 +239,11 @@ export default function TicketDetail() {
                 <span className="ip-vc"><Val v={ticket.classification} /></span>
               </div>
               <div className="ip-pair">
-                <span className="ip-lc">{fieldByKey['assignment_group']?.label || 'Assignment Group'}</span>
-                <span className="ip-vc"><Val v={ticket.assignment_group} /></span>
+                <span className="ip-lc">Department</span>
+                <span className="ip-vc"><Val v={ticket.assignment_group_name || ticket.assignment_group} /></span>
+              </div>
+              <div className="ip-pair">
+                <span className="ip-lc">Sub Department</span><span className="ip-vc"><Val v={ticket.subgroup_name} /></span>
               </div>
               <div className="ip-pair">
                 <span className="ip-lc">Created By</span>
@@ -437,19 +441,6 @@ export default function TicketDetail() {
         </div>
       )}
 
-      {/* Delete Modal */}
-      {deleteModal && (
-        <div className="modal-overlay">
-          <div className="modal-box">
-            <h3>Delete Ticket {ticket.ticket_number}?</h3>
-            <p>This action cannot be easily undone. The ticket will be soft-deleted.</p>
-            <div className="modal-actions">
-              <button className="btn-cancel" onClick={() => setDeleteModal(false)}>Cancel</button>
-              <button className="btn-delete" onClick={handleDelete}>Delete</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@ const { requireAuth, requireAdmin } = require('../middleware/auth');
 const ctrl = require('../controllers/groupController');
 
 const router = express.Router();
+router.use((req,res,next)=>['POST','PUT','DELETE'].includes(req.method)?res.status(410).json({success:false,message:'Use the Departments interface for membership and department changes.'}):next());
 router.get('/',                       requireAuth,  ctrl.list);
 router.get('/mine',                   requireAuth,  ctrl.myGroups);
 router.get('/with-members',           requireAuth,  ctrl.listWithMembers);

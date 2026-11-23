@@ -13,6 +13,8 @@ function validate(body) {
     if(!p || !(p.scoped?['own','groups','all','related']:['all']).includes(value)) fail('Invalid permission or record scope.');
   }
   for(const p of catalog.filter(p=>body.permissions[p.key])) for(const dependency of p.requires||[]) if(!body.permissions[dependency]) fail(`${p.label} requires ${catalog.find(p=>p.key===dependency)?.label||dependency}.`);
+  if (Object.values(body.permissions).includes('groups') && !body.permissions['departments.managed_access']) fail('Managed scope requires Allow managed department access. Use Own / Assigned or Member Teams for an ordinary role.');
+  if (['dashboard.team','users.team_view','users.team_add','departments.subgroups','departments.members'].some(k=>body.permissions[k]) && !body.permissions['departments.managed_access']) fail('Team oversight permissions require Allow managed department access.');
   if(!Array.isArray(body.assignable_roles) || body.assignable_roles.some(k=>typeof k!=='string' || k.length>64)) fail('Choose valid assignable roles.');
   for(const p of catalog.filter(p=>p.scoped && body.permissions[p.key] && !p.key.startsWith('tickets.'))) if(!body.permissions['tickets.view']) fail(`${p.label} requires View tickets.`);
   for(const key of Object.keys(body.permissions).filter(k=>k.startsWith('tickets.') && k!=='tickets.view' && k!=='tickets.create')) if(!body.permissions['tickets.view']) fail('Ticket actions require View tickets.');
@@ -28,7 +30,7 @@ function delegate(req,permissions,assignable) {
 }
 async function list(req,res,next) {
   try {
-    const {rows}=await pool.query(`SELECT r.*,COUNT(u.id) FILTER(WHERE u.deleted_at IS NULL)::int AS user_count FROM access_roles r LEFT JOIN users u ON u.role=r.key GROUP BY r.key ORDER BY r.is_system DESC,LOWER(r.name)`);
+    const {rows}=await pool.query(`SELECT r.*,COUNT(u.id) FILTER(WHERE u.deleted_at IS NULL)::int AS user_count FROM access_roles r LEFT JOIN users u ON u.role=r.key WHERE r.role_kind IS NOT NULL AND r.is_active GROUP BY r.key ORDER BY CASE r.role_kind WHEN 'admin' THEN 0 WHEN 'user' THEN 1 ELSE 2 END`);
     const filtered=req.path==='/assignable' ? rows.filter(r=>r.is_active && (req.access.admin || req.access.assignableRoles.includes(r.key) && r.key!=='admin')) : rows;
     res.json({success:true,roles:filtered,catalog});
   } catch(e){next(e)}
@@ -46,6 +48,10 @@ async function save(req,res,next) {
     if(prior && req.body.version!==prior.version) throw Object.assign(new Error('This role changed in another session. Reload before saving.'),{status:409});
     if(prior) delegate(req,prior.permissions,prior.assignable_roles);
     const permissions=req.body.permissions, assignable=[...new Set(req.body.assignable_roles)];
+    if(prior?.permissions['departments.managed_access'] && !permissions['departments.managed_access']) {
+      const assigned=await client.query('SELECT 1 FROM users u JOIN user_managed_groups mg ON mg.user_id=u.id WHERE u.role=$1 AND u.deleted_at IS NULL LIMIT 1',[key]);
+      if(assigned.rowCount) fail('Remove managed department assignments from users before disabling this role\'s managed access.');
+    }
     delegate(req,permissions,assignable);
     if(prior) {
       if(prior.name!==req.body.name.trim()||prior.responsibility!==req.body.responsibility.trim()) need(req,'roles.edit');

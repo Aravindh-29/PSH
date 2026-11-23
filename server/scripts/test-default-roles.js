@@ -1,103 +1,49 @@
-// Real PostgreSQL checks in a disposable schema; no application accounts are changed.
-const assert = require('node:assert/strict');
-const { randomUUID } = require('node:crypto');
-const fs = require('node:fs');
-const path = require('node:path');
-const { Client } = require('pg');
-const { migrate, connectionConfig } = require('../../database/migrate');
-const defaults = require('../src/access/defaultRoles');
-const { catalog } = require('../src/access/catalog');
-const { scopePredicate } = require('../src/access/context');
-const { authorize } = require('../src/access/policy');
-let checks = 0;
-function check(name, test) { assert(test, name); console.log('PASS: ' + name); checks++; }
-async function main() {
-  for (const role of defaults) {
-    for (const [key, scope] of Object.entries(role.permissions)) {
-      const item = catalog.find(p => p.key === key);
-      assert(item, role.name + ': unknown permission ' + key);
-      assert((item.scoped ? ['own', 'groups', 'related', 'all'] : ['all']).includes(scope));
-      for (const dependency of item.requires || []) assert(role.permissions[dependency], role.name + ': missing ' + dependency);
-    }
-    assert.deepEqual(role.assignable_roles, []);
-    assert(!Object.keys(role.permissions).some(k => /^(users|roles|groups|email|sso|audit)\./.test(k) && !['users.team_view','users.team_create'].includes(k)));
-    assert(!role.permissions['tickets.delete']);
-    check(role.name + ' has valid prerequisites and no administrative escalation', true);
-  }
-  const client = new Client(connectionConfig());
-  const schema = 'roles_test_' + randomUUID().replaceAll('-', '');
-  await client.connect();
-  try {
-    await client.query('CREATE SCHEMA ' + schema);
-    await client.query('SET search_path TO ' + schema);
-    await client.query(fs.readFileSync(path.join(__dirname, '../../database/schema.sql'), 'utf8'));
-    const rows = (await client.query('SELECT * FROM access_roles WHERE is_default=true')).rows;
-    check('Standalone schema includes all seven ready-made roles', rows.length === defaults.length);
-    for (const role of defaults) assert.deepEqual(rows.find(r => r.key === role.key).permissions, role.permissions);
-    check('Standalone SQL and runtime default permissions match exactly', true);
-    // Simulate upgrading a database created before ready-made roles existed.
-    await client.query('DELETE FROM access_roles WHERE is_default=true');
-    await client.query("INSERT INTO access_roles(key,name,permissions) VALUES('existing_viewer','Read-only Viewer','{\"kb.view\":\"all\"}')");
-    await migrate(client);
-    check('Upgrade preserves a custom role with a conflicting name', (await client.query("SELECT key FROM access_roles WHERE LOWER(name)=LOWER('Read-only Viewer')")).rows[0].key === 'existing_viewer');
-    check('Other defaults still install when a role name already exists', (await client.query('SELECT * FROM access_roles WHERE is_default=true')).rowCount === defaults.length - 1);
-    await client.query("UPDATE access_roles SET name='Our team manager',permissions='{\"kb.view\":\"all\"}',is_active=false,version=9 WHERE key='manager'");
-    const before = (await client.query("SELECT * FROM access_roles WHERE key='manager'")).rows[0];
-    await migrate(client); await migrate(client);
-    assert.deepEqual((await client.query("SELECT * FROM access_roles WHERE key='manager'")).rows[0], before);
-    check('Repeated migrations preserve edited names, permissions, version, status and timestamps', true);
-    const manager = defaults.find(r => r.key === 'manager');
-    await client.query('UPDATE access_roles SET permissions=$1,is_active=true WHERE key=$2', [JSON.stringify(manager.permissions), manager.key]);
-    const user = (await client.query("INSERT INTO users(username,email,full_name,password_hash,role) VALUES('role_test','role@example.test','Role Test','unused','manager') RETURNING id")).rows[0].id;
-    const other = (await client.query("INSERT INTO users(username,email,full_name,password_hash,role) VALUES('other','other@example.test','Other','unused','employee') RETURNING id")).rows[0].id;
-    const groups = (await client.query("INSERT INTO assignment_groups(name) VALUES('L1'),('L2') RETURNING id,name")).rows;
-    const l1 = groups.find(g => g.name === 'L1').id, l2 = groups.find(g => g.name === 'L2').id;
-    await client.query('INSERT INTO user_managed_groups VALUES($1,$2)', [user, l1]);
-    await client.query('INSERT INTO user_groups VALUES($1,$2)', [user, l2]);
-    for (const [number, group, owner] of [['TEST1', l1, other], ['TEST2', l2, user]]) {
-      await client.query('INSERT INTO tickets(ticket_number,customer_name,short_description,description,created_by,assigned_to,assignment_group_id) VALUES($1,\'Test\',\'Test\',\'Test\',$2,$2,$3)', [number, owner, group]);
-    }
-    const tickets = (await client.query('SELECT * FROM tickets ORDER BY ticket_number')).rows;
-    const access = role => ({ userId: user, admin: false, role: role.key, permissions: role.permissions, managedGroups: [l1], memberGroups: [l2], assignableRoles: [] });
-    const pool = { rawQuery: (...args) => client.query(...args) };
-    for (const key of ['manager', 'read_only_viewer', 'sla_qa_analyst']) {
-      const role = defaults.find(r => r.key === key);
-      const found = await client.query('SELECT ticket_number FROM tickets t WHERE ' + scopePredicate(access(role), 'tickets.view'));
-      assert.deepEqual(found.rows.map(r => r.ticket_number), ['TEST1']);
-      check(role.name + ' sees only Managed Groups, even with membership/ownership elsewhere', true);
-    }
-    const request = (role, area, method, target, body = {}) => ({ access: access(role), baseUrl: '/api/' + area, path: target, method, body, query: {} });
-    await authorize(request(manager, 'tickets', 'PUT', '/' + tickets[0].id, { description: 'Allowed edit' }), pool);
-    check('Manager may edit a ticket in their Managed Group', true);
-    await assert.rejects(authorize(request(manager, 'tickets', 'PUT', '/' + tickets[1].id, { description: 'Denied edit' }), pool), { status: 403 });
-    check('Manager cannot edit another team ticket even when personally assigned', true);
-    for (const key of ['read_only_viewer', 'sla_qa_analyst']) {
-      await assert.rejects(authorize(request(defaults.find(r => r.key === key), 'tickets', 'PUT', '/' + tickets[0].id, { description: 'Denied' }), pool), { status: 403 });
-      check(key + ' cannot change even visible team tickets', true);
-    }
-    const agent = defaults.find(r => r.key === 'support_agent');
-    await authorize(request(agent, 'tickets', 'PUT', '/' + tickets[1].id, { description: 'Assigned work' }), pool);
-    await assert.rejects(authorize(request(agent, 'tickets', 'PUT', '/' + tickets[0].id, { description: 'Other work' }), pool), { status: 403 });
-    check('Support Agent can edit assigned tickets but not other agents tickets', true);
-    const article = (await client.query("INSERT INTO kb_articles(title,content,status) VALUES('Published','Live content','PUBLISHED') RETURNING id")).rows[0].id;
-    const author = defaults.find(r => r.key === 'knowledge_author');
-    const draft = (await client.query("INSERT INTO kb_articles(title,content,status) VALUES('Draft','Review content','DRAFT') RETURNING id")).rows[0].id;
-    await assert.rejects(authorize(request(defaults.find(r => r.key === 'read_only_viewer'), 'kb', 'GET', '/' + draft), pool), { status: 403 });
-    await authorize(request(author, 'kb', 'GET', '/' + draft), pool);
-    await authorize(request(author, 'kb', 'PUT', '/' + draft, { content: 'Draft revision', status: 'DRAFT' }), pool);
-    check('Draft visibility and editing follow the real numeric article identifiers', true);
-    await authorize(request(author, 'kb', 'POST', '/', { status: 'DRAFT' }), pool);
-    await assert.rejects(authorize(request(author, 'kb', 'POST', '/', { status: 'PUBLISHED' }), pool), { status: 403 });
-    await assert.rejects(authorize(request(author, 'kb', 'PUT', '/' + article, { content: 'Live change without status' }), pool), { status: 403 });
-    await authorize(request(defaults.find(r => r.key === 'knowledge_manager'), 'kb', 'PUT', '/' + article, { content: 'Approved live change' }), pool);
-    check('Knowledge Author can draft; only a publisher can publish or change live content', true);
-    await migrate(client);
-    check('Updates preserve existing user role assignments', (await client.query('SELECT role FROM users WHERE id=$1', [user])).rows[0].role === 'manager');
-  } finally {
-    await client.query('SET search_path TO public');
-    await client.query('DROP SCHEMA ' + schema + ' CASCADE');
-    await client.end();
-  }
-  console.log(checks + ' default role checks passed.');
+// Fixed-role upgrade and data-preservation tests. Disposable schemas only.
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{randomUUID}=require('node:crypto');
+const {Client}=require('pg');
+const {migrate,connectionConfig}=require('../../database/migrate');
+const {isManager,canManage}=require('../src/access/managedAccess');
+const {scopePredicate}=require('../src/access/context');
+let checks=0;
+const pass=name=>{checks++;console.log('PASS: '+name)};
+async function main(){
+ const c=new Client(connectionConfig());await c.connect();const schema='fixed_roles_'+randomUUID().replaceAll('-','');
+ try{
+  await c.query('CREATE SCHEMA '+schema);await c.query('SET search_path TO '+schema);
+  const sql=fs.readFileSync(path.join(__dirname,'../../database/schema.sql'),'utf8');
+  // Simulate the earlier application with dynamic roles and a custom Manager ID.
+  await c.query(sql.split('-- BEGIN FIXED APPLICATION ROLES')[0]+'\nCOMMIT;');
+  await c.query("DELETE FROM access_roles WHERE key='manager'");
+  const managerKey=randomUUID();
+  await c.query("INSERT INTO access_roles(key,name,permissions) VALUES($1,'Manager',$2),('knowledge_author','Knowledge Author','{\"kb.view\":\"all\"}')",[managerKey,JSON.stringify(require('../src/access/defaultRoles')[0].permissions)]);
+  const manager=(await c.query("INSERT INTO users(username,email,full_name,password_hash,role) VALUES('siva','siva@example.test','Siva','keep-manager-password',$1) RETURNING id",[managerKey])).rows[0].id;
+  const author=(await c.query("INSERT INTO users(username,email,full_name,password_hash,role) VALUES('author','author@example.test','Author','keep-author-password','knowledge_author') RETURNING id")).rows[0].id;
+  const group=(await c.query("INSERT INTO assignment_groups(name) VALUES('HR') RETURNING id")).rows[0].id;
+  for(const id of [manager,author]){await c.query('INSERT INTO user_groups VALUES($1,$2)',[id,group]);await c.query('INSERT INTO user_managed_groups VALUES($1,$2)',[id,group]);}
+  const ticket=(await c.query("INSERT INTO tickets(ticket_number,customer_name,short_description,description,created_by,assigned_to,assignment_group_id) VALUES('FIXED001','Example','Keep ticket','Keep description',$1,$2,$3) RETURNING *",[manager,author,group])).rows[0];
+  const userSnapshot=(await c.query('SELECT id,username,email,full_name,password_hash,is_active FROM users ORDER BY id')).rows;
+  await c.query('ALTER TABLE organization_settings DROP CONSTRAINT organization_multiple_membership_enabled');
+  await c.query('UPDATE organization_settings SET allow_multiple=false WHERE id=1');
+  await migrate(c);
+  assert.equal((await c.query('SELECT allow_multiple FROM organization_settings WHERE id=1')).rows[0].allow_multiple,true);pass('An older OFF installation upgrades to checkbox multiple membership');
+  const roles=(await c.query('SELECT * FROM access_roles WHERE is_active ORDER BY name')).rows;
+  assert.deepEqual(roles.map(r=>r.name),['Admin','Manager','User']);pass('Upgrade exposes exactly Admin, User and Manager');
+  const managerRole=roles.find(r=>r.role_kind==='manager');assert.equal(managerRole.key,managerKey);assert.equal((await c.query('SELECT role FROM users WHERE id=$1',[manager])).rows[0].role,managerKey);pass('Existing Manager ID and account assignment are preserved');
+  assert.deepEqual((await c.query('SELECT id,username,email,full_name,password_hash,is_active FROM users ORDER BY id')).rows,userSnapshot);pass('All account IDs, credentials, names and statuses survive');
+  const {inbox_revision,...retainedTicket}=(await c.query('SELECT * FROM tickets WHERE id=$1',[ticket.id])).rows[0];assert.equal(inbox_revision,'1');assert.deepEqual(retainedTicket,ticket);pass('Ticket details, ownership, assignment and department survive unchanged');
+  assert.equal((await c.query('SELECT * FROM user_groups')).rowCount,2);assert.equal((await c.query('SELECT * FROM user_managed_groups')).rowCount,2);pass('Memberships and managed assignments are retained');
+  const retired=(await c.query("SELECT * FROM access_roles WHERE key='knowledge_author'")).rows[0];assert(!retired.is_active&&!retired.role_kind);assert((await c.query("SELECT 1 FROM retired_access_roles WHERE role_key='knowledge_author'")).rowCount);pass('Retired roles are archived, not deleted');
+  assert.equal((await c.query('SELECT role FROM users WHERE id=$1',[author])).rows[0].role,'employee');assert.equal((await c.query('SELECT role_key FROM retired_user_roles WHERE user_id=$1',[author])).rows[0].role_key,'knowledge_author');pass('Older nonstandard accounts map to User with their former role recorded');
+  assert(isManager(managerRole));assert(canManage({role:managerKey,roleKind:'manager'}));assert(!isManager(roles.find(r=>r.key==='admin')));assert(!isManager(roles.find(r=>r.key==='employee')));pass('Only Manager is eligible for the managed-department selector, including legacy IDs');
+  const ctx={userId:manager,role:managerKey,roleKind:'manager',permissions:managerRole.permissions,managedGroups:[group],memberGroups:[]};
+  assert.equal((await c.query('SELECT 1 FROM tickets t WHERE '+scopePredicate(ctx,'tickets.view'))).rowCount,1);pass('Legacy Manager IDs retain scoped ticket visibility');
+  const snapshot=(await c.query('SELECT * FROM access_roles ORDER BY key')).rows;
+  await migrate(c);await migrate(c);assert.deepEqual((await c.query('SELECT * FROM access_roles ORDER BY key')).rows,snapshot);pass('Repeated migrations preserve fixed role IDs, versions and archive records');
+  // A new installation also receives just the three fixed roles.
+  const fresh=schema+'_fresh';await c.query('CREATE SCHEMA '+fresh);await c.query('SET search_path TO '+fresh);await c.query(sql);
+  assert.equal((await c.query('SELECT 1 FROM access_roles')).rowCount,3);assert.equal((await c.query('SELECT 1 FROM access_roles WHERE is_active AND role_kind IS NOT NULL')).rowCount,3);pass('Standalone installation creates exactly three roles');
+  await c.query('SET search_path TO '+schema);await c.query('DROP SCHEMA '+fresh+' CASCADE');
+ }finally{await c.query('SET search_path TO public');await c.query('DROP SCHEMA '+schema+' CASCADE');await c.end()}
+ console.log(checks+' fixed-role checks passed.');
 }
-main().catch(error => { console.error(error); process.exitCode = 1; });
+main().catch(e=>{console.error(e);process.exitCode=1});

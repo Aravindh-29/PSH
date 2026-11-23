@@ -15,17 +15,16 @@ function formatDuration(hours) {
 }
 
 // Builds WHERE clause and params array for a query.
-// userField: the column to filter on for non-admin (e.g. 't.created_by')
 // dateField: the column to apply the date range to (e.g. 't.created_at')
 function buildWhere(isAdmin, userId, startDate, endDate, { dateField = 't.created_at' } = {}) {
   const conditions = ['t.deleted_at IS NULL'];
   const params = [];
 
   if (!isAdmin) {
-    // Ticket belongs to user if assigned to them, or unassigned and they created it
+    // Personal dashboards include only tickets currently assigned to this user.
     params.push(userId);
     conditions.push(
-      `(t.assigned_to = $${params.length} OR (t.assigned_to IS NULL AND t.created_by = $${params.length}))`
+      `t.assigned_to = $${params.length}`
     );
   }
 
@@ -41,17 +40,16 @@ function buildWhere(isAdmin, userId, startDate, endDate, { dateField = 't.create
 
 async function getStats(req, res, next) {
   try {
-    const isAdmin   = (req.session.role === 'admin' || req.access?.custom) && req.query.personal !== 'true';
+    const isAdmin = req.query.team === 'true' || (req.access?.admin && req.query.personal !== 'true');
     const userId    = req.session.userId;
 
     const startDate = req.query.startDate || null;
     const endDate   = req.query.endDate   || null;
 
     // For chart: use provided range, or default to last 30 days for "All Tickets" view
-    const today     = new Date().toISOString().split('T')[0];
-    const thirtyAgo = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
-    const chartStart = startDate || thirtyAgo;
-    const chartEnd   = endDate   || today;
+    // Match the database timezone used when grouping ticket timestamps by day.
+    const chartStart = startDate;
+    const chartEnd   = endDate;
 
     // ── 1. Status/priority counts for selected date range ────────
     const { where: w1, params: p1 } = buildWhere(isAdmin, userId, startDate, endDate);
@@ -115,9 +113,6 @@ async function getStats(req, res, next) {
     `, [...p2, periodDays]);
 
     // ── 3. Chart data: daily counts for selected range ───────────
-    const { where: _, params: p3base } = buildWhere(isAdmin, userId, null, null);
-    const p3 = [chartStart, chartEnd, ...p3base];
-    const userChartCond = !isAdmin ? `AND t.created_by = $${p3.length}` : '';
     const chartResult = await pool.query(`
       SELECT
         TO_CHAR(days.day, 'Mon DD') AS date,
@@ -127,12 +122,12 @@ async function getStats(req, res, next) {
         COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS "Resolved",
         COUNT(t.id) FILTER (WHERE t.status = 'CLOSED') AS "Closed"
       FROM (
-        SELECT generate_series($1::date, $2::date, INTERVAL '1 day')::date AS day
+        SELECT generate_series(COALESCE($1::date,CURRENT_DATE-29), COALESCE($2::date,CURRENT_DATE), INTERVAL '1 day')::date AS day
       ) days
       LEFT JOIN tickets t
         ON DATE_TRUNC('day', t.created_at)::date = days.day
         AND t.deleted_at IS NULL
-        ${!isAdmin ? `AND (t.assigned_to = $3 OR (t.assigned_to IS NULL AND t.created_by = $3))` : ''}
+        ${!isAdmin ? `AND t.assigned_to = $3` : ''}
       GROUP BY days.day
       ORDER BY days.day ASC
     `, !isAdmin ? [chartStart, chartEnd, userId] : [chartStart, chartEnd]);
@@ -162,6 +157,8 @@ async function getStats(req, res, next) {
     const recentResult = await pool.query(`
       SELECT t.id, t.ticket_number, t.short_description, t.status, t.priority,
              t.customer_name, t.updated_at,
+             COALESCE(department.name,t.assignment_group) AS department_name,
+             sub_department.name AS sub_department_name,
              u1.full_name AS assigned_to_name,
              u2.full_name AS created_by_name,
              u3.full_name AS ticket_owner_name
@@ -169,6 +166,8 @@ async function getStats(req, res, next) {
       LEFT JOIN users u1 ON t.assigned_to   = u1.id
       LEFT JOIN users u2 ON t.created_by    = u2.id
       LEFT JOIN users u3 ON t.ticket_owner  = u3.id
+      LEFT JOIN assignment_groups department ON department.id=t.assignment_group_id
+      LEFT JOIN assignment_groups sub_department ON sub_department.id=t.subgroup_id
       WHERE ${w5}
       ORDER BY t.updated_at DESC
       LIMIT 20
@@ -224,37 +223,4 @@ async function getStats(req, res, next) {
   }
 }
 
-// GET /api/dashboard/query — per-status ticket counts for the current user
-async function getQueryStats(req, res, next) {
-  try {
-    const userId = req.session.userId;
-    const { startDate, endDate } = req.query;
-
-    const params = [userId];
-    let dateCond = '';
-    if (startDate && endDate) {
-      params.push(startDate, endDate);
-      dateCond = `AND t.created_at >= $2::date AND t.created_at < ($3::date + INTERVAL '1 day')`;
-    }
-
-    const result = await pool.query(`
-      SELECT t.status, COUNT(*)::int AS count
-      FROM tickets t
-      WHERE t.deleted_at IS NULL
-        AND (t.assigned_to = $1 OR (t.assigned_to IS NULL AND t.created_by = $1))
-        ${dateCond}
-      GROUP BY t.status
-    `, params);
-
-    const counts = {};
-    let total = 0;
-    for (const row of result.rows) {
-      const n = parseInt(row.count, 10);
-      counts[row.status] = n;
-      total += n;
-    }
-    res.json({ success: true, counts, total });
-  } catch (err) { next(err); }
-}
-
-module.exports = { getStats, getQueryStats };
+module.exports = { getStats };

@@ -16,7 +16,7 @@ export default function Profile() {
   const handlePasswordSave = async (e) => {
     e.preventDefault();
     if (!pwForm.currentPassword) { toast.error('Current password required'); return; }
-    if (pwForm.newPassword.length < 6) { toast.error('New password must be at least 6 characters'); return; }
+    if (pwForm.newPassword.length < 8 || pwForm.newPassword.length > 256) { toast.error('New password must be 8–256 characters'); return; }
     if (pwForm.newPassword !== pwForm.confirmPassword) { toast.error('Passwords do not match'); return; }
     setSavingPw(true);
     try {
@@ -44,7 +44,7 @@ export default function Profile() {
         <div className="profile-avatar-card">
           <div className="profile-avatar-circle">{initial}</div>
           <div className="profile-avatar-name">{authUser?.fullName || authUser?.username}</div>
-          <div className="profile-avatar-role">{authUser?.role}</div>
+          <div className="profile-avatar-role">{authUser?.roleName || authUser?.role}</div>
           <div className="profile-avatar-user">@{authUser?.username}</div>
         </div>
 

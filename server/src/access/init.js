@@ -22,7 +22,6 @@ module.exports = async function initAccess(client) {
     ('admin','Admin','Full application administration',$1,true),
     ('employee','User / Employee','Create and work on permitted tickets',$2,true)
     ON CONFLICT(key) DO NOTHING`, [JSON.stringify(Object.fromEntries(catalog.map(p => [p.key,'all']))), JSON.stringify(employee)]);
-  await client.query("UPDATE access_roles SET permissions=$1 WHERE key='admin'",[JSON.stringify(Object.fromEntries(catalog.map(p=>[p.key,'all'])))]);
   for (const role of require('./defaultRoles')) {
     // Any conflict (including an existing custom role with the same name) preserves
     // the existing record. Never reset permissions, status, names or assignments.
@@ -36,6 +35,8 @@ module.exports = async function initAccess(client) {
   for (const { conname } of checks.rows) await client.query('ALTER TABLE users DROP CONSTRAINT "' + conname.replace(/"/g,'""') + '"');
   await client.query('ALTER TABLE users ALTER COLUMN role TYPE VARCHAR(64)');
   await client.query(`DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='users'::regclass AND conname='users_access_role_fk') THEN ALTER TABLE users ADD CONSTRAINT users_access_role_fk FOREIGN KEY(role) REFERENCES access_roles(key); END IF; END $$`);
-  const migration = await client.query("INSERT INTO access_migrations VALUES('initial-managed-groups') ON CONFLICT DO NOTHING RETURNING key");
-  if (migration.rowCount) await client.query('INSERT INTO user_managed_groups SELECT user_id,group_id FROM user_groups ON CONFLICT DO NOTHING');
+  await client.query("INSERT INTO access_migrations VALUES('initial-managed-groups') ON CONFLICT DO NOTHING RETURNING key");
+  // Ordinary membership must never automatically become supervisory access.
+  await client.query(require('./managedAccess').managedAccessUpgradeSQL);
+  await client.query(require('./fixedRoles').fixedRolesSQL);
 };

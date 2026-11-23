@@ -3,9 +3,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Upload, X, Paperclip, Download } from 'lucide-react';
 import api from '../../api/axios';
+import {selectAttachments,uploadTicketFiles} from '../../utils/ticketAttachments';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import SearchSelect from '../../components/SearchSelect';
+import TicketOrganization from '../../components/TicketOrganization';
 import { useTicketTemplate, TemplateSelector, TemplateFields } from '../../components/TicketTemplate';
 import toast from 'react-hot-toast';
 import './TicketDetail.css';
@@ -61,7 +63,7 @@ export default function CreateTicket() {
     customerName: '', moduleText: '', categoryId: '', subcategoryId: '',
     shortDescription: '', description: '', priority: 'MEDIUM', impact: 'MEDIUM',
     urgency: 'MEDIUM', typeId: '', classification: '', assignedTo: '',
-    assignmentGroup: '', assignmentGroupId: '',
+    assignmentGroup: '', assignmentGroupId: '', subgroupId:'',
   });
   const [customData, setCustomData] = useState({});
 
@@ -79,7 +81,7 @@ export default function CreateTicket() {
       setTicketTypes(tt.data.types || []);
       setUsers(u.data.users || []);
       setGroups((g.data.groups || []).filter(gr => gr.is_active));
-      if(user?.permissions?.['tickets.view']==='groups'){const selected=(g.data.groups||[]).find(gr=>gr.is_active&&user.managedGroups?.includes(gr.id));if(selected)setForm(p=>({...p,assignmentGroup:selected.name,assignmentGroupId:selected.id}));}
+
       setNextNumber(''); // cleared until user selects a type
     }).catch(() => {});
   }, [location.key]); // re-fetch on every navigation to this page so config changes reflect immediately
@@ -120,7 +122,9 @@ export default function CreateTicket() {
 
   const handleFileSelect = (e) => {
     const files = Array.from(e.target.files);
-    setPendingFiles(prev => [...prev, ...files.filter(f => !prev.find(p => p.name === f.name))]);
+    const selection=selectAttachments(files,pendingFiles);
+    selection.errors.forEach(message=>toast.error(message));
+    setPendingFiles(prev=>[...prev,...selection.files]);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -160,6 +164,7 @@ export default function CreateTicket() {
         assignedTo: form.assignedTo || undefined,
         assignmentGroup: form.assignmentGroup || undefined,
         assignmentGroupId: form.assignmentGroupId || undefined,
+        subgroupId: form.subgroupId || null,
         subcategoryId: form.subcategoryId || undefined,
         customData,
         ...templateState.payload,
@@ -172,25 +177,11 @@ export default function CreateTicket() {
       if (pendingFiles.length > 0) {
         const initQ = pendingFiles.map((f, i) => ({ id: i, name: f.name, progress: 0, status: 'uploading' }));
         setUploadProgress(initQ);
-        const fd = new FormData();
-        pendingFiles.forEach(f => fd.append('files', f));
-        try {
-          await api.post(`/tickets/${ticketId}/attachments`, fd, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-            onUploadProgress: (evt) => {
-              if (evt.total) {
-                const pct = Math.round((evt.loaded * 100) / evt.total);
-                setUploadProgress(prev => prev.map(q => ({ ...q, progress: pct, status: pct < 100 ? 'uploading' : 'processing' })));
-              }
-            },
-          });
-          setUploadProgress(prev => prev.map(q => ({ ...q, progress: 100, status: 'done' })));
-          toast.success(`Ticket ${ticket_number} created with ${pendingFiles.length} file(s)!`);
-        } catch {
-          toast.success(`Ticket ${ticket_number} created!`);
-          toast.error('Some attachments failed — retry from ticket view.');
-        }
-        setTimeout(() => navigate(`/tickets/${ticketId}`), 1200);
+        const result=await uploadTicketFiles(ticketId,pendingFiles,(index,update)=>setUploadProgress(prev=>prev.map(q=>q.id===index?{...q,...update}:q)));
+        toast.success(`Ticket ${ticket_number} created. ${result.attachments.length} file(s) uploaded.`);
+        result.errors.forEach(message=>toast.error(message));
+        if(result.errors.length)toast.error('Retry failed files from the ticket Edit page.');
+        setTimeout(()=>navigate(`/tickets/${ticketId}${result.errors.length?'/edit':''}`),1200);
       } else {
         toast.success(`Ticket ${ticket_number} created!`);
         navigate(`/tickets/${ticketId}`);
@@ -215,7 +206,7 @@ export default function CreateTicket() {
     ? groups.map(g => ({ value: g.id, label: g.name }))
     : parseOpts(fieldByKey['assignment_group']?.options);
 
-  const selectedGroup = form.assignmentGroupId ? groups.find(g => g.id === form.assignmentGroupId) : null;
+  const selectedGroup = form.assignmentGroupId ? groups.find(g => g.id === (form.subgroupId || form.assignmentGroupId)) : null;
   const groupMemberIds = selectedGroup ? new Set((selectedGroup.members || []).map(m => String(m.id))) : null;
   const userOpts = users
     .filter(u => !groupMemberIds || groupMemberIds.has(String(u.id)))
@@ -418,27 +409,8 @@ export default function CreateTicket() {
                     <input readOnly value={user?.fullName || user?.username || ''} />
                   </span>
                 </div>
-                <div className="ip-pair">
-                  <span className="ip-lc">{fieldByKey['assignment_group']?.label || 'Assignment Group'}</span>
-                  <span className="ip-vc ip-input-cell">
-                    <SearchSelect
-                      disabled={!can('tickets.assign')}
-                      value={form.assignmentGroupId || form.assignmentGroup}
-                      onChange={v => {
-                        const grp = groups.find(g => g.id === v);
-                        if (grp) {
-                          setForm(p => ({ ...p, assignmentGroup: grp.name, assignmentGroupId: grp.id, assignedTo: '' }));
-                        } else {
-                          setForm(p => ({ ...p, assignmentGroup: v, assignmentGroupId: '', assignedTo: '' }));
-                        }
-                      }}
-                      options={assignGroupOpts}
-                      placeholder="Select group"
-                      searchPlaceholder="Search group..."
-                    />
-                  </span>
-                </div>
               </div>
+              <TicketOrganization form={form} setForm={setForm}/>
               <div className="ip-row">
                 <div className="ip-pair" />
                 <div className="ip-pair">
@@ -550,6 +522,8 @@ export default function CreateTicket() {
                 <button className="ip-btn-icon" onClick={() => setAttachOpen(false)} title="Close"><X size={14} /></button>
               </div>
             </div>
+
+            <p style={{padding:"10px 16px",margin:0,fontSize:12,color:"#334155"}}>Up to 10 files per selection · 25 MB per file. Files are uploaded after the ticket is created.</p>
 
             {uploadProgress.length > 0 && (
               <div className="attach-popup-queue">

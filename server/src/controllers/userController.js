@@ -7,6 +7,7 @@ const { need, forbidden } = require('../access/policy');
 async function list(req, res, next) {
   try {
     const { scope } = req.query;
+    if(scope==='with_tickets'&&!req.access.admin)return require('./teamTicketDirectoryController').directory(req,res,next);
 
     const whereClause = scope === 'with_tickets'
       ? `WHERE (u.deleted_at IS NULL OR EXISTS (
@@ -43,6 +44,7 @@ async function list(req, res, next) {
 
 async function getOne(req, res, next) {
   try {
+    if(!req.access.admin&&(req.query.scope==='with_tickets'||!req.access.permissions['users.view']))return require('./teamTicketDirectoryController').directory(req,res,next);
     const { id } = req.params;
     const result = await pool.query(`
       SELECT u.id, u.username, u.email, u.full_name, u.role, u.is_active, u.created_at, u.deleted_at, (SELECT name FROM access_roles WHERE key=u.role) AS role_name,
@@ -61,6 +63,7 @@ async function getOne(req, res, next) {
 }
 
 async function createAccount(client, req, body, {team=false}={}) {
+  if(!req.access.admin) throw forbidden();
   const {username,email,fullName,password,role='employee',mfaRequired=true}=body;
   if(typeof username!=='string' || !/^[a-z0-9._-]{1,50}$/i.test(username) || typeof email!=='string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length>255 || typeof fullName!=='string' || !fullName.trim() || fullName.length>255 || typeof password!=='string' || password.length<8 || password.length>256) accessUsers.fail('Enter valid account details and a password of 8–256 characters.');
   if(typeof mfaRequired!=='boolean')accessUsers.fail('Invalid MFA requirement.');
@@ -68,7 +71,7 @@ async function createAccount(client, req, body, {team=false}={}) {
   if(team){
     need(req,'users.team_create'); need(req,'users.team_view');
     if(role!=='employee' || body.managedGroupIds!==undefined && (!Array.isArray(body.managedGroupIds)||body.managedGroupIds.length)) throw forbidden();
-    if(!Array.isArray(body.groupIds)||!body.groupIds.length) accessUsers.fail('Select at least one of your Managed Groups.');
+    if(!Array.isArray(body.groupIds)||!body.groupIds.length) accessUsers.fail('Select at least one of your Managed Departments.');
     if(mfaRequired!==true) throw forbidden();
     await accessUsers.groups(client,req,body.groupIds);
     selected=(await client.query("SELECT key FROM access_roles WHERE key='employee' AND is_active=true")).rows[0];
@@ -76,6 +79,8 @@ async function createAccount(client, req, body, {team=false}={}) {
   }else selected=await accessUsers.assignRole(client,req,role);
   if(mfaRequired===false) need(req,'users.mfa_requirement');
   if(!team && (body.groupIds?.length || body.managedGroupIds?.length)) need(req,'users.groups');
+  const availability=await require('../services/accountAvailability').checkAccountAvailability(client,{username,email});
+  for(const field of ['username','email'])if(!availability[field].available)throw Object.assign(new Error((field==='username'?'Username':'Email')+' already exists. Choose another.'),{status:409});
   const hash=await argon2.hash(password,{type:argon2.argon2id});
   const result=await client.query('INSERT INTO users(username,email,full_name,password_hash,role,mfa_required) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,username,email,full_name,role,is_active',[username.toLowerCase().trim(),email.toLowerCase().trim(),fullName.trim(),hash,selected.key,mfaRequired!==false]);
   await accessUsers.setGroups(client,req,result.rows[0].id,body);
@@ -104,7 +109,7 @@ async function update(req,res,next) {
     if(fullName!==undefined && (typeof fullName!=='string' || !fullName.trim() || fullName.length>255))accessUsers.fail('Enter a valid full name.');
     if(email!==undefined && (typeof email!=='string' || email.length>255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)))accessUsers.fail('Enter a valid email.');
     for(const [field,table] of [['groupIds','user_groups'],['managedGroupIds','user_managed_groups']]) if(req.body[field]!==undefined){
-      if(!Array.isArray(req.body[field]))accessUsers.fail('Select valid groups.');
+      if(!Array.isArray(req.body[field]))accessUsers.fail('Select valid departments.');
       const prior=(await client.query(`SELECT group_id FROM ${table} WHERE user_id=$1`,[user.id])).rows.map(r=>r.group_id).sort();
       if(JSON.stringify(prior)!==JSON.stringify([...req.body[field]].sort()))need(req,'users.groups');
     }
@@ -171,10 +176,10 @@ async function bulkCreate(req,res,next) {
     const caller=(await pool.query('SELECT password_hash FROM users WHERE id=$1',[req.access.userId])).rows[0];
     if(!caller || !await argon2.verify(caller.password_hash,adminPassword))throw forbidden();
     need(req,'users.create');
-    const groupRows=(await pool.query('SELECT id,name FROM assignment_groups WHERE is_active=true')).rows;
+    const groupRows=(await pool.query(`SELECT g.id,g.name,CASE WHEN g.parent_id IS NULL THEN g.name||COALESCE(' ('||r.name||')','') ELSE p.name||' / '||g.name||COALESCE(' â€” '||c.name,'') END AS label FROM assignment_groups g LEFT JOIN assignment_groups p ON p.id=g.parent_id LEFT JOIN organization_regions r ON r.id=g.region_id LEFT JOIN organization_countries c ON c.id=g.country_id WHERE g.is_active=true`)).rows;
     const resolveNames=value=>(Array.isArray(value)?value:String(value||'').split(',')).map(n=>{
-      const found=groupRows.find(g=>g.name.toLowerCase()===String(n).trim().toLowerCase());
-      if(!found)accessUsers.fail('Group not found: '+n);return found.id;
+      const matches=groupRows.filter(g=>[g.id,g.label,g.name].some(v=>v.toLowerCase()===String(n).trim().toLowerCase()));
+      if(matches.length!==1)accessUsers.fail(matches.length?'Ambiguous department/sub department; use its ID: '+n:'Department/sub department not found: '+n);return matches[0].id;
     });
     const created=[],failed=[];
     for(const row of users){

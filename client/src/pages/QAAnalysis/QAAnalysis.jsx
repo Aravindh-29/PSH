@@ -405,10 +405,11 @@ export default function QAAnalysis() {
   // ── Excel Export ────────────────────────────────────────────────────────────
   const handleExport = async () => {
     if(!can('qa.export'))return toast.error("You don't have permission to perform this action.");
-    const auth=await fetch('/api/sla/qa?export=true',{credentials:'include'});if(!auth.ok)return toast.error("You don't have permission to perform this action.");
-    if (!data) return;
+    if (!data||exporting) return;
     setExporting(true);
     try {
+      const auth=await fetch('/api/sla/qa?export=true',{credentials:'include'});
+      if(!auth.ok)throw new Error(auth.status===403?"You don't have permission to export QA data.":'Could not verify export access. Please retry.');
       const ExcelJS = (await import('exceljs')).default;
 
       // Capture charts in parallel

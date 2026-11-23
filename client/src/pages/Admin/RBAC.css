@@ -158,3 +158,13 @@
 .rbac .rbac-activity-footnote { padding-top:14px; margin-top:12px; border-top:1px solid #edf1f6; }
 .rbac-activity-empty { padding:26px 12px; text-align:center; color:#7b899b; }
 @media(max-width:480px) { .rbac-activity-search { flex-wrap:wrap; } .rbac-activity-search input { flex-basis:75%; } }
+
+.rbac-user-form .rbac-live-field {margin-bottom:19px;}
+.rbac-user-form .rbac-live-field>label {margin-bottom:6px;}
+.rbac-availability {display:flex;align-items:center;gap:6px;font-size:12px;line-height:1.5;margin-top:6px;}
+.rbac-availability svg {flex-shrink:0;}
+.rbac-availability.is-checking {color:#1d4ed8;}
+.rbac-availability.is-available {color:#047857;}
+.rbac-availability.is-exists,.rbac-availability.is-invalid,.rbac-availability.is-error {color:#b91c1c;}
+.rbac-availability button {background:none;border:0;color:#1d4ed8;text-decoration:underline;font:inherit;font-weight:600;cursor:pointer;}
+.rbac-user-form input[aria-invalid=true] {border-color:#dc2626;}

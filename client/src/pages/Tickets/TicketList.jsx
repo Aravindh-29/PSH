@@ -1,7 +1,7 @@
 import useAccess from '../../hooks/useAccess';
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, Search, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, ChevronDown, ChevronsUpDown, Calendar, ChevronDown as ChevDown } from 'lucide-react';
+import { Plus, Search, Eye, Pencil, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, ChevronDown, ChevronsUpDown, Calendar, ChevronDown as ChevDown } from 'lucide-react';
 import { StatusBadge, PriorityBadge } from '../../components/Badge';
 import api from '../../api/axios';
 import { formatDistanceToNow, format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
@@ -17,7 +17,7 @@ const DATE_PRESETS = [
   { label: 'Last month',   getRange: () => ({ start: startOfMonth(subMonths(new Date(), 1)), end: endOfMonth(subMonths(new Date(), 1)) }) },
 ];
 
-const STATUSES = ['NEW','OPEN','ASSIGNED','IN_PROGRESS','PENDING','ON_HOLD','RESOLVED','CLOSED','CANCELLED'];
+const STATUSES = ['NEW','OPEN','ASSIGNED','IN_PROGRESS','WORK_IN_PROGRESS','PENDING','ON_HOLD','RESOLVED','CLOSED','REOPENED','CANCELLED'];
 const PRIORITIES = ['LOW','MEDIUM','HIGH','CRITICAL'];
 const LIMIT = 25;
 
@@ -62,11 +62,9 @@ export default function TicketList({ myTickets }) {
   const [pagination, setPagination] = useState({ total: 0, page: 1, pages: 1 });
   const [loading, setLoading]       = useState(true);
   const [search, setSearch]         = useState('');
-  const [filters, setFilters]       = useState({ status: initStatus, priority: '' });
+  const [filters, setFilters]       = useState({ status: initStatus, priority: '', departmentId:urlParams.get('departmentId')||'',subgroupId:urlParams.get('subgroupId')||'' });
   const [sort, setSort]             = useState({ field: 'updated_at', dir: 'desc' });
   const [page, setPage]             = useState(1);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [deleteId, setDeleteId]     = useState(null);
   const [dateRange, setDateRange]   = useState(initDateRange);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [customStart, setCustomStart] = useState(initStartDate || '');
@@ -74,6 +72,9 @@ export default function TicketList({ myTickets }) {
   const datePickerRef = useRef(null);
   const [activeTab, setActiveTab]   = useState(initTab);
   const [hasGroups, setHasGroups]   = useState(false);
+
+  const [organization,setOrganization]=useState([]);
+  useEffect(()=>{api.get('/departments/tree?ticket=true').then(r=>setOrganization(r.data.groups)).catch(()=>setOrganization([]))},[]);
 
   // Check if this user belongs to any group (controls tab visibility)
   useEffect(() => {
@@ -114,6 +115,8 @@ export default function TicketList({ myTickets }) {
         if (search)           params.set('search', search);
         if (filters.status)   params.set('status', filters.status);
         if (filters.priority) params.set('priority', filters.priority);
+        if(filters.departmentId)params.set('departmentId',filters.departmentId);
+        if(filters.subgroupId)params.set('subgroupId',filters.subgroupId);
         if (myTickets && activeTab === 'group') params.set('groupView', 'true');
         else if (myTickets)                     params.set('myTickets', 'true');
         if (dateRange) {
@@ -134,7 +137,7 @@ export default function TicketList({ myTickets }) {
     run();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, sort.field, sort.dir, search, filters.status, filters.priority, myTickets, activeTab, refreshKey, dateRange]);
+  }, [page, sort.field, sort.dir, search, filters.status, filters.priority, filters.departmentId, filters.subgroupId, myTickets, activeTab, dateRange]);
 
   const toggleSort = (field) => {
     const next = sort.field === field
@@ -169,22 +172,12 @@ export default function TicketList({ myTickets }) {
         && format(r.end, 'yyyy-MM-dd') === format(dateRange.end, 'yyyy-MM-dd');
   });
 
-  const confirmDelete = async () => {
-    try {
-      await api.delete(`/tickets/${deleteId}`);
-      toast.success('Ticket deleted');
-      setDeleteId(null);
-      setRefreshKey(k => k + 1);
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'Delete failed');
-    }
-  };
 
   return (
     <div className="ticket-list-page">
       <div className="tl-header">
         <div>
-          <h1>{myTickets ? (activeTab === 'group' ? 'Group Tickets' : 'My Tickets') : 'All Tickets'}</h1>
+          <h1>{myTickets ? (activeTab === 'group' ? 'Department Tickets' : 'My Tickets') : 'All Tickets'}</h1>
           <p>{pagination.total} total tickets</p>
         </div>
         {can('tickets.create') && <Link to="/tickets/new" className="btn-create">
@@ -204,7 +197,7 @@ export default function TicketList({ myTickets }) {
             className={`tl-tab${activeTab === 'group' ? ' tl-tab-active' : ''}`}
             onClick={() => switchTab('group')}
           >
-            Group Tickets
+            Department Tickets
           </button>
         </div>
       )}
@@ -219,6 +212,8 @@ export default function TicketList({ myTickets }) {
             onChange={e => handleSearch(e.target.value)}
           />
         </div>
+        <select aria-label="Filter Department" value={filters.departmentId} onChange={e=>{setFilters(f=>({...f,departmentId:e.target.value,subgroupId:''}));setPage(1)}}><option value="">All Departments</option>{organization.filter(g=>!g.parent_id).map(g=><option key={g.id} value={g.id}>{g.label}</option>)}</select>
+        <select aria-label="Filter Sub Department" value={filters.subgroupId} disabled={!filters.departmentId} onChange={e=>handleFilter('subgroupId',e.target.value)}><option value="">All Sub Departments</option>{organization.filter(g=>g.parent_id===filters.departmentId).map(g=><option key={g.id} value={g.id}>{g.label}</option>)}</select>
         <select value={filters.status} onChange={e => handleFilter('status', e.target.value)}>
           <option value="">All Statuses</option>
           {STATUSES.map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
@@ -272,7 +267,7 @@ export default function TicketList({ myTickets }) {
               <th className="th-sortable" onClick={() => toggleSort('ticket_number')}>
                 TICKET ID <SortIcon field="ticket_number" sort={sort} />
               </th>
-              <th>SUBJECT</th>
+              <th>DEPARTMENT / SUB DEPARTMENT</th>
               <th>CUSTOMER</th>
               <th className="th-sortable" onClick={() => toggleSort('priority')}>
                 PRIORITY <SortIcon field="priority" sort={sort} />
@@ -298,7 +293,7 @@ export default function TicketList({ myTickets }) {
             {tickets.map(t => (
               <tr key={t.id}>
                 <td><Link to={`/tickets/${t.id}`} className="ticket-id-link">{t.ticket_number}</Link></td>
-                <td className="td-subj"><span>{t.short_description}</span></td>
+                <td className="td-department">{[t.department_name,t.sub_department_name].filter(Boolean).join(' / ') || '—'}</td>
                 <td>{t.customer_name}</td>
                 <td><PriorityBadge priority={t.priority} /></td>
                 <td><StatusBadge status={t.status} /></td>
@@ -324,7 +319,6 @@ export default function TicketList({ myTickets }) {
                   <div className="tl-actions">
                     <Link to={`/tickets/${t.id}`} className="tl-action-btn" title="View"><Eye size={14} /></Link>
                     {['edit','priority','status','assign','template','category','type','impact','urgency','classification','owner'].some(key=>record('tickets.'+key,t)) && <Link to={`/tickets/${t.id}/edit`} className="tl-action-btn" title="Edit"><Pencil size={14} /></Link>}
-                    <button disabled={!record('tickets.delete',t)} className="tl-action-btn danger" title={record('tickets.delete',t)?'Delete':"You don't have permission to perform this action."} onClick={() => setDeleteId(t.id)}><Trash2 size={14} /></button>
                   </div>
                 </td>
               </tr>
@@ -366,18 +360,7 @@ export default function TicketList({ myTickets }) {
         </div>
       )}
 
-      {deleteId && (
-        <div className="modal-overlay">
-          <div className="modal-box">
-            <h3>Delete Ticket</h3>
-            <p>Are you sure you want to delete this ticket? This action cannot be easily undone.</p>
-            <div className="modal-actions">
-              <button className="btn-cancel" onClick={() => setDeleteId(null)}>Cancel</button>
-              <button className="btn-delete" onClick={confirmDelete}>Delete</button>
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

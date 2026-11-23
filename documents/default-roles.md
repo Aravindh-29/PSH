@@ -1,47 +1,61 @@
-# Ready-made roles
+# Application roles: Admin, User and Manager
 
-Installations and updates include the following roles. Existing accounts keep their roles. An existing role with the same name or key is preserved rather than replaced.
+The application provides three fixed roles. Configuration no longer has a Roles tab. Roles cannot be created, renamed, edited or deleted through the API.
 
-| Role | Responsibility | Ticket scope |
+| Role | Responsibilities | Managed Departments selector |
 | --- | --- | --- |
-| Admin | Full application administration; protected | All |
-| User / Employee | Existing employee permissions remain unchanged | Existing own/member-team rules |
-| Support Agent | View member-team tickets; work on own/assigned tickets, add notes and resolve issues | View own/member teams; changes limited to own/assigned |
-| Manager | View team users, create Employee accounts in managed teams, assign and supervise team tickets, close tickets and review/export team performance | Managed Groups |
-| Read-only Viewer | Read tickets, comments, attachments and reports; no record changes | Managed Groups |
-| Knowledge Author | Read articles and shared drafts; create/edit drafts | No ticket access |
-| Knowledge Manager | Manage shared drafts and publish articles; no article deletion | No ticket access |
-| SLA / QA Analyst | Read tickets and export reports, SLA and QA analysis; no ticket changes | Managed Groups |
-| Configuration Manager | Maintain fields, categories, types, templates and SLA definitions; no deletion or resets | No ticket access |
-
-New defaults never grant global user administration, group administration, role delegation, email/SSO administration, audit administration or ticket deletion. Manager includes two specific permissions: **View users in Managed Groups** and **Create Employee users in Managed Groups**. They do not grant user editing, deletion, password/MFA resets or access to the global user directory. Profile and personal notification permissions are included. Knowledge permissions apply to shared articles, not only an author's own articles. Changing published content requires publishing permission.
+| Admin | Manage the application, accounts, departments, tickets, knowledge and configuration | Hidden; Admin already has global administration |
+| User | Create and edit permitted personal and department tickets; assign to eligible team members; view published knowledge | Hidden |
+| Manager | Personal ticket work plus oversight of departments/sub departments assigned by Admin; team tickets, eligible assignments, sub department management, adding existing unassigned users and reporting | Shown |
 
 ## Assigning a role
 
-Use **Users → Add User / View or Edit → Access**. Choose one role. For Manager, Read-only Viewer and SLA / QA Analyst, select the teams under **Managed Groups**. Without Managed Groups these defaults have no group-scoped ticket access. Support Agents use **Groups** for team visibility and can work on tickets they created, own or are assigned.
+Open Users, create or edit an account, and choose Admin, User or Manager on Access. Only Admin creates accounts or grants access. A Manager can add eligible existing unassigned accounts to managed teams but cannot create accounts or change roles.
 
-For example, David and Sarah share the Manager role. David manages L1 Support; Sarah manages L2 Support. David sees L1 tickets and users; Sarah sees L2 tickets and users. Assignment Group on each ticket determines the ticket boundary. The Manager's Users page lists only members of Managed Groups. Managers can create Employee accounts only in their active Managed Groups, with MFA required and no Managed Groups granted to the new account. A ticket assignee must be an active member of that ticket's Assignment Group. Managed Groups does not establish direct employee reporting lines.
+Membership means the person works in a team and can receive ticket assignments there. Managed Departments means the Manager supervises that team. The fields are separate. An active Manager can receive ticket assignments within managed departments/sub departments even without ordinary membership. Whole-department management includes its children; sub-department-only management does not allow parent-only or sibling tickets.
 
-The Manager permission upgrade runs once for the default Manager and existing roles named Manager. Later permission customizations are preserved. Other custom roles can opt in through Configuration → Roles. Do not grant **View users** or other global user permissions to a role intended to have only the restricted team Users page.
+A Manager without managed departments can still use permitted personal tickets. Team Dashboard and team management remain empty. Select one or more managed departments/sub departments to give team oversight. Whole-department grants include current and future sub departments. Management grants can span several departments even when ordinary multiple membership is OFF.
 
-## Customizing defaults
+My Tickets and My Dashboard show only tickets assigned to the signed-in person. Team Dashboard shows only managed-team tickets, including unassigned tickets. Reassign a ticket if a person should stop working on their personal assignment; removing management access does not delete tickets.
 
-Open **Configuration → Roles → View / Edit**. New defaults are labeled **Default · Customizable**. Change their name, responsibility, permission checkboxes and scopes as needed. Changes affect all assigned users. Copy a role for a separate variation. Unused defaults can be deactivated; they cannot be deleted. The original Admin and User / Employee built-in protections remain unchanged.
+## Checkbox membership
 
-Updates insert missing defaults without overwriting saved names, permissions, delegation, active status or user assignments. If a custom role already has a default name, it is preserved; review its existing permissions before assigning it. No new role is assigned to existing accounts automatically.
+Configuration has no Roles or Departments tab. Multiple membership is always enabled. On a user Access form, select any number of department/sub department checkboxes. Checked means selected; unchecked means no direct grant. A whole-department checkbox includes all its current and future sub departments, whose boxes show inherited access. Unchecking that department removes inherited access; any sub departments selected independently remain checked. Uncheck those as well to remove the remaining sub department memberships.
 
-## Deployment and verification
+The old ON/OFF switch is removed. Previous OFF settings upgrade to multiple membership without changing existing assignments. API and database checks prevent old clients from restoring OFF. Geography management is available to Admin under Departments -> Regions & Countries.
 
-Both `scripts/install.sh` and `scripts/update.sh` use the common database migration. Standalone `database/schema.sql` also contains the defaults.
+Manager oversight is a separate set of checkboxes, visible only for Manager. Manager additions still accept only eligible existing unassigned users within their managed teams; multiple membership does not allow taking users from another Manager.
 
-Default definitions live in `server/src/access/defaultRoles.js`. After changing definitions, run `node server/scripts/sync-default-roles.js` to refresh the generated schema block. This only changes the initial defaults, not existing customized roles.
+## Data preservation
 
-Validation commands:
+The upgrade retains existing Admin, User and Manager account assignments, including a legacy Manager role with a UUID key. Extra role definitions are deactivated and archived, not deleted. On an older installation where accounts use other roles, those accounts become User, with the former role recorded in retired_user_roles. Memberships, historical managed grants, tickets, passwords, comments, attachments and articles are retained. Non-Manager historical managed grants do not authorize oversight.
+
+Both startup/update migrations and standalone schema installation install the same three-role model. Fixed permissions are restored on migration; they are no longer customizable. Repeated migrations preserve IDs, business data and retirement history.
 
 ```sh
 node server/scripts/sync-default-roles.js --check
+node server/scripts/sync-organization.js --check
+node server/scripts/sync-fixed-roles.js --check
 node server/scripts/test-default-roles.js
-node server/scripts/test-team-users.js
+node server/scripts/test-organization.js
 node server/scripts/test-migrations.js
 npm run build:client
 ```
+
+## User department directory
+
+User accounts have a view-only Users menu. The directory groups coworkers by parent department, supports name/username/email/role search, department filtering, scrolling and pagination. Membership in one sub department allows contact-directory viewing across that parent department, including its managers. It does not permit viewing sibling tickets or editing accounts. No account authentication data is returned. Membership changes apply to subsequent requests; the page reloads its scope when the signed-in membership changes.
+
+## My Query ticket inbox
+
+The sidebar highlights My Query and counts tickets that the person has not opened. The inbox contains tickets assigned to that person plus unassigned tickets they already have permission to read. Unassigned is an assignment condition, independent of the ticket state. All states are included, with clickable state filters, search, dates and pagination.
+
+Open a full ticket to acknowledge its current assignment/routing revision. Opening My Query, reading the bell, filtering, or loading a ticket in the background does not clear the count. Opening two of three arrivals leaves one unopened. Receipts are per account and persist across reloads/devices. Reassignment or routing changes create a new arrival; ordinary edits and state changes do not reset the opened flag. An old, delayed acknowledgement cannot clear a newer assignment. The bell's read flag is separate from this ticket-opened receipt.
+
+The inbox and badge refresh every ten seconds. A whole-department unassigned queue can be visible to several people; each person has their own opened state. Removing membership or managed access removes queue items that are no longer readable. Personal assignments remain subject to normal ticket permissions.
+
+The schema includes tickets.inbox_revision and ticket_inbox_receipts. Run node server/scripts/sync-ticket-inbox.js --check to check the standalone installation schema.
+
+## Shared department ticket work
+
+Users can edit tickets in departments/sub departments they belong to, including unassigned tickets and tickets assigned to coworkers. They can assign those tickets to themselves or another active member eligible for that ticket department/sub department. Whole-department membership includes all child teams; a single sub department does not grant access to sibling ticket queues. Assignment and state changes still require a work note. This does not grant ticket ownership changes, department administration or deletion of coworkers� tickets. Removing membership removes shared editing access; personal assignments retain their existing permissions.

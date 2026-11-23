@@ -1,0 +1,15 @@
+import React,{useEffect,useState} from 'react';
+import api from '../../api/axios';
+import toast from 'react-hot-toast';
+import OrgDialog from '../../components/OrganizationDialog';
+export default function DepartmentSettings({onSaved}){
+ const [geo,setGeo]=useState({regions:[],countries:[]}),[form,setForm]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const load=async()=>{try{const{data}=await api.get('/departments/geography');setGeo(data);setError('')}catch(e){setError(e.response?.data?.message||'Could not load Regions and Countries.')}};
+ useEffect(()=>{load()},[]);
+ const saveValue=async e=>{e.preventDefault();setBusy(true);try{await api.post('/departments/geography',form);setForm(null);toast.success('Geography saved');await load();if(onSaved)await onSaved()}catch(e){toast.error(e.response?.data?.message||'Could not save geography.')}finally{setBusy(false)}};
+ return <div className="rbac"><h2>Regions &amp; Countries</h2><p>Maintain the Regions and Countries used when creating departments and sub departments. Membership is selected using checkboxes; users can belong to multiple teams.</p>{error&&<p role="alert">{error}</p>}
+ <div className="rbac-card"><div className="org-section-heading"><h3>Regions</h3><button className="cfg-btn-save" onClick={()=>setForm({kind:'region',name:'',is_active:true})}>Add Region</button></div>{geo.regions.map(r=><div className="org-grant" key={r.id}><span>{r.name} · {r.is_active?'Active':'Inactive'}</span><button className="cfg-btn-cancel" onClick={()=>setForm({...r,kind:'region'})}>Edit</button></div>)}</div>
+ <div className="rbac-card"><div className="org-section-heading"><h3>Countries</h3><button className="cfg-btn-save" onClick={()=>setForm({kind:'country',name:'',regionId:'',is_active:true})}>Add Country</button></div>{geo.countries.map(c=><div className="org-grant" key={c.id}><span>{c.name} · {geo.regions.find(r=>r.id===c.region_id)?.name} · {c.is_active?'Active':'Inactive'}</span><button className="cfg-btn-cancel" onClick={()=>setForm({...c,kind:'country',regionId:c.region_id})}>Edit</button></div>)}</div>
+ {form&&<OrgDialog title="Geography value" onClose={()=>{if(!busy)setForm(null)}}><form onSubmit={saveValue}><h2>{form.id?'Edit':'Add'} {form.kind==='region'?'Region':'Country'}</h2><label>Name<input required maxLength={150} value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label>{form.kind==='country'&&<label>Region<select required value={form.regionId} onChange={e=>setForm({...form,regionId:e.target.value})}><option value="">Select Region</option>{geo.regions.filter(r=>r.is_active).map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></label>}<label><input type="checkbox" checked={form.is_active} onChange={e=>setForm({...form,is_active:e.target.checked})}/>Active</label><div className="rbac-actions"><button type="button" className="cfg-btn-cancel" disabled={busy} onClick={()=>setForm(null)}>Cancel</button><button className="cfg-btn-save" disabled={busy}>Save</button></div></form></OrgDialog>}
+ </div>;
+}

@@ -15,10 +15,11 @@ import TicketDetail from './pages/Tickets/TicketDetail';
 import CreateTicket from './pages/Tickets/CreateTicket';
 import EditTicket from './pages/Tickets/EditTicket';
 import AdminUsers from './pages/Admin/AdminUsers';
+import UserDirectory from './pages/Admin/UserDirectory';
 import UserWiseTickets from './pages/Admin/UserWiseTickets';
 import AdminUserDetail from './pages/Admin/AdminUserDetail';
 import AdminModules from './pages/Admin/AdminModules';
-import Groups from './pages/Admin/Groups';
+import Departments from './pages/Admin/Departments';
 import SSOConfig from './pages/Admin/SSOConfig';
 import EmailConfig from './pages/Admin/EmailConfig';
 import AuditLogs from './pages/Audit/AuditLogs';
@@ -41,7 +42,13 @@ function RequirePermission({ children, permission }) {
   const allowed=Array.isArray(permission)?any(permission):can(permission);
   return allowed ? children : <AccessDenied />;
 }
-const configPermissions=['fields.view','categories.view','types.view','sla_config.view','templates.view','branding.view','roles.view'];
+const configPermissions=['fields.view','categories.view','types.view','sla_config.view','templates.view','branding.view'];
+function HomePage() {
+  const {can,any,user}=useAccess();
+  if(can('dashboard.view')) return <Dashboard personal={user?.role!=='admin'}/>;
+  const target=can('kb.view')?'/knowledge-base':any(configPermissions)?'/admin/modules':can('tickets.view')?'/my-tickets':can('profile.view')?'/profile':null;
+  return target?<Navigate to={target} replace/>:<AccessDenied/>;
+}
 function AppRoutes() {
   const { user, loading } = useAuth();
   if (loading) return null;
@@ -51,19 +58,23 @@ function AppRoutes() {
       <Route path="/mfa/setup"  element={user ? <Navigate to="/" replace /> : <MFASetup />} />
       <Route path="/mfa/verify" element={user ? <Navigate to="/" replace /> : <MFAVerify />} />
       <Route path="/" element={<RequireAuth><AppLayout /></RequireAuth>}>
-        <Route index element={<RequirePermission permission="dashboard.view"><Dashboard /></RequirePermission>} />
+        <Route index element={<HomePage />} />
         <Route path="tickets" element={<RequirePermission permission="tickets.view"><TicketList /></RequirePermission>} />
         <Route path="tickets/new" element={<RequirePermission permission="tickets.create"><CreateTicket /></RequirePermission>} />
         <Route path="tickets/:id" element={<RequirePermission permission="tickets.view"><TicketDetail /></RequirePermission>} />
         <Route path="tickets/:id/edit" element={<RequirePermission permission={['tickets.edit','tickets.priority','tickets.impact','tickets.urgency','tickets.category','tickets.type','tickets.classification','tickets.template','tickets.status','tickets.assign','tickets.owner']}><EditTicket /></RequirePermission>} />
         <Route path="my-tickets" element={<RequirePermission permission="tickets.view"><TicketList myTickets /></RequirePermission>} />
         <Route path="admin/my-dashboard" element={<RequirePermission permission={'dashboard.view'}><Dashboard personal /></RequirePermission>} />
+        <Route path="users" element={<RequirePermission permission="users.directory_view"><UserDirectory /></RequirePermission>} />
         <Route path="admin/users" element={<RequirePermission permission={['users.view','users.team_view']}><AdminUsers /></RequirePermission>} />
         <Route path="admin/user-tickets" element={<RequirePermission permission={'users.tickets'}><UserWiseTickets /></RequirePermission>} />
         <Route path="admin/user-tickets/:userId" element={<RequirePermission permission={'users.tickets'}><AdminUserDetail /></RequirePermission>} />
         <Route path="admin/modules" element={<RequirePermission permission={configPermissions}><AdminModules /></RequirePermission>} />
-        <Route path="admin/groups" element={<RequirePermission permission={'groups.view'}><Groups /></RequirePermission>} />
-        <Route path="admin/groups/:groupId" element={<RequirePermission permission={'groups.view'}><Groups /></RequirePermission>} />
+        <Route path="admin/groups" element={<RequirePermission permission={'departments.view'}><Departments /></RequirePermission>} />
+        <Route path="admin/groups/:groupId" element={<RequirePermission permission={'departments.view'}><Departments /></RequirePermission>} />
+        <Route path="departments" element={<RequirePermission permission="departments.view"><Departments/></RequirePermission>}/>
+        <Route path="departments/:id" element={<RequirePermission permission="departments.view"><Departments/></RequirePermission>}/>
+        <Route path="team-dashboard" element={<RequirePermission permission="dashboard.team"><Dashboard team/></RequirePermission>}/>
         <Route path="audit-logs" element={<RequirePermission permission={'audit.view'}><AuditLogs /></RequirePermission>} />
         <Route path="admin/sso" element={<RequirePermission permission={'sso.view'}><SSOConfig /></RequirePermission>} />
         <Route path="admin/email" element={<RequirePermission permission={'email.view'}><EmailConfig /></RequirePermission>} />

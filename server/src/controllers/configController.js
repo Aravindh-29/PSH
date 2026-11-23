@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const argon2 = require('argon2');
+const {eligibleAssigneeSQL}=require('../access/ticketAssignment');
 const { logAdminAudit } = require('./adminAuditController');
 
 async function verifyAdminPassword(userId, plainPassword) {
@@ -161,12 +162,13 @@ async function deleteTicketType(req, res, next) {
   } catch (err) { next(err); }
 }
 
-async function getUsers(req, res, next) {
-  try {
-    const result = await pool.query(`SELECT id, full_name, username, email, role FROM users WHERE is_active = true AND deleted_at IS NULL ${req.access?.custom && !req.access.permissions['users.view'] && req.access.permissions['tickets.assign'] !== 'all' ? 'AND (id=$1 OR id IN (SELECT user_id FROM user_groups WHERE group_id=ANY($2::uuid[])))' : ''} ORDER BY full_name`, req.access?.custom && !req.access.permissions['users.view'] && req.access.permissions['tickets.assign'] !== 'all' ? [req.access.userId,req.access.managedGroups] : []);
-    res.json({ success: true, users: result.rows });
-  } catch (err) { next(err); }
-}
+async function getUsers(req,res,next){try{
+ const global=req.access.admin||req.access.permissions['users.view'];
+ const scopes=[...new Set([...(req.access.memberGroups||[]),...req.access.managedGroups])];
+ const eligibleGroups=`ARRAY(SELECT g.id FROM assignment_groups g WHERE g.is_active AND (g.id=ANY($2::uuid[]) OR g.parent_id=ANY($2::uuid[]) OR g.id IN(SELECT parent_id FROM assignment_groups WHERE id=ANY($2::uuid[]))))`;
+ const{rows}=await pool.query(`SELECT u.id,u.full_name,u.username,u.email,u.role FROM users u WHERE u.is_active AND u.deleted_at IS NULL ${global?'':`AND (u.id=$1 OR (${eligibleAssigneeSQL('u',eligibleGroups)}))`} ORDER BY u.full_name`,global?[]:[req.access.userId,scopes]);
+ res.json({success:true,users:rows});
+}catch(e){next(e)}}
 
 // Active fields for form rendering (used by Create/Edit Ticket)
 async function getFields(req, res, next) {
@@ -320,7 +322,7 @@ async function resetFields(req, res, next) {
           '[{"label":"Low","value":"LOW"},{"label":"Medium","value":"MEDIUM"},{"label":"High","value":"HIGH"}]'::jsonb),
         ('short_description','Short Description',   'text',     true,  true, true, 80, 'Brief summary of the issue',   '[]'::jsonb),
         ('description',      'Detailed Description','textarea', true,  true, true, 90, 'Provide full details...',      '[]'::jsonb),
-        ('assignment_group', 'Assignment Group',    'dropdown', false, true, true, 95, 'e.g. Storage Team',
+        ('assignment_group', 'Department',    'dropdown', false, true, true, 95, 'e.g. Storage Team',
           '[{"label":"Storage Team","value":"Storage Team"},{"label":"Network Team","value":"Network Team"},{"label":"Cloud Team","value":"Cloud Team"},{"label":"Hardware Support","value":"Hardware Support"},{"label":"Software Support","value":"Software Support"},{"label":"Access Management","value":"Access Management"},{"label":"DevOps Team","value":"DevOps Team"},{"label":"Security Team","value":"Security Team"},{"label":"L1 Support","value":"L1 Support"},{"label":"L2 Support","value":"L2 Support"},{"label":"L3 Support","value":"L3 Support"}]'::jsonb)
     `);
 

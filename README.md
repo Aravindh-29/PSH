@@ -951,3 +951,31 @@ bash server/scripts/test-update.sh
 ```
 
 The tests cover four installer flows and eight updater flows, including wrong environment-file ownership, build/install failures without downtime, and restoring previous dependencies/UI after publication or health failures. Staging artifacts can remain after a failed deployment for diagnosis; their path is printed. Database rollback is transactional for a failed migration; a committed database is never automatically overwritten from backup.
+
+
+### Departments, sub departments and Manager access
+
+Groups are now Departments, with one optional level of sub departments. Existing IDs, memberships and ticket assignments are retained. Admin manages Departments with their Regions and sub departments with their Countries from the Departments pages.
+
+The application provides three roles: Admin, User and Manager. Roles and Departments configuration tabs are removed. Admin alone creates accounts, assigns roles and grants management access; the managed-department selector is available only for Manager. Ordinary membership (`user_groups`) and management grants (`user_managed_groups`) remain independent. Checkbox selections allow multiple memberships. Whole-department selections include current and future sub departments; explicit child selections survive removal of a parent selection.
+
+Managers use Departments and My Team Users to add active existing users who have neither membership nor management assignments. They cannot create accounts, change roles or expand their own management scope. A sub-department-only Manager cannot create siblings or administer the parent Department. Eligible ticket assignees include active members and Managers responsible for the selected department/sub department, even when those Managers have no ordinary membership.
+
+My Tickets and My Dashboard show only tickets currently assigned to the signed-in user. Team Dashboard shows tickets in managed departments/sub departments, including unassigned tickets. Tickets by User includes eligible team members and Managers, including the viewing Manager; counts and drilldowns use permitted team ticket scope. User-role accounts have a searchable, read-only directory of users in their departments. Department access controls ticket visibility, editing and assignment.
+
+My Query includes assigned tickets and permitted unassigned tickets, with a per-user unopened count cleared only by opening each ticket. Report exports include department and sub department values. Attachments support up to 10 files per selection, 25 MB per file, with individual upload results; Edit stages attachment removals until Save Changes commits them together with ticket changes.
+
+The default Knowledge Base includes the agreed Gmail Message ID / Thread ID automation design. Incoming Gmail automation itself is not implemented in this release.
+
+`database/organization.sql` is the source for the organization migration embedded in `database/schema.sql`. Both install and update use `database/migrate.js`, so the new schema is applied through the existing deployment scripts. After changing the migration source, synchronize it with `node server/scripts/sync-organization.js`.
+
+Verification (temporary PostgreSQL schemas, cleaned up by the suites):
+
+```sh
+node server/scripts/test-organization.js
+node server/scripts/test-default-roles.js
+node server/scripts/test-migrations.js
+node server/scripts/sync-organization.js --check
+node server/scripts/sync-default-roles.js --check
+npm run build --prefix client
+```

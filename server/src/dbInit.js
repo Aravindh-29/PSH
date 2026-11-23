@@ -44,7 +44,7 @@ async function dbInit() {
         '[{"label":"Low","value":"LOW"},{"label":"Medium","value":"MEDIUM"},{"label":"High","value":"HIGH"}]'::jsonb),
       ('short_description','Short Description',   'text',     true,  true, true, 80, 'Brief summary of the issue',     '[]'::jsonb),
       ('description',      'Detailed Description','textarea', true,  true, true, 90, 'Provide full details...',        '[]'::jsonb),
-      ('assignment_group', 'Assignment Group',    'dropdown', false, true, true, 95, 'e.g. Storage Team',
+      ('assignment_group', 'Department',    'dropdown', false, true, true, 95, 'e.g. Storage Team',
         '[{"label":"Storage Team","value":"Storage Team"},{"label":"Network Team","value":"Network Team"},{"label":"Cloud Team","value":"Cloud Team"},{"label":"Hardware Support","value":"Hardware Support"},{"label":"Software Support","value":"Software Support"},{"label":"Access Management","value":"Access Management"},{"label":"DevOps Team","value":"DevOps Team"},{"label":"Security Team","value":"Security Team"},{"label":"L1 Support","value":"L1 Support"},{"label":"L2 Support","value":"L2 Support"},{"label":"L3 Support","value":"L3 Support"}]'::jsonb)
     ON CONFLICT (field_key) DO NOTHING
   `);

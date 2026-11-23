@@ -60,6 +60,7 @@ app.use('/api/kb',      require('./routes/kb'));
 app.use('/api/audit',        require('./routes/audit'));
 app.use('/api/admin-audit',  require('./routes/adminAudit'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/departments', require('./routes/departments'));
 app.use('/api/groups',        require('./routes/groups'));
 app.use('/api/subcategories', require('./routes/subcategories'));
 app.use('/api/sla',           require('./routes/sla'));

@@ -1,4 +1,5 @@
 const { uuid, scopePredicate } = require('./context');
+const {eligibleAssigneeSQL}=require('./ticketAssignment');
 const forbidden = () => Object.assign(new Error("You don't have permission to perform this action."), { status: 403, code: 'PERMISSION_DENIED' });
 const can = (access, key) => !!(access.admin || access.permissions[key]);
 function need(req, key) { if (!can(req.access,key)) throw forbidden(); }
@@ -7,8 +8,10 @@ function routePermission(req) {
   const read = method === 'GET';
   if (area === 'auth') return null;
   if (area === 'roles') return read ? (p === '/assignable' ? null : p.endsWith('/history') ? 'roles.history' : 'roles.view') : method === 'POST' ? 'roles.create' : method === 'DELETE' ? 'roles.delete' : null;
-  if (area === 'dashboard') return p === '/query' ? 'query.view' : 'dashboard.view';
+  if (area === 'dashboard') return p.startsWith('/query') ? 'query.view' : req.query.team==='true'?'dashboard.team':'dashboard.view';
+  if (area === 'departments') return null;
   if (area === 'tickets') {
+    if (method==='POST'&&p.endsWith('/opened')) return 'tickets.view';
     if (p.endsWith('/attachments/zip')) return 'attachments.zip';
     if (p.endsWith('/attachments')) return 'attachments.upload';
     if (p.endsWith('/comments')) return req.body.type === 'WORK_NOTE' ? 'comments.work_note' : 'comments.add';
@@ -18,9 +21,11 @@ function routePermission(req) {
   }
   if (area === 'attachments') return method === 'DELETE' ? 'attachments.delete' : req.query.preview === 'true' ? 'attachments.preview' : 'attachments.download';
   if (area === 'users') {
-    if (p === '/team') return read ? 'users.team_view' : 'users.team_create';
+    if (p==='/directory') return 'users.directory_view';
+    if (p === '/team') return read ? 'users.team_view' : 'users.team_add';
     if(p.endsWith('/activity'))return 'users.activity';
     if (p === '/me') return read ? 'profile.view' : req.body.newPassword ? 'profile.password' : 'profile.edit';
+    if (p === '/check-availability') return 'users.create';
     if (p === '/bulk-check') return 'users.bulk_validate';
     if (p === '/bulk') return 'users.bulk_create';
     if (p.endsWith('/reset-password')) return 'users.password';
@@ -60,14 +65,21 @@ function routePermission(req) {
   }
   return null;
 }
-const columns = { customerName:'customer_name', moduleText:'module_text', categoryId:'category_id', subcategoryId:'subcategory_id', shortDescription:'short_description', description:'description', priority:'priority', impact:'impact', urgency:'urgency', status:'status', typeId:'type_id', classification:'classification', assignedTo:'assigned_to', ticketOwner:'ticket_owner', assignmentGroup:'assignment_group', assignmentGroupId:'assignment_group_id', customData:'custom_data', templateId:'template_id', templateValues:'template_values' };
-const actionFor = { categoryId:'category', subcategoryId:'category', priority:'priority', impact:'impact', urgency:'urgency', status:'status', typeId:'type', classification:'classification', assignedTo:'assign', assignmentGroup:'assign', assignmentGroupId:'assign', ticketOwner:'owner', templateId:'template', templateValues:'template' };
+const columns = { customerName:'customer_name', moduleText:'module_text', categoryId:'category_id', subcategoryId:'subcategory_id', shortDescription:'short_description', description:'description', priority:'priority', impact:'impact', urgency:'urgency', status:'status', typeId:'type_id', classification:'classification', assignedTo:'assigned_to', ticketOwner:'ticket_owner', assignmentGroup:'assignment_group', assignmentGroupId:'assignment_group_id', subgroupId:'subgroup_id', customData:'custom_data', templateId:'template_id', templateValues:'template_values' };
+const actionFor = { categoryId:'category', subcategoryId:'category', priority:'priority', impact:'impact', urgency:'urgency', status:'status', typeId:'type', classification:'classification', assignedTo:'assign', assignmentGroup:'assign', assignmentGroupId:'assign', subgroupId:'assign', ticketOwner:'owner', templateId:'template', templateValues:'template' };
 function changed(a,b) { return JSON.stringify(a ?? '') !== JSON.stringify(b ?? ''); }
 async function authorize(req, pool) {
   const access = req.access, area = req.baseUrl.split('/').pop(), p = req.path;
   const permission = routePermission(req);
   if (permission) need(req,permission);
-  access.primary = permission?.startsWith('dashboard.') ? 'dashboard.view' : permission?.startsWith('reports.') ? 'reports.view' : permission?.startsWith('qa.') ? 'qa.view' : permission === 'audit.view' ? 'audit.view' : permission?.startsWith('tickets.') || permission?.startsWith('comments.') || permission?.startsWith('attachments.') || permission === 'sla.view' ? permission : 'tickets.view';
+  access.primary = permission==='dashboard.team'?'dashboard.team':permission?.startsWith('dashboard.') ? 'dashboard.view' : permission?.startsWith('reports.') ? 'reports.view' : permission?.startsWith('qa.') ? 'qa.view' : permission === 'audit.view' ? 'audit.view' : permission?.startsWith('tickets.') || permission?.startsWith('comments.') || permission?.startsWith('attachments.') || permission === 'sla.view' ? permission : 'tickets.view';
+  // User-ticket directories must be constrained even when a role can read all tickets.
+  if(area==='users'&&permission==='users.tickets'&&!access.admin)access.teamUserTickets=true;
+  if(area==='tickets'&&req.method==='GET'&&req.query.userTickets){
+    need(req,'users.tickets');
+    await require('./managedUsers').requireManagedUser(req,pool,req.query.userTickets);
+    if(!access.admin)access.teamUserTickets=true;
+  }
   if(area==='roles' && req.method==='PUT' && !['roles.edit','roles.permissions','roles.status'].some(k=>can(access,k))) throw forbidden();
   if (area === 'roles' && p === '/assignable' && !['users.view','users.create','users.edit','users.assign_role','users.bulk_validate','users.bulk_create'].some(k=>can(access,k))) throw forbidden();
   if(area==='dashboard' && req.query.personal!=='true' && req.access.permissions['dashboard.view']==='all') need(req,'dashboard.global');
@@ -107,23 +119,30 @@ async function authorize(req, pool) {
     }
   }
   if (area === 'tickets' && req.method === 'POST' && p === '/') {
-    if(!access.admin && access.permissions['tickets.view']==='groups' && !access.managedGroups.includes(req.body.assignmentGroupId)) throw Object.assign(new Error('Select a managed assignment group for this ticket.'),{status:400});
     if (req.body.templateId) need(req,'tickets.template');
-    if (req.body.assignedTo || req.body.assignmentGroupId || req.body.assignmentGroup) need(req,'tickets.assign');
+    if (req.body.assignedTo) need(req,'tickets.assign');
     if (req.body.ticketOwner && req.body.ticketOwner !== access.userId) throw forbidden();
     if (req.body.status && req.body.status !== 'NEW') need(req,'tickets.status');
   }
-  if (area === 'tickets' && ['POST','PUT'].includes(req.method)) {
-    const assignmentChanged = !req.authorizedTicket || ['assignedTo','assignmentGroupId','assignmentGroup'].some(k => req.body[k] !== undefined && changed(req.body[k],req.authorizedTicket[columns[k]]));
-    if (assignmentChanged && !access.admin && access.permissions['tickets.assign'] !== 'all') {
-      if (req.body.assignmentGroup && !req.body.assignmentGroupId) throw forbidden();
-      if (req.body.assignmentGroupId && !access.managedGroups.includes(req.body.assignmentGroupId)) throw forbidden();
-      if (req.body.assignedTo && (req.body.assignedTo !== access.userId || access.permissions['tickets.assign'] === 'groups')) {
-        const destination = req.body.assignmentGroupId || req.authorizedTicket?.assignment_group_id;
-        if (!destination || !access.managedGroups.includes(destination)) throw forbidden();
-        const member = await pool.rawQuery(`SELECT 1 FROM user_groups ug JOIN users u ON u.id=ug.user_id
-          WHERE ug.user_id=$1 AND ug.group_id=$2 AND u.is_active=true AND u.deleted_at IS NULL`,[req.body.assignedTo,destination]);
-        if (!member.rowCount) throw forbidden();
+  if (area === 'tickets' && ['POST','PUT'].includes(req.method) && (req.method==='POST'&&p==='/' || req.method==='PUT'&&req.authorizedTicket)) {
+    const current=req.authorizedTicket;
+    const destination=req.body.assignmentGroupId!==undefined?req.body.assignmentGroupId:current?.assignment_group_id;
+    const subgroup=req.body.subgroupId!==undefined?req.body.subgroupId:current?.subgroup_id;
+    const isCreate=req.method==='POST';
+    const moved=!current||['assignmentGroupId','subgroupId'].some(k=>req.body[k]!==undefined&&changed(req.body[k],current[columns[k]]));
+    const assignee=req.body.assignedTo!==undefined?req.body.assignedTo:current?.assigned_to;
+    if(isCreate||moved||req.body.assignedTo!==undefined&&changed(req.body.assignedTo,current?.assigned_to)){
+      if(!uuid(destination))throw Object.assign(new Error('Select a department.'),{status:400});
+      const rows=await pool.rawQuery(`SELECT g.id FROM assignment_groups g LEFT JOIN assignment_groups s ON s.id=$2 AND s.parent_id=g.id AND s.is_active WHERE g.id=$1 AND g.parent_id IS NULL AND g.is_active AND ($2::uuid IS NULL OR s.id IS NOT NULL)`,[destination,subgroup||null]);
+      if(!rows.rowCount)throw Object.assign(new Error('Select an active department and a valid sub department.'),{status:400});
+      if(!access.admin){
+        const eligible=[destination,...subgroup?[subgroup]:[]];
+        const scopes=[...(access.memberGroups||[]),...access.managedGroups];
+        if(!eligible.some(id=>scopes.includes(id)))throw forbidden();
+      }
+      if(assignee){
+        const member=await pool.rawQuery(`SELECT 1 FROM users u WHERE u.id=$1 AND (${eligibleAssigneeSQL('u','$2::uuid[]')})`,[assignee,[destination,...subgroup?[subgroup]:[]]]);
+        if(!member.rowCount)throw Object.assign(new Error('Assign an active member or Manager responsible for this department or sub department.'),{status:400});
       }
     }
   }
@@ -180,11 +199,6 @@ async function authorize(req, pool) {
   }
 }
 function recordCan(req,key,ticket){
-  if(req.access.admin)return true;
-  const scope=req.access.permissions[key];
-  if(!scope)return false;if(scope==='all')return true;
-  const own=[ticket.created_by,ticket.assigned_to,ticket.ticket_owner].includes(req.access.userId);
-  const group=req.access.managedGroups.includes(ticket.assignment_group_id);
-  return scope==='own'?own:scope==='groups'?group:scope==='related'?(own||group||(req.access.memberGroups||[]).includes(ticket.assignment_group_id)):false;
+  return require('./context').recordAllowed(req.access,key,ticket);
 }
 module.exports = { recordCan, can, need, forbidden, authorize, routePermission };

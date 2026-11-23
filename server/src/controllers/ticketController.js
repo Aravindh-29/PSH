@@ -22,53 +22,27 @@ async function logAudit(client, ticketId, userId, action, fieldName, oldValue, n
 
 async function list(req, res, next) {
   try {
-    const isAdmin = req.session.role === 'admin' || !!req.authorizedTicket || !!req.access?.custom;
     const userId = req.session.userId;
-    const { page = 1, limit = 25, status, priority, module: mod, category, search, assignedTo, myTickets, groupView, createdBy, sortBy, sortDir, startDate, endDate } = req.query;
+    const { page = 1, limit = 25, status, priority, module: mod, category, search, assignedTo, myTickets, groupView, createdBy, userTickets, sortBy, sortDir, startDate, endDate } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     const conditions = ['t.deleted_at IS NULL'];
     const params = [];
 
-    if (!isAdmin && groupView === 'true') {
-      // Group Tickets tab: any ticket whose assigned_to, created_by, or assignment_group
-      // belongs to the same group(s) as the current user
-      params.push(userId);
-      const p = params.length;
-      conditions.push(
-        `(
-           t.assignment_group_id IN (
-             SELECT group_id FROM user_groups WHERE user_id = $${p}
-           )
-           OR t.assigned_to IN (
-             SELECT user_id FROM user_groups
-             WHERE group_id IN (SELECT group_id FROM user_groups WHERE user_id = $${p})
-           )
-           OR t.created_by IN (
-             SELECT user_id FROM user_groups
-             WHERE group_id IN (SELECT group_id FROM user_groups WHERE user_id = $${p})
-           )
-         )`
-      );
-    } else if (!isAdmin) {
-      // My Tickets: tickets assigned to them, or unassigned tickets they created/own
-      params.push(userId);
-      const p = params.length;
-      conditions.push(
-        `(t.assigned_to = $${p}
-         OR (t.assigned_to IS NULL AND (t.created_by = $${p} OR t.ticket_owner = $${p})))`
-      );
+    if(userTickets){
+      params.push(userTickets);
+      conditions.push(`(t.assigned_to=$${params.length} OR (t.assigned_to IS NULL AND t.created_by=$${params.length}))`);
     } else if (myTickets === 'true') {
       params.push(userId);
       conditions.push(
-        `(t.assigned_to = $${params.length} OR (t.assigned_to IS NULL AND t.created_by = $${params.length}))`
+        `t.assigned_to = $${params.length}`
       );
     } else if (createdBy) {
       // Admin viewing a specific user's bucket: tickets assigned to that user,
       // or unassigned tickets they originally created.
       params.push(createdBy);
       conditions.push(
-        `(t.assigned_to = $${params.length} OR (t.assigned_to IS NULL AND t.created_by = $${params.length}))`
+        `(t.assigned_to = $${params.length} OR t.created_by = $${params.length} OR t.ticket_owner = $${params.length})`
       );
     }
     if (status) { params.push(status); conditions.push(`t.status = $${params.length}`); }
@@ -93,15 +67,18 @@ async function list(req, res, next) {
     params.push(offset);
 
     const dataResult = await pool.query(`
-      SELECT t.id, t.created_by, t.assigned_to, t.ticket_owner, t.assignment_group_id, t.ticket_number, t.short_description, t.customer_name, t.status, t.priority,
+      SELECT t.id, t.created_by, t.assigned_to, t.ticket_owner, t.assignment_group_id, t.subgroup_id, t.ticket_number, t.short_description, t.customer_name, t.status, t.priority,
              t.created_at, t.updated_at,
              COALESCE(t.module_text, m.name) AS module_name, c.name AS category_name,
+             COALESCE(department.name,t.assignment_group) AS department_name, sub_department.name AS sub_department_name,
              u1.full_name AS assigned_to_name, u1.id AS assigned_to_id,
              u2.full_name AS created_by_name,
              u3.full_name AS ticket_owner_name
       FROM tickets t
       LEFT JOIN modules m ON t.module_id = m.id
       LEFT JOIN categories c ON t.category_id = c.id
+      LEFT JOIN assignment_groups department ON department.id=t.assignment_group_id
+      LEFT JOIN assignment_groups sub_department ON sub_department.id=t.subgroup_id
       LEFT JOIN users u1 ON t.assigned_to = u1.id
       LEFT JOIN users u2 ON t.created_by = u2.id
       LEFT JOIN users u3 ON t.ticket_owner = u3.id
@@ -130,7 +107,7 @@ async function create(req, res, next) {
       priority = 'MEDIUM', impact = 'MEDIUM', urgency = 'MEDIUM',
       customData = {},
       assignmentGroup = null,
-      assignmentGroupId = null,
+      assignmentGroupId = null, subgroupId = null,
       typeId = null,
       classification = null,
     } = req.body;
@@ -179,8 +156,8 @@ async function create(req, res, next) {
       INSERT INTO tickets (ticket_number, customer_name, module_text, category_id, subcategory_id,
         short_description, description, status, priority, impact, urgency, assigned_to,
         assignment_group, assignment_group_id, ticket_owner, created_by, updated_by,
-        type_id, classification, custom_data, template_id, template_snapshot, template_values)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15,$15,$16,$17,$18,$19,$20,$21)
+        type_id, classification, custom_data, template_id, template_snapshot, template_values, subgroup_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15,$15,$16,$17,$18,$19,$20,$21,$22)
       RETURNING *
     `, [ticketNumber, customerName, moduleText, categoryId, subcategoryId || null,
         shortDescription, description,
@@ -190,7 +167,7 @@ async function create(req, res, next) {
         assignmentGroupId || null,
         req.session.userId,
         typeId || null, classification || null,
-        JSON.stringify(customData), template.id, JSON.stringify(template.snapshot), JSON.stringify(template.values)]);
+        JSON.stringify(customData), template.id, JSON.stringify(template.snapshot), JSON.stringify(template.values), subgroupId || null]);
 
     const ticket = result.rows[0];
     await logAudit(client, ticket.id, req.session.userId, 'CREATED', null, null, ticketNumber, req.ip);
@@ -271,7 +248,7 @@ async function getOne(req, res, next) {
     const result = await pool.query(`
       SELECT t.*,
              COALESCE(t.module_text, m.name) AS module_name, c.name AS category_name,
-             sc.name AS subcategory_name, ag.name AS assignment_group_name,
+             sc.name AS subcategory_name, ag.name AS assignment_group_name, sg.name AS subgroup_name,
              tt.name AS type_name,
              u1.full_name AS assigned_to_name, u1.id AS assigned_to_id,
              u2.full_name AS created_by_name,
@@ -282,6 +259,7 @@ async function getOne(req, res, next) {
       LEFT JOIN categories c ON t.category_id = c.id
       LEFT JOIN subcategories sc ON t.subcategory_id = sc.id
       LEFT JOIN assignment_groups ag ON t.assignment_group_id = ag.id
+      LEFT JOIN assignment_groups sg ON t.subgroup_id = sg.id
       LEFT JOIN ticket_types tt ON t.type_id = tt.id
       LEFT JOIN users u1 ON t.assigned_to = u1.id
       LEFT JOIN users u2 ON t.created_by = u2.id
@@ -380,14 +358,28 @@ async function update(req, res, next) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
+    // Attachment removals share the ticket save transaction and its edit scope.
+    const removalIds = req.body.removeAttachmentIds === undefined ? [] : req.body.removeAttachmentIds;
+    if (!Array.isArray(removalIds) || removalIds.length > 500 || removalIds.some(value => typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))) {
+      throw Object.assign(new Error('Invalid attachment removal selection'), { status: 400 });
+    }
+    const uniqueRemovalIds = [...new Set(removalIds)];
+    let removedAttachments = [];
+    if (uniqueRemovalIds.length) {
+      if (!recordCan(req, 'tickets.edit', ticket)) throw Object.assign(new Error('Access denied'), { status: 403 });
+      const selected = await client.query('SELECT id, file_name FROM ticket_attachments WHERE ticket_id=$1 AND id=ANY($2::uuid[]) FOR UPDATE', [id, uniqueRemovalIds]);
+      if (selected.rowCount !== uniqueRemovalIds.length) throw Object.assign(new Error('An attachment is no longer available on this ticket. Reload and try again.'), { status: 400 });
+      removedAttachments = selected.rows;
+    }
+
     // Employees can update ticket fields but never ownership — only admins may change ticket_owner
-    const UUID_COLS = new Set(['ticket_owner', 'assigned_to', 'category_id', 'type_id', 'subcategory_id', 'assignment_group_id']);
+    const UUID_COLS = new Set(['ticket_owner', 'assigned_to', 'category_id', 'type_id', 'subcategory_id', 'assignment_group_id', 'subgroup_id']);
     const fieldMap = {
       customerName: 'customer_name', moduleText: 'module_text', categoryId: 'category_id',
       subcategoryId: 'subcategory_id',
       shortDescription: 'short_description', description: 'description', status: 'status',
       priority: 'priority', impact: 'impact', urgency: 'urgency',
-      assignmentGroup: 'assignment_group', assignmentGroupId: 'assignment_group_id',
+      assignmentGroup: 'assignment_group', assignmentGroupId: 'assignment_group_id', subgroupId:'subgroup_id',
       classification: 'classification', typeId: 'type_id',
       assignedTo: 'assigned_to',
       ...(req.access?.admin || req.access?.permissions['tickets.owner'] ? { ticketOwner: 'ticket_owner' } : {}),
@@ -434,7 +426,7 @@ async function update(req, res, next) {
       }
     }
 
-    if (sets.length === 0 && !req.body.workNote?.trim()) {
+    if (sets.length === 0 && !req.body.workNote?.trim() && !removedAttachments.length) {
       await client.query('ROLLBACK');
       return res.json({ success: true, message: 'No changes' });
     }
@@ -456,6 +448,13 @@ async function update(req, res, next) {
     if(req.body.workNote?.trim()) {
       await client.query("INSERT INTO ticket_comments(ticket_id,user_id,body,type) VALUES($1,$2,$3,'WORK_NOTE')",[id,req.session.userId,req.body.workNote.trim()]);
       await logAudit(client,id,req.session.userId,'COMMENT_ADDED','work_note',null,req.body.workNote.trim(),req.ip);
+    }
+
+    if (removedAttachments.length) {
+      await client.query('DELETE FROM ticket_attachments WHERE ticket_id=$1 AND id=ANY($2::uuid[])', [id, uniqueRemovalIds]);
+      for (const attachment of removedAttachments) {
+        await logAudit(client, id, req.session.userId, 'ATTACHMENT_DELETED', 'attachment', attachment.file_name, null, req.ip);
+      }
     }
 
     // Trigger SLA engine on status change

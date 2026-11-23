@@ -5,14 +5,13 @@ const ticketCtrl = require('../controllers/ticketController');
 const attachCtrl = require('../controllers/attachmentController');
 
 const router = express.Router();
-// No fileSize limit in multer — per-file validation happens in the controller
-// This prevents one oversized file from aborting the entire multi-file upload
-const upload = multer({ storage: multer.memoryStorage(), limits: { files: 10, fieldSize: 100 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { files: 10, fileSize: 25 * 1024 * 1024, fieldSize: 64 * 1024, fields: 10, parts: 20 } });
 
 function handleMulterError(req, res, next) {
   upload.array('files', 10)(req, res, (err) => {
     if (err) {
-      return res.status(400).json({ success: false, message: err.message || 'Upload error' });
+      const message=err.code==='LIMIT_FILE_SIZE'?'Each attachment must be 25 MB or smaller.':err.code==='LIMIT_FILE_COUNT'||err.code==='LIMIT_UNEXPECTED_FILE'?'Select up to 10 attachments using the files field.':err.message||'Upload error';
+      return res.status(err.code==='LIMIT_FILE_SIZE'?413:400).json({ success: false, message });
     }
     next();
   });
@@ -23,6 +22,7 @@ router.get('/next-number', ticketCtrl.nextNumber);
 router.get('/', ticketCtrl.list);
 router.post('/', ticketCtrl.create);
 router.get('/:id', ticketCtrl.getOne);
+router.post('/:id/opened', require('../controllers/ticketInboxController').opened);
 router.put('/:id', ticketCtrl.update);
 router.delete('/:id', ticketCtrl.remove);
 router.post('/:id/comments', ticketCtrl.addComment);

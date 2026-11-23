@@ -11,7 +11,8 @@ async function list(req, res, next) {
        LIMIT 30`,
       [userId]
     );
-    const unread = rows.filter(r => !r.is_read).length;
+    const count = await pool.query('SELECT COUNT(*)::int AS unread FROM notifications WHERE user_id=$1 AND is_read=FALSE',[userId]);
+    const unread = count.rows[0].unread;
     res.json({ success: true, notifications: rows, unread });
   } catch (err) {
     next(err);

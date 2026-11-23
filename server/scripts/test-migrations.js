@@ -31,9 +31,9 @@ async function main() {
   try {
     const { client: fresh } = await isolated();
     await fresh.query(sql);
-    check('Standalone schema includes all current permission keys', Object.keys((await fresh.query("SELECT permissions FROM access_roles WHERE key='admin'")).rows[0].permissions).length === catalog.length);
+    check('Standalone schema includes fixed-role application permissions', Object.keys((await fresh.query("SELECT permissions FROM access_roles WHERE key='admin'")).rows[0].permissions).length === catalog.filter(p=>!p.key.startsWith('roles.')).length);
     await migrate(fresh); await migrate(fresh);
-    for (const table of ['ticket_templates', 'organization_branding', 'access_roles', 'user_managed_groups', 'access_role_history', 'access_migrations', 'email_outbox', 'kb_articles', 'session']) {
+    for (const table of ['ticket_inbox_receipts', 'ticket_templates', 'organization_branding', 'access_roles', 'user_managed_groups', 'access_role_history', 'access_migrations', 'email_outbox', 'kb_articles', 'session', 'organization_regions', 'organization_countries', 'organization_settings']) {
       check('Fresh install contains ' + table, !!(await fresh.query('SELECT to_regclass($1) AS name', [table])).rows[0].name);
     }
     const { client: upgraded, name } = await isolated();
@@ -48,7 +48,7 @@ async function main() {
     await migrate(upgraded);
     const account = (await upgraded.query('SELECT * FROM users WHERE id=$1', [user])).rows[0];
     check('Upgrade preserves administrator password, name and disabled status', account.password_hash === 'unchanged-password-hash' && account.full_name === 'Existing admin' && !account.is_active);
-    check('Legacy membership copied to managed groups once', (await upgraded.query('SELECT * FROM user_managed_groups')).rowCount === 1);
+    check('Legacy ordinary membership does not become management', (await upgraded.query('SELECT * FROM user_managed_groups')).rowCount === 0);
     const saved = (await upgraded.query('SELECT * FROM email_config WHERE id=1')).rows[0];
     check('Legacy SMTP secret encrypted without changing its value', saved.smtp_pass.startsWith('enc:v1:') && settings.decrypt(saved.smtp_pass) === 'legacy-test-secret');
     await upgraded.query("INSERT INTO access_roles(key,name,permissions) VALUES('custom_manager','Custom manager','{\"tickets.view\":\"groups\"}')");
@@ -56,7 +56,7 @@ async function main() {
     await upgraded.query('DELETE FROM user_managed_groups');
     await upgraded.query("INSERT INTO kb_articles(title,content) VALUES('Custom article','Keep edited Markdown | table')");
     await migrate(upgraded); await migrate(upgraded);
-    check('Repeated upgrades preserve custom roles and assignments', (await upgraded.query('SELECT role FROM users WHERE id=$1', [user])).rows[0].role === 'custom_manager');
+    check('Repeated upgrades preserve accounts and archive retired role assignments', (await upgraded.query('SELECT role FROM users WHERE id=$1', [user])).rows[0].role === 'employee' && (await upgraded.query('SELECT role_key FROM retired_user_roles WHERE user_id=$1',[user])).rows[0].role_key === 'custom_manager');
     check('Repeated upgrades do not restore removed managed groups', (await upgraded.query('SELECT * FROM user_managed_groups')).rowCount === 0);
     check('Repeated upgrades preserve role permissions', (await upgraded.query("SELECT permissions FROM access_roles WHERE key='custom_manager'")).rows[0].permissions['tickets.view'] === 'groups');
     check('Repeated upgrades preserve branding', (await upgraded.query('SELECT organization_name FROM organization_branding')).rows[0].organization_name === 'Existing company');
@@ -69,7 +69,7 @@ async function main() {
     const priorUrl = process.env.DATABASE_URL; process.env.DATABASE_URL = appUrl.toString();
     try { await require('../src/dbInit')(); } finally { process.env.DATABASE_URL = priorUrl; }
     const retained = (await upgraded.query('SELECT password_hash,full_name,is_active,role FROM users WHERE id=$1', [user])).rows[0];
-    check('Install and startup preserve existing admin credentials, status and custom role', retained.password_hash === 'unchanged-password-hash' && retained.full_name === 'Existing admin' && !retained.is_active && retained.role === 'custom_manager');
+    check('Install and startup preserve account credentials/status and safely map a retired role to User', retained.password_hash === 'unchanged-password-hash' && retained.full_name === 'Existing admin' && !retained.is_active && retained.role === 'employee');
     const { client: failed } = await isolated(); await failed.query(legacy);
     const validKey = process.env.EMAIL_ENCRYPTION_KEY;
     process.env.EMAIL_ENCRYPTION_KEY = 'invalid';

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import './Sidebar.css';
 import useAccess from '../hooks/useAccess';
+import {useNotifications} from '../context/NotificationContext';
 import BrandIdentity from './BrandIdentity';
 import { useBranding } from '../context/BrandingContext';
 
@@ -16,7 +17,8 @@ const NAV_TOP_ADMIN = [
 ];
 
 const NAV_TOP_EMPLOYEE = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
+  { to: '/', icon: LayoutDashboard, label: 'My Dashboard', exact: true },
+  { to: '/team-dashboard', icon: LayoutDashboard, label: 'Team Dashboard' },
 ];
 
 const ADMIN_MAIN = [
@@ -27,29 +29,31 @@ const NAV_COMMON = [
   { to: '/my-tickets',    icon: ClipboardList, label: 'My Tickets'    },
   { to: '/my-query',      icon: Search,        label: 'My Query'      },
   { to: '/tickets/new',   icon: PlusCircle,    label: 'Create Ticket' },
+  { to: '/users',icon: Users,label: 'Users' },
   { to: '/knowledge-base',icon: BookOpen,      label: 'Knowledge Base'},
   { to: '/reports',       icon: BarChart2,     label: 'Reports'       },
 ];
 
 const ADMIN_NAV = [
   { to: '/admin/users',          icon: Users,       label: 'Users'          },
-  { to: '/admin/groups',         icon: Users2,      label: 'Groups'         },
+  { to: '/departments',          icon: Users2,      label: 'Departments'         },
   { to: '/admin/modules',        icon: Settings,    label: 'Configuration'  },
   { to: '/admin/sso',            icon: KeyRound,    label: 'SSO'            },
   { to: '/admin/email',          icon: Mail,        label: 'Email Config'   },
   { to: '/audit-logs',           icon: ShieldCheck, label: 'Audit Logs'     },
 ];
 
-function NavItem({ to, icon: Icon, label, exact, disabled, collapsed }) {
+function NavItem({ to, icon: Icon, label, exact, disabled, collapsed, count=0 }) {
   return (
     <NavLink
       to={disabled ? '#' : to}
       end={exact}
-      className={({ isActive }) => `nav-item ${isActive && !disabled ? 'active' : ''} ${disabled ? 'disabled' : ''}`}
+      className={({ isActive }) => `nav-item ${isActive && !disabled ? 'active' : ''} ${disabled ? 'disabled' : ''} ${to==='/my-query'?'nav-query':''}`}
       onClick={e => disabled && e.preventDefault()}
     >
       <Icon size={18} />
       {!collapsed && <span>{label}</span>}
+      {count>0&&<span className="nav-unopened-count" aria-label={`${count} unopened tickets`}>{count>99?'99+':count}</span>}
     </NavLink>
   );
 }
@@ -59,9 +63,10 @@ export default function Sidebar({ collapsed, onToggle }) {
   const navigate = useNavigate();
   const { branding } = useBranding();
   const {can,any}=useAccess();
-  const navPermissions={'/':'dashboard.view','/admin/my-dashboard':'dashboard.view','/admin/user-tickets':'users.tickets','/my-tickets':'tickets.view','/my-query':'query.view','/tickets/new':'tickets.create','/knowledge-base':'kb.view','/reports':'reports.view','/admin/users':'users.view','/admin/groups':'groups.view','/admin/sso':'sso.view','/admin/email':'email.view','/audit-logs':'audit.view'};
-  const configAllowed=any(['fields.view','categories.view','types.view','templates.view','branding.view','sla_config.view','roles.view']);
-  const visible=item=>item.to==='/admin/modules'?configAllowed:item.to==='/admin/users'?any(['users.view','users.team_view']):can(navPermissions[item.to]);
+  const {queryUnopened}=useNotifications();
+  const navPermissions={'/':'dashboard.view','/admin/my-dashboard':'dashboard.view','/admin/user-tickets':'users.tickets','/my-tickets':'tickets.view','/my-query':'query.view','/users':'users.directory_view','/tickets/new':'tickets.create','/knowledge-base':'kb.view','/reports':'reports.view','/admin/users':'users.view','/departments':'departments.view','/team-dashboard':'dashboard.team','/admin/sso':'sso.view','/admin/email':'email.view','/audit-logs':'audit.view'};
+  const configAllowed=any(['fields.view','categories.view','types.view','templates.view','branding.view','sla_config.view']);
+  const visible=item=>item.to==='/users'?(user?.roleKind==='user'||user?.role==='employee')&&can('users.directory_view'):item.to==='/admin/modules'?configAllowed:item.to==='/admin/users'?any(['users.view','users.team_view']):can(navPermissions[item.to]);
   const isAdmin = user?.role === 'admin';
 
   const handleLogout = async () => {
@@ -81,11 +86,11 @@ export default function Sidebar({ collapsed, onToggle }) {
           <NavItem key={item.to} {...item} collapsed={collapsed} />
         ))}
 
-        {/* User Wise Tickets — admin only, right after Dashboard */}
+        {/* Tickets by User — permitted roles, right after Dashboard */}
         {ADMIN_MAIN.filter(visible).map(item => <NavItem key={item.to} {...item} collapsed={collapsed} />)}
 
         {/* Common nav items */}
-        {NAV_COMMON.filter(visible).map(item => <NavItem key={item.to} {...item} collapsed={collapsed} />)}
+        {NAV_COMMON.filter(visible).map(item => <NavItem key={item.to} {...item} collapsed={collapsed} count={item.to==='/my-query'?queryUnopened:0} />)}
         {can('qa.view') && <NavItem to="/qa-analysis" icon={BarChart2} label="QA Analysis" collapsed={collapsed} />}
 
         {/* Admin section */}

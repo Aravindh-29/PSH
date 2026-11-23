@@ -255,12 +255,14 @@
   border: 1px solid #E5E7EB;
   border-radius: 4px;
   background: #F9FAFB;
-  color: #6B7280;
+  color: #000000;
   padding: 5px 10px;
   min-height: 32px;
   overflow: hidden;
   cursor: default;
 }
+.ip-view-mode .ip-val-empty,
+.ip-two-cols .ip-val-empty { color: #000000; }
 .ip-view-mode .ip-vc.ip-tall,
 .ip-two-cols  .ip-vc.ip-tall {
   align-items: flex-start;
@@ -634,3 +636,13 @@
   .ip-pair { grid-template-columns: 140px 1fr; }
   .ip-fields-3col { grid-template-columns: 1fr; }
 }
+
+/* Organization controls use the same pair grid and input sizes as Incident Details. */
+.ticket-organization select {height:32px;}
+.ticket-organization select:disabled {background:#f9fafb;color:#6b7280;border-color:#e5e7eb;}
+
+.ticket-organization {display:contents;}
+.ticket-organization>.ip-pair {grid-column:2;}
+.ip-assignee-right {grid-column:2;}
+@media(max-width:900px){.ticket-organization>.ip-pair {grid-column:1;}}
+@media(max-width:900px){.ip-assignee-right {grid-column:1;}}

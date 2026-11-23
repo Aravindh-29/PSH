@@ -13,7 +13,7 @@ const PRIORITY_COLORS = {
 
 export function StatusBadge({ status }) {
   const color = STATUS_COLORS[status] || 'gray';
-  return <span className={`badge badge-status badge-${color}`}>{status?.replace('_',' ')}</span>;
+  return <span className={`badge badge-status badge-${color}`}>{status?.replaceAll('_',' ')}</span>;
 }
 
 export function PriorityBadge({ priority }) {

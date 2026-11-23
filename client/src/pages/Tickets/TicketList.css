@@ -180,3 +180,4 @@
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
 .btn-cancel { padding: 8px 18px; border-radius: 7px; border: 1px solid var(--border); background: white; font-size: 13.5px; cursor: pointer; }
 .btn-delete { padding: 8px 18px; border-radius: 7px; border: none; background: var(--danger); color: white; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.td-department { min-width: 190px; max-width: 300px; white-space: normal; overflow-wrap: anywhere; line-height: 1.5; color: #000; }

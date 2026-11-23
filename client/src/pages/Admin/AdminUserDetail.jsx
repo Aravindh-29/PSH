@@ -6,6 +6,8 @@ import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
 import './Admin.css';
+import useAccess from '../../hooks/useAccess';
+import AccessDenied from '../../components/AccessDenied';
 
 const STATUSES = ['NEW','OPEN','ASSIGNED','IN_PROGRESS','WORK_IN_PROGRESS','PENDING','ON_HOLD','RESOLVED','CLOSED','REOPENED','CANCELLED'];
 const PRIORITIES = ['LOW','MEDIUM','HIGH','CRITICAL'];
@@ -13,7 +15,9 @@ const PRIORITIES = ['LOW','MEDIUM','HIGH','CRITICAL'];
 export default function AdminUserDetail() {
   const { userId } = useParams();
   const navigate = useNavigate();
+  const {can,record}=useAccess();
 
+  const [denied,setDenied]=useState(false);
   const [user, setUser] = useState(null);
   const [userLoading, setUserLoading] = useState(true);
 
@@ -46,17 +50,17 @@ export default function AdminUserDetail() {
   };
 
   useEffect(() => {
-    setUserLoading(true);
-    api.get(`/users/${userId}`)
+    setUserLoading(true);setDenied(false);setUser(null);
+    api.get(`/users/${userId}?scope=with_tickets`)
       .then(r => setUser(r.data.user))
-      .catch(() => toast.error('User not found'))
+      .catch(e => {if(e.response?.status===403)setDenied(true);else toast.error('User not found')})
       .finally(() => setUserLoading(false));
   }, [userId]);
 
   const fetchTickets = async (p = 1) => {
     setTicketsLoading(true);
     try {
-      const params = new URLSearchParams({ page: p, limit: 20, createdBy: userId });
+      const params = new URLSearchParams({ page: p, limit: 20, userTickets: userId });
       if (search) params.set('search', search);
       if (filters.status) params.set('status', filters.status);
       if (filters.priority) params.set('priority', filters.priority);
@@ -73,6 +77,7 @@ export default function AdminUserDetail() {
   useEffect(() => { setPage(1); fetchTickets(1); }, [userId, search, filters]);
   useEffect(() => { fetchTickets(page); }, [page]);
 
+  if(denied)return <AccessDenied/>;
   if (userLoading) return <div style={{ padding: 48, textAlign: 'center', color: '#64748b' }}>Loading...</div>;
   if (!user) return <div style={{ padding: 48, textAlign: 'center', color: '#64748b' }}>User not found.</div>;
 
@@ -104,7 +109,7 @@ export default function AdminUserDetail() {
       </div>
 
       {/* Deleted user — quick action row */}
-      {user.deleted_at && parseInt(user.ticket_count) > 0 && (
+      {can('users.delete_tickets') && user.deleted_at && parseInt(user.ticket_count) > 0 && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
           <button
             onClick={openDeleteAllModal}
@@ -165,7 +170,7 @@ export default function AdminUserDetail() {
           <thead>
             <tr>
               <th>TICKET ID</th>
-              <th>SUBJECT</th>
+              <th>DEPARTMENT / SUB DEPARTMENT</th>
               <th>CUSTOMER</th>
               <th>PRIORITY</th>
               <th>STATUS</th>
@@ -185,7 +190,7 @@ export default function AdminUserDetail() {
                 <td>
                   <Link to={`/tickets/${t.id}`} className="ud-ticket-link">{t.ticket_number}</Link>
                 </td>
-                <td className="ud-subj-cell">{t.short_description}</td>
+                <td className="ud-subj-cell">{[t.department_name,t.sub_department_name].filter(Boolean).join(' / ') || '—'}</td>
                 <td>{t.customer_name}</td>
                 <td><PriorityBadge priority={t.priority} /></td>
                 <td><StatusBadge status={t.status} /></td>
@@ -197,9 +202,9 @@ export default function AdminUserDetail() {
                     <Link to={`/tickets/${t.id}`} className="toggle-btn ud-action-btn" title="View">
                       <Eye size={13} />
                     </Link>
-                    <Link to={`/tickets/${t.id}/edit`} className="toggle-btn ud-action-btn" title="Edit">
+                    {record('tickets.edit',t)&&<Link to={`/tickets/${t.id}/edit`} className="toggle-btn ud-action-btn" title="Edit">
                       <Pencil size={13} />
-                    </Link>
+                    </Link>}
                   </div>
                 </td>
               </tr>

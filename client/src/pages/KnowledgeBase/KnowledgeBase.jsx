@@ -64,7 +64,7 @@ export default function KnowledgeBase() {
         setForm({ title: art.title, content: art.content || '', category: art.category, status: art.status });
         setShowModal(true);
         navigate(location.pathname, { replace: true, state: {} });
-      }).catch(() => {});
+      }).catch(err => toast.error(err.response?.data?.message||'Could not open the article for editing.'));
     }
   }, [location.state, isAdmin, navigate, location.pathname]);
 

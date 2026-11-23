@@ -11,8 +11,10 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { StatusBadge, PriorityBadge } from '../../components/Badge';
 import api from '../../api/axios';
+import toast from 'react-hot-toast';
 import { formatDistanceToNow, format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import './Dashboard.css';
+import useAccess from '../../hooks/useAccess';
 
 const DATE_PRESETS = [
   { label: 'All Tickets',  getRange: () => null },
@@ -49,12 +51,15 @@ function SparkLine({ data, color }) {
   );
 }
 
-export default function Dashboard({ personal = false }) {
+export default function Dashboard({ personal = false, team = false }) {
   const { user } = useAuth();
+  const {can}=useAccess();
   const isAdmin = user?.role === 'admin';
   // personal=true → admin viewing their own tickets (like an employee view)
-  const isPersonal = isAdmin && personal;
+  const isPersonal = personal;
 
+  const [departmentId,setDepartmentId]=useState(''),[departments,setDepartments]=useState([]);
+  useEffect(()=>{if(team)api.get('/departments/tree').then(r=>setDepartments(r.data.groups.filter(g=>!g.parent_id)))},[team]);
   const [stats, setStats]           = useState(null);
   const [trends, setTrends]         = useState({});
   const [chartData, setChartData]   = useState([]);
@@ -77,6 +82,7 @@ export default function Dashboard({ personal = false }) {
   }, []);
 
   useEffect(() => {
+    let active=true;const controller=new AbortController();
     setLoading(true);
     const params = new URLSearchParams();
     if (dateRange) {
@@ -84,17 +90,21 @@ export default function Dashboard({ personal = false }) {
       params.set('endDate',   format(dateRange.end,   'yyyy-MM-dd'));
     }
     if (isPersonal) params.set('personal', 'true');
-    api.get(`/dashboard?${params}`)
+    if (team) params.set('team','true');
+    if(team&&departmentId)params.set('departmentId',departmentId);
+    api.get(`/dashboard?${params}`,{signal:controller.signal})
       .then(res => {
+        if(!active)return;
         setStats(res.data.stats);
         setTrends(res.data.trends || {});
         setChartData(res.data.chartData || []);
         setSlaBreaches(res.data.slaBreaches || []);
         setRecentTickets(res.data.recentTickets || []);
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [dateRange, isPersonal]);
+      .catch(err => {if(active&&!controller.signal.aborted)toast.error(err.response?.data?.message||'Could not load the dashboard. Please refresh.');})
+      .finally(() => {if(active)setLoading(false)});
+    return()=>{active=false;controller.abort()};
+  }, [dateRange, isPersonal, team, departmentId]);
 
   const applyPreset = (preset) => {
     setDateRange(preset.getRange());
@@ -131,7 +141,7 @@ export default function Dashboard({ personal = false }) {
   const quickActions = isPersonal ? [
     { label: 'Create New Ticket',  to: '/tickets/new',          icon: Plus },
     { label: 'My Tickets',         to: '/my-tickets',            icon: Ticket },
-    { label: 'Global Dashboard',   to: '/',                      icon: LayoutDashboard },
+    ...(isAdmin?[{label:'Global Dashboard',to:'/',icon:LayoutDashboard}]:can('dashboard.team')?[{label:'Team Dashboard',to:'/team-dashboard',icon:LayoutDashboard}]:[]),
   ] : isAdmin ? [
     { label: 'Create New Ticket',  to: '/tickets/new',          icon: Plus },
     { label: 'Tickets by User',  to: '/admin/user-tickets',   icon: LayoutList },
@@ -152,15 +162,17 @@ export default function Dashboard({ personal = false }) {
 
   return (
     <div className="dashboard">
+      {team&&!user?.managedGroups?.length&&<p role="status" className="rbac-note">No managed departments are assigned to you. Ask Admin to assign team oversight. Your personal tickets remain available under My Tickets and My Dashboard.</p>}
       {/* Header */}
+      {team&&<select aria-label="Filter Team Dashboard by department" value={departmentId} onChange={e=>setDepartmentId(e.target.value)}><option value="">All Managed Departments</option>{departments.map(d=><option key={d.id} value={d.id}>{d.label||d.name}</option>)}</select>}
       <div className="dash-header">
         <div>
           <h1 className="dash-welcome">
-            {isPersonal ? 'Admin Dashboard' : isAdmin ? 'Global Dashboard' : `Welcome back, ${user?.fullName?.split(' ')[0]}! 👋`}
+            {team ? 'Team Dashboard' : isPersonal ? 'My Dashboard' : isAdmin ? 'Global Dashboard' : `Welcome back, ${user?.fullName?.split(' ')[0]}! 👋`}
           </h1>
           <p className="dash-sub">
-            {isPersonal
-              ? "Your own tickets — created and managed by you."
+            {team ? "Tickets across your managed Departments and sub departments." : isPersonal
+              ? "Tickets currently assigned to you."
               : isAdmin
               ? "Here's an overview of all tickets across the system."
               : "Here's what's happening with your tickets today."}
@@ -367,14 +379,14 @@ export default function Dashboard({ personal = false }) {
       {/* Recent Tickets */}
       <div className="dash-recent">
         <div className="dash-card-header">
-          <h3>{isAdmin && !isPersonal ? 'Recent Tickets (All Users)' : isAdmin ? 'Recent Tickets' : 'My Recent Tickets'}</h3>
+          <h3>{team ? 'Recent Team Tickets' : isAdmin && !isPersonal ? 'Recent Tickets (All Users)' : isAdmin ? 'Recent Tickets' : 'My Recent Tickets'}</h3>
           <Link to={isAdmin && !isPersonal ? '/tickets' : '/my-tickets'} className="view-all">View all →</Link>
         </div>
         <div className="recent-table-wrap">
           <table className="recent-table">
             <thead>
               <tr>
-                <th>TICKET ID</th><th>SUBJECT</th><th>CUSTOMER</th>
+                <th>TICKET ID</th><th>DEPARTMENT / SUB DEPARTMENT</th><th>CUSTOMER</th>
                 <th>PRIORITY</th><th>STATUS</th>
                 <th>ASSIGNED TO</th><th>CREATED BY</th>
                 <th>UPDATED</th><th>ACTIONS</th>
@@ -387,7 +399,7 @@ export default function Dashboard({ personal = false }) {
               {recentTickets.map(t => (
                 <tr key={t.id}>
                   <td><Link to={`/tickets/${t.id}`} className="ticket-id-link">{t.ticket_number}</Link></td>
-                  <td className="td-subject"><span className="truncate">{t.short_description}</span></td>
+                  <td className="td-subject"><span className="truncate">{[t.department_name,t.sub_department_name].filter(Boolean).join(' / ') || '—'}</span></td>
                   <td>{t.customer_name}</td>
                   <td><PriorityBadge priority={t.priority} /></td>
                   <td><StatusBadge status={t.status} /></td>

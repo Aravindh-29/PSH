@@ -1,5 +1,6 @@
 const pool   = require('../db/pool');
 const argon2 = require('argon2');
+const {eligibleAssigneeSQL}=require('../access/ticketAssignment');
 const { logAdminAudit } = require('./adminAuditController');
 
 async function verifyAdminPassword(userId, plain) {
@@ -31,7 +32,7 @@ async function getOne(req, res, next) {
       SELECT g.id, g.name, g.description, g.is_active, g.created_at, g.updated_at
       FROM assignment_groups g WHERE g.id = $1
     `, [id]);
-    if (!rows.length) return res.status(404).json({ success: false, message: 'Group not found' });
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Department not found' });
 
     const { rows: members } = await pool.query(`
       SELECT u.id, u.full_name, u.email, u.role, u.is_active,
@@ -49,7 +50,7 @@ async function getOne(req, res, next) {
 async function create(req, res, next) {
   try {
     const { name, description = '' } = req.body;
-    if (!name?.trim()) return res.status(400).json({ success: false, message: 'Group name is required' });
+    if (!name?.trim()) return res.status(400).json({ success: false, message: 'Department name is required' });
     const { rows } = await pool.query(
       `INSERT INTO assignment_groups (name, description) VALUES ($1, $2) RETURNING *`,
       [name.trim(), description.trim()]
@@ -57,7 +58,7 @@ async function create(req, res, next) {
     logAdminAudit(req.session?.userId, 'GROUP_CREATED', 'group', rows[0].id, rows[0].name, { description }, req.ip);
     res.status(201).json({ success: true, group: rows[0] });
   } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ success: false, message: 'Group name already exists' });
+    if (err.code === '23505') return res.status(409).json({ success: false, message: 'Department name already exists' });
     next(err);
   }
 }
@@ -74,11 +75,11 @@ async function update(req, res, next) {
           updated_at  = NOW()
       WHERE id = $4 RETURNING *
     `, [name?.trim() || null, description ?? null, is_active ?? null, id]);
-    if (!rows.length) return res.status(404).json({ success: false, message: 'Group not found' });
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Department not found' });
     logAdminAudit(req.session?.userId, 'GROUP_UPDATED', 'group', rows[0].id, rows[0].name, { name, description, is_active }, req.ip);
     res.json({ success: true, group: rows[0] });
   } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ success: false, message: 'Group name already exists' });
+    if (err.code === '23505') return res.status(409).json({ success: false, message: 'Department name already exists' });
     next(err);
   }
 }
@@ -102,7 +103,7 @@ async function remove(req, res, next) {
     const { rowCount } = await client.query(`DELETE FROM assignment_groups WHERE id = $1`, [id]);
     await client.query('COMMIT');
 
-    if (!rowCount) return res.status(404).json({ success: false, message: 'Group not found' });
+    if (!rowCount) return res.status(404).json({ success: false, message: 'Department not found' });
     logAdminAudit(req.session?.userId, 'GROUP_DELETED', 'group', id, groupName, {}, req.ip);
     res.json({ success: true });
   } catch (err) {
@@ -151,32 +152,19 @@ async function removeMember(req, res, next) {
 }
 
 // Get all users with their group memberships (for dropdowns)
-async function listWithMembers(req, res, next) {
-  try {
-    const { rows } = await pool.query(`
-      SELECT g.id, g.name, g.is_active,
-             COALESCE(
-               json_agg(json_build_object('id', u.id, 'full_name', u.full_name, 'email', u.email))
-               FILTER (WHERE u.id IS NOT NULL),
-               '[]'
-             ) AS members
-      FROM assignment_groups g
-      LEFT JOIN user_groups ug ON ug.group_id = g.id
-      LEFT JOIN users u ON u.id = ug.user_id AND u.deleted_at IS NULL
-      WHERE g.is_active = TRUE
-      GROUP BY g.id
-      ORDER BY g.name
-    `);
-    res.json({ success: true, groups: !req.access.admin && req.access.permissions['tickets.assign'] !== 'all' ? rows.filter(g=>req.access.managedGroups.includes(g.id)) : rows });
-  } catch (err) { next(err); }
-}
+async function listWithMembers(req,res,next){try{
+  const scopes=[...new Set([...(req.access.memberGroups||[]),...req.access.managedGroups])];
+  const{rows}=await pool.query(`SELECT g.id,g.name,g.parent_id,g.is_active FROM assignment_groups g WHERE g.is_active ${req.access.admin?'':`AND (g.id=ANY($1::uuid[]) OR g.parent_id=ANY($1::uuid[]) OR g.id IN (SELECT parent_id FROM assignment_groups WHERE id=ANY($1::uuid[])))`} ORDER BY g.name`,req.access.admin?[]:[scopes]);
+  const candidates=rows.length?(await pool.query(`SELECT g.id AS group_id,u.id,u.full_name,u.email
+    FROM assignment_groups g CROSS JOIN users u WHERE g.id=ANY($1::uuid[])
+    AND (${eligibleAssigneeSQL('u','ARRAY[g.id,g.parent_id]::uuid[]')}) ORDER BY u.full_name,u.id`,[rows.map(g=>g.id)])).rows:[];
+  for(const group of rows)group.members=candidates.filter(u=>u.group_id===group.id).map(({group_id,...user})=>user);
+  res.json({success:true,groups:rows});
+}catch(e){next(e)}}
 
 async function myGroups(req, res, next) {
   try {
-    const { rows } = await pool.query(
-      'SELECT group_id FROM user_groups WHERE user_id = $1 UNION SELECT group_id FROM user_managed_groups WHERE user_id=$1',
-      [req.session.userId]
-    );
+    const rows=[...new Set([...(req.access.memberGroups||[]),...req.access.managedGroups])].map(group_id=>({group_id}));
     res.json({ success: true, groups: rows });
   } catch (err) { next(err); }
 }

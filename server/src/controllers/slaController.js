@@ -170,7 +170,8 @@ async function getQAStats(req, res, next) {
           EXTRACT(EPOCH FROM (COALESCE(completed_at, breached_at, NOW()) - started_at))/60
           - total_pause_minutes
         )::numeric, 1)                                                   AS avg_elapsed_min
-      FROM ticket_sla_instances
+      FROM ticket_sla_instances tsi
+      JOIN tickets t ON t.id=tsi.ticket_id AND t.deleted_at IS NULL
     `);
 
     // 2. Per-SLA-definition breakdown
@@ -190,6 +191,7 @@ async function getQAStats(req, res, next) {
         )::numeric, 1)                                                   AS avg_elapsed_min
       FROM sla_definitions sd
       LEFT JOIN ticket_sla_instances tsi ON tsi.sla_definition_id = sd.id
+        AND EXISTS(SELECT 1 FROM tickets t WHERE t.id=tsi.ticket_id AND t.deleted_at IS NULL)
       GROUP BY sd.id, sd.name, sd.start_status, sd.duration_minutes
       ORDER BY breached DESC, total DESC
     `);
@@ -205,10 +207,11 @@ async function getQAStats(req, res, next) {
       ) days
       LEFT JOIN ticket_sla_instances tsi
         ON DATE_TRUNC('day', tsi.created_at)::date = days.day
+        AND EXISTS(SELECT 1 FROM tickets t WHERE t.id=tsi.ticket_id AND t.deleted_at IS NULL)
       GROUP BY days.day ORDER BY days.day
     `);
 
-    // 4. Full instance table (last 200)
+    // 4. Full scoped instance table: table and Excel export must match totals.
     const { rows: instances } = await pool.query(`
       SELECT
         tsi.id, tsi.stage, tsi.ticket_id,
@@ -222,7 +225,6 @@ async function getQAStats(req, res, next) {
       JOIN tickets t ON tsi.ticket_id = t.id AND t.deleted_at IS NULL
       LEFT JOIN users u ON t.assigned_to = u.id
       ORDER BY tsi.created_at DESC
-      LIMIT 200
     `);
 
     const s = summary[0];

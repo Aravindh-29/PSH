@@ -1,0 +1,43 @@
+/* Admin directory presentation only: preserve the existing table and controls. */
+.admin-user-directory .rbac-stat {border:1px solid rgba(17,24,39,.2);border-top:3px solid #ea580c;}
+.admin-user-directory .rbac-stat:nth-child(2) {border-top-color:#047857;}
+.admin-user-directory .rbac-stat:nth-child(3) {border-top-color:#2563eb;}
+.admin-user-directory .rbac-stat:nth-child(4) {border-top-color:#7c3aed;}
+.admin-user-directory .rbac-stat .rbac-stat-icon {background:#ea580c;color:#fff;}
+.admin-user-directory .rbac-stat:nth-child(2) .rbac-stat-icon {background:#047857;color:#fff;}
+.admin-user-directory .rbac-stat:nth-child(3) .rbac-stat-icon {background:#2563eb;color:#fff;}
+.admin-user-directory .rbac-stat:nth-child(4) .rbac-stat-icon {background:#7c3aed;color:#fff;}
+.admin-user-directory .rbac-stat>div>span {color:#475569;font-weight:500;}
+.admin-user-directory .rbac-stat small {color:#64748b;}
+.admin-user-directory .rbac-actions .admin-users-import {background:#047857;border-color:#047857;color:#fff;}
+.admin-user-directory .rbac-actions .admin-users-upload {background:#7c3aed;border-color:#7c3aed;color:#fff;}
+.admin-user-directory .rbac-actions .admin-users-add {background:#2563eb;border-color:#2563eb;color:#fff;}
+.admin-user-directory .rbac-actions .admin-users-import:hover {background:#065f46;border-color:#065f46;}
+.admin-user-directory .rbac-actions .admin-users-upload:hover {background:#6d28d9;border-color:#6d28d9;}
+.admin-user-directory .rbac-toolbar,.admin-user-directory .rbac-table-wrap {border-color:rgba(17,24,39,.22);}
+.admin-user-directory .rbac-toolbar>svg {color:#2563eb;}
+.admin-user-directory .rbac-toolbar input,.admin-user-directory .rbac-toolbar select {border-color:rgba(17,24,39,.25);color:#10243a;}
+.admin-user-directory .rbac-section-title h3 {color:#10243a;font-size:17px;}
+.admin-user-directory .rbac-section-title>.admin-users-result-count {background:#2563eb;color:#fff;padding:5px 9px;border-radius:6px;font-size:11px;font-weight:600;}
+.admin-user-directory .cfg-table th {background:#f1f5f9;color:#334155;border-color:rgba(17,24,39,.14);}
+.admin-user-directory .cfg-table td {padding-top:14px;padding-bottom:14px;color:#334155;border-bottom-color:rgba(17,24,39,.12);}
+.admin-user-directory .cfg-table tbody tr:hover {background:#f8faff;}
+.admin-user-directory .rbac-identity strong {color:#10243a;}
+.admin-user-directory .rbac-avatar {background:#2563eb;color:#fff;}
+.admin-user-directory .rbac-avatar.is-admin {background:#7c3aed;}
+.admin-user-directory .rbac-avatar.is-manager {background:#c2410c;}
+.admin-user-directory .rbac-status {background:#2563eb;color:#fff;font-size:11px;}
+.admin-user-directory .rbac-status.is-admin {background:#7c3aed;}
+.admin-user-directory .rbac-status.is-manager {background:#c2410c;}
+.admin-user-directory .rbac-badge.is-active {background:#047857;color:#fff;}
+.admin-user-directory .rbac-badge.is-active::before {background:#fff;}
+.admin-user-directory .rbac-badge.is-inactive {background:#475569;color:#fff;}
+.admin-user-directory .cfg-table .admin-user-edit {display:inline-flex;align-items:center;gap:5px;background:#2563eb;border-color:#2563eb;color:#fff;font-weight:600;}
+.admin-user-directory .cfg-table .admin-user-delete {display:inline-flex;align-items:center;gap:5px;background:#dc2626;border-color:#dc2626;color:#fff;font-weight:600;}
+.admin-user-directory .cfg-table .admin-user-edit:hover {background:#1d4ed8;border-color:#1d4ed8;}
+.admin-user-directory .cfg-table .admin-user-delete:hover {background:#b91c1c;border-color:#b91c1c;}
+.admin-user-directory .cfg-table .rbac-actions {flex-wrap:nowrap;}
+.admin-user-directory button:focus-visible,.admin-user-directory .rbac-upload:focus-within {outline:2px solid #f97316;outline-offset:2px;}
+
+.admin-user-directory .cfg-table th,.admin-user-directory .cfg-table td {padding-left:12px;padding-right:12px;}
+.admin-user-directory .cfg-table .admin-user-edit,.admin-user-directory .cfg-table .admin-user-delete {white-space:nowrap;flex-shrink:0;}

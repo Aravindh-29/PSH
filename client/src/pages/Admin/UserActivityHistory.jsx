@@ -9,7 +9,7 @@ const actionNames = {
 };
 const fieldNames = {
   username: 'Username', role: 'Role', old_role: 'Previous role',
-  groupIds: 'Groups', managedGroupIds: 'Managed groups', isActive: 'Account active',
+  groupIds: 'Departments', managedGroupIds: 'Managed departments', isActive: 'Account active',
   mfaRequired: 'Require MFA', old_role_name: 'Previous role', role_name: 'Role',
 };
 

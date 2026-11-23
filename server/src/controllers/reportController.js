@@ -1,13 +1,20 @@
 const pool = require('../db/pool');
 
+function validateDates(startDate,endDate){
+    for (const date of [startDate,endDate]) if (date && (date<'0001-01-01'||typeof date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date))||new Date(date).toISOString().slice(0,10)!==date)) throw Object.assign(new Error('Choose a valid date range.'),{status:400});
+    if (!!startDate!==!!endDate || startDate&&endDate&&startDate>endDate) throw Object.assign(new Error('Choose a valid start and end date.'),{status:400});
+}
+
 async function getReport(req, res, next) {
   try {
-    const customScope = req.access?.custom;
+    const personal = req.access?.admin || req.access?.permissions?.['reports.view']==='own';
     const userId    = req.session.userId;
     const startDate = req.query.startDate || null;
     const endDate   = req.query.endDate   || null;
 
-    // Base params: always filter by user
+    validateDates(startDate,endDate);
+
+    // Personal reports follow current assignments; scoped team reports retain access filtering.
     const baseParams = [userId];
 
     // Date clause appended when a range is selected
@@ -33,7 +40,7 @@ async function getReport(req, res, next) {
         AVG(EXTRACT(EPOCH FROM (t.updated_at - t.created_at)) / 3600)
           FILTER (WHERE t.status IN ('RESOLVED','CLOSED'))                   AS avg_resolution_hours
       FROM tickets t
-      WHERE t.deleted_at IS NULL AND ${customScope ? '($1::uuid IS NOT NULL)' : 't.created_by = $1'} ${dateCond}
+      WHERE t.deleted_at IS NULL AND ${personal ? 't.assigned_to = $1' : '($1::uuid IS NOT NULL)'} ${dateCond}
     `, filteredParams);
 
     // Monthly chart: filter to selected range, or last 12 months if no range
@@ -44,10 +51,10 @@ async function getReport(req, res, next) {
                  COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS resolved,
                  COUNT(t.id) FILTER (WHERE t.status = 'CLOSED')   AS closed
           FROM (SELECT DATE_TRUNC('month', d)::date AS month
-                FROM generate_series($2::date, $3::date, '1 month'::INTERVAL) d) m
+                FROM generate_series(DATE_TRUNC('month',$2::date), DATE_TRUNC('month',$3::date), '1 month'::INTERVAL) d) m
           LEFT JOIN tickets t
             ON DATE_TRUNC('month', t.created_at)::date = m.month
-            AND t.deleted_at IS NULL AND ${customScope ? '($1::uuid IS NOT NULL)' : 't.created_by = $1'}
+            AND t.deleted_at IS NULL AND ${personal ? 't.assigned_to = $1' : '($1::uuid IS NOT NULL)'}
             AND t.created_at >= $2::date
             AND t.created_at < ($3::date + INTERVAL '1 day')
           GROUP BY m.month ORDER BY m.month ASC
@@ -61,7 +68,7 @@ async function getReport(req, res, next) {
                 FROM generate_series(11, 0, -1) n) m
           LEFT JOIN tickets t
             ON DATE_TRUNC('month', t.created_at)::date = m.month
-            AND t.deleted_at IS NULL AND ${customScope ? '($1::uuid IS NOT NULL)' : 't.created_by = $1'}
+            AND t.deleted_at IS NULL AND ${personal ? 't.assigned_to = $1' : '($1::uuid IS NOT NULL)'}
           GROUP BY m.month ORDER BY m.month ASC
         `, baseParams);
 
@@ -72,10 +79,10 @@ async function getReport(req, res, next) {
                  COUNT(t.id) AS created,
                  COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS resolved
           FROM (SELECT DATE_TRUNC('week', d)::date AS week_start
-                FROM generate_series($2::date, $3::date, '1 week'::INTERVAL) d) w
+                FROM generate_series(DATE_TRUNC('week',$2::date), DATE_TRUNC('week',$3::date), '1 week'::INTERVAL) d) w
           LEFT JOIN tickets t
             ON DATE_TRUNC('week', t.created_at)::date = w.week_start
-            AND t.deleted_at IS NULL AND ${customScope ? '($1::uuid IS NOT NULL)' : 't.created_by = $1'}
+            AND t.deleted_at IS NULL AND ${personal ? 't.assigned_to = $1' : '($1::uuid IS NOT NULL)'}
             AND t.created_at >= $2::date
             AND t.created_at < ($3::date + INTERVAL '1 day')
           GROUP BY w.week_start ORDER BY w.week_start ASC
@@ -88,14 +95,14 @@ async function getReport(req, res, next) {
                 FROM generate_series(11, 0, -1) n) w
           LEFT JOIN tickets t
             ON DATE_TRUNC('week', t.created_at)::date = w.week_start
-            AND t.deleted_at IS NULL AND ${customScope ? '($1::uuid IS NOT NULL)' : 't.created_by = $1'}
+            AND t.deleted_at IS NULL AND ${personal ? 't.assigned_to = $1' : '($1::uuid IS NOT NULL)'}
           GROUP BY w.week_start ORDER BY w.week_start ASC
         `, baseParams);
 
     const statusResult = await pool.query(`
       SELECT t.status AS name, COUNT(*) AS value
       FROM tickets t
-      WHERE t.deleted_at IS NULL AND ${customScope ? '($1::uuid IS NOT NULL)' : 't.created_by = $1'} ${dateCond}
+      WHERE t.deleted_at IS NULL AND ${personal ? 't.assigned_to = $1' : '($1::uuid IS NOT NULL)'} ${dateCond}
       GROUP BY t.status
       ORDER BY value DESC
     `, filteredParams);
@@ -103,7 +110,7 @@ async function getReport(req, res, next) {
     const priorityResult = await pool.query(`
       SELECT t.priority AS name, COUNT(*) AS value
       FROM tickets t
-      WHERE t.deleted_at IS NULL AND ${customScope ? '($1::uuid IS NOT NULL)' : 't.created_by = $1'} ${dateCond}
+      WHERE t.deleted_at IS NULL AND ${personal ? 't.assigned_to = $1' : '($1::uuid IS NOT NULL)'} ${dateCond}
       GROUP BY t.priority
       ORDER BY CASE t.priority WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END
     `, filteredParams);
@@ -114,17 +121,19 @@ async function getReport(req, res, next) {
         COALESCE(t.module_text, m.name, '') AS module_name,
         COALESCE(c.name, '')                AS category_name,
         t.status, t.priority, t.impact, t.urgency,
-        t.assignment_group, t.classification,
+        COALESCE(report_department.name,t.assignment_group) AS assignment_group, report_subdepartment.name AS sub_department_name, t.classification,
         u2.full_name AS created_by_name,
         u3.full_name AS ticket_owner_name,
         t.created_at, t.updated_at,
         t.custom_data
       FROM tickets t
       LEFT JOIN modules m    ON t.module_id = m.id
+      LEFT JOIN assignment_groups report_department ON report_department.id=t.assignment_group_id
+      LEFT JOIN assignment_groups report_subdepartment ON report_subdepartment.id=t.subgroup_id
       LEFT JOIN categories c ON t.category_id = c.id
       LEFT JOIN users u2     ON t.created_by = u2.id
       LEFT JOIN users u3     ON t.ticket_owner = u3.id
-      WHERE t.deleted_at IS NULL AND ${customScope ? '($1::uuid IS NOT NULL)' : 't.created_by = $1'} ${dateCond}
+      WHERE t.deleted_at IS NULL AND ${personal ? 't.assigned_to = $1' : '($1::uuid IS NOT NULL)'} ${dateCond}
       ORDER BY t.created_at DESC
     `, filteredParams);
 
@@ -168,6 +177,7 @@ async function getGlobalReport(req, res, next) {
   try {
     const startDate = req.query.startDate || null;
     const endDate   = req.query.endDate   || null;
+    validateDates(startDate,endDate);
 
     let dateCond = '';
     const dateParams = [];
@@ -202,7 +212,7 @@ async function getGlobalReport(req, res, next) {
                      COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS resolved,
                      COUNT(t.id) FILTER (WHERE t.status = 'CLOSED')   AS closed
               FROM (SELECT DATE_TRUNC('month', d)::date AS month
-                    FROM generate_series($1::date, $2::date, '1 month'::INTERVAL) d) m
+                    FROM generate_series(DATE_TRUNC('month',$1::date), DATE_TRUNC('month',$2::date), '1 month'::INTERVAL) d) m
               LEFT JOIN tickets t
                 ON DATE_TRUNC('month', t.created_at)::date = m.month
                 AND t.deleted_at IS NULL
@@ -226,7 +236,7 @@ async function getGlobalReport(req, res, next) {
                      COUNT(t.id) AS created,
                      COUNT(t.id) FILTER (WHERE t.status = 'RESOLVED') AS resolved
               FROM (SELECT DATE_TRUNC('week', d)::date AS week_start
-                    FROM generate_series($1::date, $2::date, '1 week'::INTERVAL) d) w
+                    FROM generate_series(DATE_TRUNC('week',$1::date), DATE_TRUNC('week',$2::date), '1 week'::INTERVAL) d) w
               LEFT JOIN tickets t
                 ON DATE_TRUNC('week', t.created_at)::date = w.week_start
                 AND t.deleted_at IS NULL
@@ -255,7 +265,7 @@ async function getGlobalReport(req, res, next) {
         `, dateParams),
 
         pool.query(`
-          SELECT u.id, u.full_name, u.email, u.username, u.role, u.is_active,
+          SELECT u.id, u.full_name, u.email, u.username, u.role, ar.name AS role_name, u.is_active,
             COUNT(t.id)                                                             AS total_tickets,
             COUNT(t.id) FILTER (WHERE t.status IN ('NEW','OPEN'))                  AS open_tickets,
             COUNT(t.id) FILTER (WHERE t.status IN ('IN_PROGRESS','WORK_IN_PROGRESS','ASSIGNED')) AS inp_tickets,
@@ -265,10 +275,11 @@ async function getGlobalReport(req, res, next) {
             AVG(EXTRACT(EPOCH FROM (t.updated_at - t.created_at))/3600)
               FILTER (WHERE t.status IN ('RESOLVED','CLOSED'))                      AS avg_resolution_hours
           FROM users u
-          LEFT JOIN tickets t ON t.created_by = u.id AND t.deleted_at IS NULL
+          LEFT JOIN access_roles ar ON ar.key=u.role
+          LEFT JOIN tickets t ON t.assigned_to = u.id AND t.deleted_at IS NULL
             ${startDate && endDate ? 'AND t.created_at >= $1::date AND t.created_at < ($2::date + INTERVAL \'1 day\')' : ''}
           WHERE u.deleted_at IS NULL
-          GROUP BY u.id, u.full_name, u.email, u.username, u.role, u.is_active
+          GROUP BY u.id, u.full_name, u.email, u.username, u.role, ar.name, u.is_active
           ORDER BY total_tickets DESC, u.full_name ASC
         `, dateParams),
 
@@ -277,17 +288,19 @@ async function getGlobalReport(req, res, next) {
                  COALESCE(t.module_text, m.name, '') AS module_name,
                  COALESCE(c.name, '')                AS category_name,
                  t.status, t.priority, t.impact, t.urgency,
-                 t.assignment_group, t.classification,
+                 COALESCE(report_department.name,t.assignment_group) AS assignment_group, report_subdepartment.name AS sub_department_name, t.classification,
                  u2.full_name AS created_by_name, u3.full_name AS ticket_owner_name,
                  t.created_at, t.updated_at, t.custom_data
           FROM tickets t
           LEFT JOIN modules m    ON t.module_id = m.id
+      LEFT JOIN assignment_groups report_department ON report_department.id=t.assignment_group_id
+      LEFT JOIN assignment_groups report_subdepartment ON report_subdepartment.id=t.subgroup_id
           LEFT JOIN categories c ON t.category_id = c.id
           LEFT JOIN users u2     ON t.created_by = u2.id
           LEFT JOIN users u3     ON t.ticket_owner = u3.id
           WHERE t.deleted_at IS NULL ${dateCond}
           ORDER BY t.created_at DESC
-          LIMIT 500
+          ${req.query.export==='true'?'':'LIMIT 500'}
         `, dateParams),
       ]);
 
@@ -315,7 +328,7 @@ async function getGlobalReport(req, res, next) {
       byPriority: priorityRes.rows.map(r => ({ name: r.name, value: parseInt(r.value) })),
       employees:  employeeRes.rows.map(r => ({
         id: r.id, fullName: r.full_name, email: r.email, username: r.username,
-        role: r.role, isActive: r.is_active,
+        role: r.role_name||r.role, isActive: r.is_active,
         total:      parseInt(r.total_tickets),
         open:       parseInt(r.open_tickets),
         inProgress: parseInt(r.inp_tickets),

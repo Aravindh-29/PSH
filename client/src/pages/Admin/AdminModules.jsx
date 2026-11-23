@@ -5,7 +5,6 @@ import toast from 'react-hot-toast';
 import AdminSLA from './AdminSLA';
 import AdminTemplates from './AdminTemplates';
 import AdminBranding from './AdminBranding';
-import AdminRoles from './AdminRoles';
 import useAccess from '../../hooks/useAccess';
 import './Admin.css';
 import './Configuration.css';
@@ -569,8 +568,8 @@ function TicketTypeModal({ ticketType, onSave, onClose }) {
 
 export default function AdminModules() {
   const {can}=useAccess();
-  const allowedTabs={fields:'fields.view',categories:'categories.view',types:'types.view',sla:'sla_config.view',templates:'templates.view',branding:'branding.view',roles:'roles.view'};
-  const [tab, setTab]             = useState(Object.keys(allowedTabs).find(key=>can(allowedTabs[key])) || 'roles');
+  const allowedTabs={fields:'fields.view',categories:'categories.view',types:'types.view',sla:'sla_config.view',templates:'templates.view',branding:'branding.view'};
+  const [tab, setTab]             = useState(Object.keys(allowedTabs).find(key=>can(allowedTabs[key])) || 'fields');
   const [fields, setFields]       = useState([]);
   const [categories, setCategories] = useState([]);
   const [ticketTypes, setTicketTypes] = useState([]);
@@ -804,10 +803,8 @@ export default function AdminModules() {
         </button>}
         {can('templates.view') && <button className={`cfg-tab ${tab === 'templates' ? 'active' : ''}`} onClick={() => setTab('templates')}>Templates</button>}
         {can('branding.view') && <button className={`cfg-tab ${tab === 'branding' ? 'active' : ''}`} onClick={() => setTab('branding')}>Branding</button>}
-        {can('roles.view') && <button className={`cfg-tab ${tab === 'roles' ? 'active' : ''}`} onClick={() => setTab('roles')}>Roles</button>}
       </div>
 
-      {tab === 'roles' && <AdminRoles />}
       {tab === 'branding' && <AdminBranding />}
       {tab === 'templates' && <AdminTemplates />}
 

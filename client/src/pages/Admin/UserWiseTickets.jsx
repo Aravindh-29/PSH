@@ -4,9 +4,11 @@ import { Search, ChevronRight } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import './Admin.css';
+import useAccess from '../../hooks/useAccess';
 
 export default function UserWiseTickets() {
   const navigate = useNavigate();
+  const {user}=useAccess();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -29,7 +31,7 @@ export default function UserWiseTickets() {
       <div className="admin-header">
         <div>
           <h1>Tickets by User</h1>
-          <p>Browse tickets by user — click any user to view and manage their tickets</p>
+          <p>{user?.role==='admin'?'Browse tickets by user — click any user to view and manage their tickets':'Browse users in your managed departments and sub departments — open a user to view their team tickets'}</p>
         </div>
         <div className="uwt-search-wrap">
           <Search size={14} className="uwt-search-icon" />
@@ -54,6 +56,8 @@ export default function UserWiseTickets() {
             <div
               key={u.id}
               className="uwt-card"
+              role="link" tabIndex={0}
+              onKeyDown={e=>{if(e.key==='Enter')navigate(`/admin/user-tickets/${u.id}`)}}
               onClick={() => navigate(`/admin/user-tickets/${u.id}`)}
             >
               <div className="uwt-card-left">

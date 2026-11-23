@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import XLSX from '../../utils/xlsxShim';
 import api from '../../api/axios';
+import toast from 'react-hot-toast';
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import './Reports.css';
 
@@ -58,6 +59,8 @@ export default function GlobalReports() {
   const {can}=useAccess();
   const [data, setData]               = useState(null);
   const [loading, setLoading]         = useState(true);
+  const [error,setError]=useState('');
+  const [retry,setRetry]=useState(0);
   const [exporting, setExporting]     = useState(false);
   const [customFieldDefs, setCustomFieldDefs] = useState([]);
 
@@ -103,29 +106,35 @@ export default function GlobalReports() {
     : 'Monthly Ticket Activity — System Wide (Last 12 Months)';
 
   useEffect(() => {
-    setLoading(true);
+    let active=true;const controller=new AbortController();
+    setLoading(true);setError('');
     const params = {};
     if (dateRange) {
       params.startDate = format(dateRange.start, 'yyyy-MM-dd');
       params.endDate   = format(dateRange.end,   'yyyy-MM-dd');
     }
     Promise.all([
-      api.get('/reports/global', { params }),
-      api.get('/config/fields'),
+      api.get('/reports/global', { params,signal:controller.signal }),
+      api.get('/config/fields',{signal:controller.signal}),
     ])
       .then(([r, fRes]) => {
+        if(!active)return;
         setData(r.data);
         setCustomFieldDefs((fRes.data.fields || []).filter(f => !SYSTEM_KEYS.includes(f.field_key)));
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [dateRange]);
+      .catch(err => {if(active&&!controller.signal.aborted){setData(null);setError(err.response?.data?.message||'Could not load global reports. Please retry.')}})
+      .finally(() => {if(active)setLoading(false)});
+    return()=>{active=false;controller.abort()};
+  }, [dateRange,retry]);
 
   const exportToExcel = useCallback(async () => {
     if(!can('reports.export')) return toast.error("You don't have permission to perform this action.");
-    await api.get('/reports?export=true');
-    if (!data) return;
+    if (!data||exporting) return;
     setExporting(true);
+    try {
+    const params={export:true};
+    if(dateRange){params.startDate=format(dateRange.start,'yyyy-MM-dd');params.endDate=format(dateRange.end,'yyyy-MM-dd')}
+    const {data}=await api.get('/reports/global',{params});
 
     // ── Style helpers ─────────────────────────────────────────────────────────
     const ORANGE = 'E85D04', NAVY = '0D1B2A', WHITE = 'FFFFFF';
@@ -373,8 +382,8 @@ export default function GlobalReports() {
       return String(raw);
     };
     const tHdrs = [
-      'Ticket ID', 'Subject', 'Customer', 'Module', 'Status', 'Priority',
-      'Impact', 'Urgency', 'Assignment Group', 'Classification',
+      'Ticket ID', 'Department / Sub Department', 'Customer', 'Module', 'Status', 'Priority',
+      'Impact', 'Urgency', 'Department', 'Sub Department', 'Classification',
       'Owner', 'Created By', 'Created At', 'Last Updated',
       ...customFieldDefs.map(f => f.label),
     ];
@@ -388,7 +397,7 @@ export default function GlobalReports() {
         const prPal = PRI_PAL[t.priority] || { bg: 'F1F5F9', fg: '64748B' };
         return [
           cs(t.ticket_number, { fill: fl(bg), font: fnt({ bold: true, color: '6366F1', sz: 9 }), alignment: al('center'), border: borders }),
-          cs(t.short_description, { fill: fl(bg), font: fnt({ color: '0F172A' }), alignment: { horizontal: 'left', vertical: 'center', wrapText: true }, border: borders }),
+          cs([t.assignment_group,t.sub_department_name].filter(Boolean).join(' / ') || '—', { fill: fl(bg), font: fnt({ color: '0F172A' }), alignment: { horizontal: 'left', vertical: 'center', wrapText: true }, border: borders }),
           cs(t.customer_name, dat(bg)),
           cs(t.module_name || '—', dat(bg, '64748B')),
           cs(t.status?.replace(/_/g, ' '), { fill: fl(stPal.bg), font: fnt({ bold: true, color: stPal.fg, sz: 9 }), alignment: al('center'), border: borders }),
@@ -396,6 +405,7 @@ export default function GlobalReports() {
           cs(t.impact || '—', dat(bg, '334155')),
           cs(t.urgency || '—', dat(bg, '334155')),
           cs(t.assignment_group || '—', dat(bg, '334155')),
+          cs(t.sub_department_name || '—', dat(bg, '334155')),
           cs(t.classification || '—', dat(bg, '334155')),
           cs(t.ticket_owner_name || '—', dat(bg, '334155')),
           cs(t.created_by_name || '—', dat(bg, '334155')),
@@ -409,7 +419,7 @@ export default function GlobalReports() {
     ws8['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: tHdrs.length - 1 } }];
     ws8['!cols'] = [
       { wch: 14 }, { wch: 30 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 11 },
-      { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 20 },
+      { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 24 }, { wch: 20 },
       { wch: 22 }, { wch: 22 }, { wch: 18 }, { wch: 18 },
       ...customFieldDefs.map(() => ({ wch: 20 })),
     ];
@@ -418,18 +428,20 @@ export default function GlobalReports() {
     XLSX.utils.book_append_sheet(wb, ws8, 'All Tickets');
 
     await XLSX.writeFile(wb, `PSH_Global_Report_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
-    setExporting(false);
-  }, [data, customFieldDefs]);
+    }catch(err){toast.error(err.response?.data?.message||'Could not export the global report. Please retry.')}
+    finally{setExporting(false)}
+  }, [data, customFieldDefs,dateRange,exporting]);
 
   const summary = data?.summary || {};
 
   return (
     <div className="rpt-global">
+      {error&&<div role="alert" className="rbac-note">{error} <button type="button" className="rpt-export-btn" onClick={()=>setRetry(n=>n+1)}>Retry</button></div>}
       {/* Header */}
       <div className="rpt-global-topbar">
         <div>
           <h2 className="rpt-global-title">Global Reports</h2>
-          <p className="rpt-sub">System-wide statistics across all users</p>
+          <p className="rpt-sub">System-wide ticket totals. Employee figures show current assignments; unassigned tickets remain in system totals.</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {/* Date Picker */}
@@ -466,7 +478,7 @@ export default function GlobalReports() {
               </div>
             )}
           </div>
-          <button className="rpt-export-btn" onClick={exportToExcel} disabled={!can('reports.export') || !data || exporting}>
+          <button className="rpt-export-btn" onClick={exportToExcel} disabled={!can('reports.export') || !data || loading || exporting}>
             <Download size={15} />
             {exporting ? 'Exporting…' : 'Export Global Report'}
           </button>
@@ -545,7 +557,7 @@ export default function GlobalReports() {
       {/* Charts Row 2: Per-Employee bar + Priority donut */}
       <div className="rpt-charts-row">
         <div className="rpt-chart-card rpt-chart-wide">
-          <div className="rpt-chart-header"><h3>Tickets per Employee (Top 10)</h3></div>
+          <div className="rpt-chart-header"><h3>Assigned Tickets per Employee (Top 10)</h3></div>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart layout="vertical" data={(data?.employees || []).slice(0, 10)} margin={{ top: 4, right: 16, left: 4, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />

@@ -40,7 +40,7 @@
   },
   {
     "key": "tickets.group_view",
-    "label": "View group tickets",
+    "label": "View department tickets",
     "group": "Tickets",
     "scoped": true,
     "requires": [
@@ -433,7 +433,7 @@
   },
   {
     "key": "users.groups",
-    "label": "Change user groups and managed groups",
+    "label": "Change user departments and managed departments",
     "group": "Users",
     "scoped": false,
     "requires": [
@@ -526,15 +526,15 @@
   },
   {
     "key": "groups.view",
-    "label": "View groups",
-    "group": "Groups",
+    "label": "View departments",
+    "group": "Departments",
     "scoped": false,
     "requires": []
   },
   {
     "key": "groups.create",
-    "label": "Create groups",
-    "group": "Groups",
+    "label": "Create departments",
+    "group": "Departments",
     "scoped": false,
     "requires": [
       "groups.view"
@@ -542,8 +542,8 @@
   },
   {
     "key": "groups.edit",
-    "label": "Edit group details",
-    "group": "Groups",
+    "label": "Edit department details",
+    "group": "Departments",
     "scoped": false,
     "requires": [
       "groups.view"
@@ -551,8 +551,8 @@
   },
   {
     "key": "groups.status",
-    "label": "Activate or deactivate groups",
-    "group": "Groups",
+    "label": "Activate or deactivate departments",
+    "group": "Departments",
     "scoped": false,
     "requires": [
       "groups.view"
@@ -560,8 +560,8 @@
   },
   {
     "key": "groups.members",
-    "label": "Manage group members",
-    "group": "Groups",
+    "label": "Manage department members",
+    "group": "Departments",
     "scoped": false,
     "requires": [
       "groups.view"
@@ -569,8 +569,8 @@
   },
   {
     "key": "groups.delete",
-    "label": "Delete groups",
-    "group": "Groups",
+    "label": "Delete departments",
+    "group": "Departments",
     "scoped": false,
     "requires": [
       "groups.view"
@@ -1149,19 +1149,74 @@
     ]
   },
   {
-    "key": "users.team_view",
-    "label": "View users in Managed Groups",
+    "key": "users.directory_view",
+    "label": "View coworkers in own departments (read-only directory)",
     "group": "Users",
     "scoped": false,
     "requires": []
   },
   {
-    "key": "users.team_create",
-    "label": "Create Employee users in Managed Groups",
+    "key": "users.team_view",
+    "label": "View users in Managed Departments",
+    "group": "Users",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "users.team_add",
+    "label": "Add unassigned existing users to managed teams",
     "group": "Users",
     "scoped": false,
     "requires": [
       "users.team_view"
+    ]
+  },
+  {
+    "key": "departments.view",
+    "label": "View assigned departments and sub departments",
+    "group": "Departments",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "departments.subgroups",
+    "label": "Manage sub departments within fully managed departments",
+    "group": "Departments",
+    "scoped": false,
+    "requires": [
+      "departments.view"
+    ]
+  },
+  {
+    "key": "departments.members",
+    "label": "Manage membership within assigned departments",
+    "group": "Departments",
+    "scoped": false,
+    "requires": [
+      "departments.view"
+    ]
+  },
+  {
+    "key": "departments.configure",
+    "label": "Configure membership rules and geography",
+    "group": "Departments",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "departments.managed_access",
+    "label": "Allow managed department access (privileged oversight role)",
+    "group": "Departments",
+    "scoped": false,
+    "requires": []
+  },
+  {
+    "key": "dashboard.team",
+    "label": "View Team Dashboard",
+    "group": "Dashboards",
+    "scoped": true,
+    "requires": [
+      "tickets.view"
     ]
   }
 ]

@@ -37,17 +37,20 @@ async function upload(req, res, next) {
     const attachments = [];
     const errors = [];
 
+    const client=await pool.connect();
+    try {
+      await client.query('BEGIN');
     for (const file of files) {
       if (file.size > MAX_FILE_SIZE) { errors.push(`${file.originalname}: too large (max 25MB)`); continue; }
       if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) { errors.push(`${file.originalname}: type "${file.mimetype}" not allowed`); continue; }
 
-      const safeName = path.basename(file.originalname).replace(/[^a-zA-Z0-9._\-]/g, '_');
-      const result = await pool.query(
+      const safeName = path.basename(file.originalname).replace(/[^a-zA-Z0-9._\-()]/g, '_');
+      const result = await client.query(
         `INSERT INTO ticket_attachments (ticket_id, file_name, mime_type, file_size, file_data, uploaded_by)
          VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, file_name, mime_type, file_size, uploaded_at`,
         [ticketId, safeName, file.mimetype, file.size, file.buffer, req.session.userId]
       );
-      await pool.query(
+      await client.query(
         `INSERT INTO ticket_audit_logs (ticket_id, user_id, action, field_name, new_value, ip_address)
          VALUES ($1,$2,'ATTACHMENT_ADDED','attachment',$3,$4)`,
         [ticketId, req.session.userId, safeName, req.ip]
@@ -56,7 +59,10 @@ async function upload(req, res, next) {
       logger.info(`Attachment uploaded: ${safeName} to ticket ${ticketId} by ${req.session.username}`);
     }
 
-    res.status(201).json({ success: true, attachments, errors });
+      await client.query('COMMIT');
+    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+
+    res.status(attachments.length?201:400).json({ success: attachments.length>0, attachments, errors, ...(!attachments.length?{message:errors.join('; ')}:{}) });
   } catch (err) {
     next(err);
   }
@@ -79,7 +85,7 @@ async function download(req, res, next) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
-    const PREVIEWABLE = ['image/jpeg','image/png','image/gif','image/webp','image/svg+xml','application/pdf','text/plain'];
+    const PREVIEWABLE = ['image/jpeg','image/png','image/gif','image/webp','application/pdf','text/plain'];
     const preview = req.query.preview === 'true' && PREVIEWABLE.includes(att.mime_type);
     res.setHeader('Content-Type', att.mime_type);
     res.setHeader('Content-Disposition', `${preview ? 'inline' : 'attachment'}; filename="${att.file_name}"`);
@@ -154,16 +160,18 @@ async function downloadZip(req, res, next) {
     // on Node 20 versions that do not support require() of ES modules.
     const { ZipArchive } = await import('archiver');
     const archive = new ZipArchive({ zlib: { level: 6 } });
-    archive.on('error', err => { logger.error('Zip error', err); });
+    archive.on('error', err => { logger.error('Zip error', err); if(res.headersSent)res.destroy(err);else next(err); });
+    res.on('close',()=>{if(!res.writableEnded)archive.abort()});
     archive.pipe(res);
 
     // Deduplicate file names within the zip
-    const seen = {};
+    const seen = new Set();
     for (const f of files.rows) {
       const ext  = path.extname(f.file_name);
       const base = path.basename(f.file_name, ext);
-      const count = seen[f.file_name] = (seen[f.file_name] || 0) + 1;
-      const zipEntry = count > 1 ? `${base}(${count})${ext}` : f.file_name;
+      let zipEntry=f.file_name,count=1;
+      while(seen.has(zipEntry))zipEntry=`${base}(${++count})${ext}`;
+      seen.add(zipEntry);
       archive.append(f.file_data, { name: zipEntry });
     }
 

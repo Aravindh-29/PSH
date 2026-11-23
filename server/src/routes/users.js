@@ -8,9 +8,11 @@ const router = express.Router();
 // Profile routes (self-service, any authenticated user)
 router.get('/me', requireAuth, userCtrl.getMe);
 router.put('/me', requireAuth, userCtrl.updateMe);
+router.get('/directory', requireAuth, require('../controllers/departmentDirectoryController').list);
 router.get('/team', requireAuth, teamCtrl.list);
 router.post('/team', requireAuth, teamCtrl.create);
 
+router.post('/check-availability', requireAdmin, require('../controllers/accountAvailabilityController'));
 router.get('/', requireAuth, userCtrl.list);
 router.post('/', requireAdmin, userCtrl.create);
 router.get('/:id/activity', requireAuth, userCtrl.activity);
