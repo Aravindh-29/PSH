@@ -1,0 +1,75 @@
+// Real Admin API + MCP HTTP checks using a disposable PostgreSQL schema.
+const assert=require('node:assert/strict'),crypto=require('node:crypto'),express=require('express');
+const {Client,Pool}=require('pg');
+const {migrate,connectionConfig}=require('../../database/migrate');
+const pool=require('../src/db/pool');
+let checks=0;const pass=message=>{checks++;console.log('PASS: '+message);};
+async function main(){
+ const db=new Client(connectionConfig());await db.connect();
+ const schema='mcp_config_test_'+crypto.randomBytes(8).toString('hex'),saved={query:pool.query,rawQuery:pool.rawQuery,connect:pool.connect};
+ const names=['EMAIL_ENCRYPTION_KEY','SERVIT_MCP_ENABLED','SERVIT_MCP_TOKEN','SERVIT_MCP_MAILBOXES','CLIENT_URL'],env=Object.fromEntries(names.map(name=>[name,process.env[name]]));
+ let isolated,server;
+ try{
+  await db.query('CREATE SCHEMA '+schema);await db.query('SET search_path TO '+schema);await migrate(db);
+  isolated=new Pool({...connectionConfig(),options:'-c search_path='+schema,max:12});pool.query=isolated.query.bind(isolated);pool.rawQuery=pool.query;pool.connect=isolated.connect.bind(isolated);
+  process.env.EMAIL_ENCRYPTION_KEY=crypto.randomBytes(32).toString('base64');process.env.SERVIT_MCP_ENABLED='true';process.env.SERVIT_MCP_TOKEN=crypto.randomBytes(32).toString('hex');process.env.SERVIT_MCP_MAILBOXES='';process.env.CLIENT_URL='http://localhost:5173';
+  const ids={};for(const role of ['admin','employee','manager'])ids[role]=(await db.query('INSERT INTO users(username,email,full_name,password_hash,role) VALUES($1,$2,$1,$3,$4) RETURNING id',[role,role+'@example.test','unused',role])).rows[0].id;
+  const department=(await db.query("INSERT INTO assignment_groups(name,description) VALUES('Dell','Dell storage performance') RETURNING id")).rows[0].id;
+  const outside=(await db.query("INSERT INTO assignment_groups(name) VALUES('Finance') RETURNING id")).rows[0].id;
+  const category=(await db.query("INSERT INTO categories(name) VALUES('Incident') RETURNING id")).rows[0].id;
+  const app=express();app.use('/api/mcp',require('../src/mcp/router').createRouter());app.use(express.json());app.use((req,res,next)=>{req.session={userId:req.headers['x-test-user'],destroy(){}};next();});app.use('/api/config',require('../src/routes/config'));app.use((e,req,res,next)=>res.status(e.status||500).json({message:e.status?e.message:'Unexpected test failure'}));
+  server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});const base='http://127.0.0.1:'+server.address().port;
+  const call=async(path='',method='GET',body,role='admin')=>{const response=await fetch(base+'/api/config/admin/mcp'+path,{method,headers:{'Content-Type':'application/json',...(role?{'x-test-user':ids[role]}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:response.status,data:await response.json()};};
+  assert.equal((await call('','GET',undefined,null)).status,401);
+  for(const role of ['employee','manager'])for(const [path,method,body] of [['','GET'],['','POST',{enabled:false}],['/test','POST',{}],['/credentials/copy','POST',{kind:'mcp'}],['/mailboxes','POST',{}],['/mailboxes/'+crypto.randomUUID(),'PUT',{}]])assert.equal((await call(path,method,body,role)).status,403);
+  pass('Only authenticated Admin can read, save, test or edit MCP mailboxes; User and Manager are denied');
+  let r=await call();assert.equal(r.status,200);assert.equal(r.data.enabled,true);assert.equal(r.data.hasToken,true);assert.equal(r.data.connected,false);assert(!JSON.stringify(r.data).includes(process.env.SERVIT_MCP_TOKEN));
+  assert.equal((await call('/test','POST',{})).status,400);
+  pass('Existing environment configuration is preserved and secrets are absent from GET; incomplete setup cannot claim readiness');
+  r=await call('','POST',{enabled:true,generateToken:true});assert.equal(r.status,200);const token=r.data.generatedToken;assert.equal(token.length,64);
+  const stored=(await db.query('SELECT token_encrypted FROM mcp_server_settings')).rows[0].token_encrypted;assert(!stored.includes(token));assert.equal((await require('../src/services/mcpSettings').runtime()).token,token);assert(!JSON.stringify((await call()).data).includes(token));
+  pass('Credential is generated once, encrypted at rest, usable by runtime and never returned in normal settings');
+  const copyRequest=async body=>fetch(base+'/api/config/admin/mcp/credentials/copy',{method:'POST',headers:{'Content-Type':'application/json','x-test-user':ids.admin},body:JSON.stringify(body)});
+  let copied=await copyRequest({kind:'mcp'});assert.equal(copied.headers.get('cache-control'),'no-store');assert.equal((await copied.json()).secret,token);
+  const encrypt=require('../src/services/emailSettings').encrypt;
+  await db.query('INSERT INTO gmail_oauth_settings(id,client_id,client_secret_encrypted) VALUES(1,$1,$2)',['test-client',encrypt('test-google-secret')]);
+  await db.query("INSERT INTO email_ai_providers(provider,model,api_key_encrypted) VALUES('gemini','test-model',$1)",[encrypt('test-ai-key')]);
+  assert.equal((await (await copyRequest({kind:'google'})).json()).secret,'test-google-secret');assert.equal((await (await copyRequest({kind:'ai',provider:'gemini'})).json()).secret,'test-ai-key');
+  assert.equal((await copyRequest({kind:'ai',provider:'__proto__'})).status,400);assert.equal((await copyRequest({kind:'unknown'})).status,400);
+  assert(!JSON.stringify((await call()).data).includes('test-google-secret'));assert(!JSON.stringify((await call()).data).includes('test-ai-key'));
+  pass('Only the explicit Admin copy action reveals the requested credential with no-store headers; normal configuration responses remain secret-free');
+  const mailbox={address:'support@example.test',is_active:true,allowed_department_ids:[department],sender_domains:['example.test'],defaults:{moduleText:'Storage',categoryId:category,customData:{}},fallback_department_id:department,fallback_subdepartment_id:null};
+  r=await call('/mailboxes','POST',mailbox);assert.equal(r.status,200,JSON.stringify(r.data));
+  r=await call();const box=r.data.mailboxes[0];assert.equal(box.ready,true);assert.equal(r.data.configured,true);assert.equal(r.data.gmailConnected,false);assert.equal(r.data.aiConnected,false);
+  assert.equal((await call('/mailboxes','POST',mailbox)).status,400);
+  assert.equal((await call('/mailboxes/'+box.id,'PUT',{...mailbox,address:'renamed@example.test'})).status,400);
+  assert.equal((await call('/mailboxes/'+box.id,'PUT',{...mailbox,fallback_department_id:outside})).status,400);
+  assert.equal((await call('/mailboxes/'+box.id,'PUT',{...mailbox,defaults:{...mailbox.defaults,assignedTo:ids.admin}})).status,400);
+  pass('Mailbox defaults and scope save correctly; duplicate addresses, identity renaming, outside fallback and unsafe default fields are rejected');
+  const count=Number((await db.query('SELECT count(*) FROM tickets')).rows[0].count);
+  r=await call('/test','POST',{});assert.equal(r.status,200,JSON.stringify(r.data));assert.equal(r.data.connected,true);assert.equal(Number((await db.query('SELECT count(*) FROM tickets')).rows[0].count),count);assert.equal((await call()).data.connected,true);
+  pass('Connection check authenticates over real MCP HTTP, discovers tools, reads mailbox context and persists readiness without creating tickets');
+  process.env.CLIENT_URL='invalid-origin';assert.equal((await call('/test','POST',{})).status,400);process.env.CLIENT_URL='http://localhost:5173';assert.equal((await call()).data.connected,false);assert.equal((await call('/test','POST',{})).status,200);
+  pass('A failed connection check clears an earlier success instead of leaving a stale green connected status');
+  r=await call('/mailboxes/'+box.id,'PUT',{address:mailbox.address,is_active:true});assert.equal(r.status,200);assert.deepEqual((await db.query('SELECT defaults FROM email_automation_mailboxes WHERE id=$1',[box.id])).rows[0].defaults,{});r=await call();assert.equal(r.data.connected,false);assert.equal(r.data.configured,true);assert.equal(r.data.mailboxes[0].problems.length,0);assert.equal((await call('/test','POST',{})).status,200);
+  await call('/mailboxes/'+box.id,'PUT',mailbox);await call('/test','POST',{});
+  await call('','POST',{enabled:false});assert.equal((await call()).data.connected,false);assert.equal((await fetch(base+'/api/mcp',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'{}'})).status,503);
+  pass('Missing defaults do not block capture readiness; disabling MCP invalidates readiness and rejects requests');
+  await call('','POST',{enabled:true});await call('/test','POST',{});
+  await db.query('UPDATE assignment_groups SET is_active=FALSE WHERE id=$1',[department]);assert.equal((await call()).data.configured,true);assert.equal((await call()).data.mailboxes[0].problems.length,0);
+  await db.query('UPDATE assignment_groups SET is_active=TRUE WHERE id=$1',[department]);
+  process.env.SERVIT_MCP_MAILBOXES='other@example.test';assert.equal((await call()).data.connected,false);process.env.SERVIT_MCP_MAILBOXES='';
+  r=await call('','POST',{enabled:true,generateToken:true});const nextToken=r.data.generatedToken;assert.notEqual(nextToken,token);assert.equal((await call()).data.connected,false);assert.equal((await fetch(base+'/api/mcp',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'{}'})).status,401);assert.equal((await call('/test','POST',{})).status,200);
+  pass('Inactive legacy fallback does not block Admin-review capture; server mailbox restrictions block readiness and rotating tokens rejects the previous credential');
+  const before=(await db.query('SELECT count(*) FROM email_automation_mailboxes')).rows[0].count;await migrate(db);assert.equal((await db.query('SELECT count(*) FROM email_automation_mailboxes')).rows[0].count,before);assert.equal((await require('../src/services/mcpSettings').runtime()).token,nextToken);
+  pass('Repeated migrations preserve mailbox settings and encrypted credentials');
+  process.env.EMAIL_ENCRYPTION_KEY=crypto.randomBytes(32).toString('base64');r=await call();assert.equal(r.status,200);assert.equal(r.data.connected,false);assert(r.data.credentialError);r=await call('','POST',{enabled:true,generateToken:true});assert.equal(r.status,200);assert.equal((await call('/test','POST',{})).status,200);
+  pass('Unreadable credentials fail closed while Admin can recover by generating a new credential');
+  console.log(checks+' MCP configuration checks passed.');
+ }finally{
+  if(server)await new Promise(resolve=>server.close(resolve));if(isolated)await isolated.end();Object.assign(pool,saved);
+  for(const name of names)if(env[name]===undefined)delete process.env[name];else process.env[name]=env[name];
+  await db.query('SET search_path TO public');await db.query('DROP SCHEMA IF EXISTS '+schema+' CASCADE');await db.end();await pool.end();
+ }
+}
+main().catch(e=>{console.error(e);process.exitCode=1;});

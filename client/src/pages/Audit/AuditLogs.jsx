@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Users, FileText, Activity,
          Clock, X, ArrowRight, History, Search, Shield, User,
          Layers, Settings, Mail, Key, Trash2, Plus, Edit2 } from 'lucide-react';
 import './AuditLogs.css';
+import AILogsPanel from './AILogsPanel';
 
 // ── Action badge config ────────────────────────────────────────────────────────
 const ACTION_META = {
@@ -492,6 +493,7 @@ function MiniCalendar({ viewMonth, activeDays, selectedDate, onSelectDate, onPre
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function AuditLogs() {
+  const [aiMeta,setAiMeta] = useState({activeDays:[],summary:{}});
   const [activeTab,     setActiveTab]     = useState('ticket'); // 'ticket' | 'admin'
   const [selectedDate,  setSelectedDate]  = useState(format(new Date(), 'yyyy-MM-dd'));
   const [viewMonth,     setViewMonth]     = useState(new Date());
@@ -532,16 +534,17 @@ export default function AuditLogs() {
     api.get('/audit/retention').then(r => {
       const s = r.data.settings;
       setRetention(s);
-      setRetentionDraft({ enabled: s.enabled, retention_days: s.retention_days });
+      setRetentionDraft(s);
     }).catch(() => {});
   }, []);
 
   const saveRetention = async () => {
-    const days = parseInt(retentionDraft.retention_days);
-    if (isNaN(days) || days < 1) { alert('Enter a valid number of days (min 1)'); return; }
+    const days = Number(retentionDraft.retention_days), aiDays = Number(retentionDraft.ai_retention_days);
+    if (!Number.isInteger(aiDays) || aiDays < 1 || aiDays > 3650) { alert('AI retention must be 1 to 3650 whole days'); return; }
+    if (!Number.isInteger(days) || days < 1 || days > 3650) { alert('Enter a valid number of days (min 1)'); return; }
     setRetentionSaving(true);
     try {
-      const r = await api.put('/audit/retention', { enabled: retentionDraft.enabled, retention_days: days });
+      const r = await api.put('/audit/retention', { enabled: retentionDraft.enabled, retention_days: days, ai_enabled: retentionDraft.ai_enabled, ai_retention_days: aiDays });
       setRetention(r.data.settings);
       setShowRetention(false);
     } catch { alert('Failed to save retention settings'); }
@@ -565,11 +568,12 @@ export default function AuditLogs() {
       <div className="al-header">
         <div>
           <h1 className="al-title">Audit Logs</h1>
-          <p className="al-sub">Full audit trail — ticket changes and admin portal activity</p>
+          <p className="al-sub">Ticket changes, admin activity and AI process history</p>
         </div>
-        <button className="al-retention-btn" onClick={() => { setRetentionDraft({ enabled: retention.enabled, retention_days: retention.retention_days }); setShowRetention(p => !p); }}>
+        <button className="al-retention-btn" onClick={() => { setRetentionDraft(retention); setShowRetention(p => !p); }}>
           ⚙ Retention Policy
-          {retention.enabled && <span className="al-retention-badge">{retention.retention_days}d</span>}
+          {retention.enabled && <span className="al-retention-badge">Ticket {retention.retention_days}d</span>}
+          {retention.ai_enabled && <span className="al-retention-badge">AI {retention.ai_retention_days}d</span>}
         </button>
       </div>
 
@@ -587,16 +591,17 @@ export default function AuditLogs() {
         >
           <Shield size={14} /> Admin Logs
         </button>
+        <button className={`al-tab${activeTab === 'ai' ? ' al-tab-active' : ''}`} onClick={() => setActiveTab('ai')}><Activity size={14}/> AI Logs</button>
       </div>
 
       {showRetention && (
         <div className="al-retention-panel">
           <div className="al-retention-title">Log Retention Policy</div>
-          <p className="al-retention-desc">Automatically delete audit logs older than the specified period. Runs daily at server startup.</p>
+          <p className="al-retention-desc">Ticket and AI logs have separate retention periods. Cleanup runs after server startup and every 24 hours. Tickets, comments, attachments and original emails are preserved.</p>
           <div className="al-retention-row">
             <label className="al-retention-toggle">
               <input type="checkbox" checked={retentionDraft.enabled} onChange={e => setRetentionDraft(p => ({ ...p, enabled: e.target.checked }))} />
-              <span>Enable auto-deletion</span>
+              <span>Enable ticket log auto-deletion</span>
             </label>
           </div>
           <div className="al-retention-presets">
@@ -619,6 +624,11 @@ export default function AuditLogs() {
           {retentionDraft.enabled && (
             <p className="al-retention-warn">⚠ Logs older than <strong>{retentionDraft.retention_days} days</strong> will be permanently deleted daily.</p>
           )}
+          <div className="ai-log-retention">
+            <label className="al-retention-toggle"><input type="checkbox" checked={!!retentionDraft.ai_enabled} onChange={e=>setRetentionDraft(p=>({...p,ai_enabled:e.target.checked}))}/><span>Enable AI log auto-deletion</span></label>
+            <label>Keep AI logs for <input aria-label="AI retention days" className="al-retention-input" type="number" min="1" max="3650" value={retentionDraft.ai_retention_days ?? 30} onChange={e=>setRetentionDraft(p=>({...p,ai_retention_days:e.target.value}))}/> days</label>
+            <p className="al-retention-desc">Default: 30 days. Turning this off keeps AI logs until you enable it again. Expired AI diagnostics are permanently removed at the next cleanup.</p>
+          </div>
           <div className="al-retention-actions">
             <button className="al-retention-cancel" onClick={() => setShowRetention(false)}>Cancel</button>
             <button className="al-retention-save" onClick={saveRetention} disabled={retentionSaving}>
@@ -633,13 +643,13 @@ export default function AuditLogs() {
         <div className="al-sidebar">
           <MiniCalendar
             viewMonth={viewMonth}
-            activeDays={activeDays}
+            activeDays={activeTab==='ai'?aiMeta.activeDays:activeDays}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
             onPrev={() => setViewMonth(m => subMonths(m, 1))}
             onNext={() => setViewMonth(m => addMonths(m, 1))}
           />
-          <div className="al-day-summary">
+          <div className="al-day-summary">{activeTab==='ai'?<><p className="al-day-label">{displayDate}</p><p>{aiMeta.summary.total||0} AI processes</p><p>{aiMeta.summary.failed||0} failed · {aiMeta.summary.success||0} succeeded</p></>:<>
             <p className="al-day-label">{displayDate}</p>
             <div className="al-stat-rows">
               <div className="al-stat-row">
@@ -655,9 +665,10 @@ export default function AuditLogs() {
                 <span className="al-stat-text">{summary.ticketsTouched} ticket{summary.ticketsTouched !== 1 ? 's' : ''} touched</span>
               </div>
             </div>
-          </div>
+          </>}</div>
         </div>
 
+        {activeTab==='ai' && <AILogsPanel selectedDate={selectedDate} viewMonth={viewMonth} onMeta={setAiMeta}/>}
         {/* Admin Logs panel (replaces main table when on admin tab) */}
         {activeTab === 'admin' && (
           <AdminLogsPanel selectedDate={selectedDate} viewMonth={viewMonth} />

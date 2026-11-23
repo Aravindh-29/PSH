@@ -229,8 +229,8 @@ async function main(){
        const d=await ok('/dashboard?team=true','GET',undefined,tag);assert.equal(Number(d.stats.total),0,tag+' no managed grants');
      }
      const create=await request('/tickets','POST',{...payload,assignedTo:null},tag);
-     const allowedCreate=role.key==='admin'||!!role.permissions['tickets.create']&&membership.length;
-     assert.equal(create.status,allowedCreate?201:403,tag+' create within membership only');
+     const allowedCreate=role.key==='admin'||!!role.permissions['tickets.create'];
+     assert.equal(create.status,allowedCreate?201:403,tag+' create with an active routing destination');
      const edit=await request('/tickets/'+ownTicket.id,'PUT',{description:'Personal role matrix edit'},tag);
      assert.equal(edit.status,role.key==='admin'||role.permissions['tickets.edit']&&role.permissions['tickets.view']?200:403,tag+' edit permission');
      const ctx={userId:person,role:role.key,admin:role.key==='admin',permissions:role.permissions,managedGroups:[],memberGroups:membership};
@@ -289,6 +289,7 @@ async function main(){
  const inboxTickets=[];for(const state of ['NEW','OPEN','ON_HOLD'])inboxTickets.push((await ok('/tickets','POST',{...payload,assignmentGroupId:finance,subgroupId:null,assignedTo:inboxUser,status:state})).ticket);
  const inboxBadge=async who=>(await ok('/dashboard/query/badge','GET',undefined,who)).unopened;
  assert.equal(await inboxBadge('inbox_reader'),3);
+ let sharedBell=await ok('/notifications','GET',undefined,'inbox_reader');assert.equal(sharedBell.ticketUnread,3);assert.equal(sharedBell.unread,3);assert.equal(sharedBell.notifications.filter(n=>n.ticket_id).length,3);
  let inbox=await ok('/dashboard/query?view=mine','GET',undefined,'inbox_reader');assert.equal(inbox.total,3);assert.equal(inbox.summary.mine,3);assert.equal(inbox.counts.ON_HOLD,1);
  await ok('/dashboard/query','GET',undefined,'inbox_reader');assert.equal(await inboxBadge('inbox_reader'),3);
  pass('Three arrivals produce badge 3; My Query lists all states without marking anything opened');
@@ -296,6 +297,7 @@ async function main(){
  for(const t of inboxTickets.slice(0,2))await ok('/tickets/'+t.id+'/opened','POST',{revision:t.inbox_revision},'inbox_reader');
  assert.equal(await inboxBadge('inbox_reader'),1);
  await ok('/tickets/'+inboxTickets[0].id+'/opened','POST',{revision:inboxTickets[0].inbox_revision},'inbox_reader');assert.equal(await inboxBadge('inbox_reader'),1);
+ sharedBell=await ok('/notifications','GET',undefined,'inbox_reader');assert.equal(sharedBell.ticketUnread,1);assert.equal(sharedBell.unread,1);assert.equal(sharedBell.notifications.filter(n=>n.ticket_id).length,1);
  pass('Opening exactly two of three tickets leaves badge 1; duplicate acknowledgement is idempotent');
  await ok('/tickets/'+inboxTickets[2].id+'/opened','POST',{revision:inboxTickets[2].inbox_revision,userId:inboxUser},'inbox_peer');assert.equal(await inboxBadge('inbox_reader'),1);
  await rejected('/tickets/'+tickets[0].id+'/opened','POST',{revision:'1'},'inbox_reader');
@@ -439,9 +441,9 @@ async function main(){
  await ok('/config/admin/branding','PUT',{customize:false,organization_name:'Binding Org',service_desk_name:'Binding Desk',accent_color:'#1768AC',logo_data:''});assert.equal((await ok('/config/branding')).branding.customize,false);
  pass('Branding save and customization toggle bind to persisted configuration');
  await db.query("INSERT INTO notifications(user_id,type,title,message) SELECT $1,'TEST','Binding','Notification' FROM generate_series(1,35)",[reportReader]);
- let notices=await ok('/notifications','GET',undefined,'report_reader');assert.equal(notices.unread,35);assert.equal(notices.notifications.length,30);
- await ok('/notifications/'+notices.notifications[0].id+'/read','PATCH',{},'report_reader');assert.equal((await ok('/notifications','GET',undefined,'report_reader')).unread,34);
- await ok('/notifications/read-all','PATCH',{},'report_reader');assert.equal((await ok('/notifications','GET',undefined,'report_reader')).unread,0);
+ let notices=await ok('/notifications','GET',undefined,'report_reader');assert.equal(notices.otherUnread,35);assert.equal(notices.unread,35+notices.ticketUnread);assert.equal(notices.notifications.length,30);
+ await ok('/notifications/'+notices.notifications[0].id+'/read','PATCH',{},'report_reader');assert.equal((await ok('/notifications','GET',undefined,'report_reader')).otherUnread,34);
+ await ok('/notifications/read-all','PATCH',{},'report_reader');notices=await ok('/notifications','GET',undefined,'report_reader');assert.equal(notices.otherUnread,0);assert.equal(notices.unread,notices.ticketUnread);assert.equal(notices.ticketUnread,await inboxBadge('report_reader'));
  pass('Bell unread count includes notifications beyond the latest 30, and individual/read-all actions persist');
  // More than the displayed global report limit must still be exported.
  await db.query("INSERT INTO tickets(ticket_number,customer_name,short_description,description,created_by,assigned_to,assignment_group_id,created_at) SELECT 'GLOBAL_'||n,'Export','Bulk export','Details',$1,$1,$2,'2025-01-31T12:00:00Z' FROM generate_series(1,501) n",[admin,hr]);
@@ -484,7 +486,7 @@ async function main(){
  await ok('/tickets/'+shared.id,'PUT',{assignedTo:wholeManager,workNote:'Assign to department Manager'},'department_coworker');
  pass('Whole-department Managers appear in create/edit assignee pickers, receive department and child tickets, and self-assigned work appears in My Tickets without ordinary membership');
  await ok('/tickets/'+shared.id,'PUT',{assignedTo:manager,workNote:'Assign to sub department Manager'},'department_coworker');
- await rejected('/tickets/'+selfAssigned.id,'PUT',{assignedTo:manager,workNote:'Child-only manager cannot receive parent-only work'},'assignment_manager');
+ await ok('/tickets/'+selfAssigned.id,'PUT',{assignedTo:manager,workNote:'Parent department can route to child Manager'},'assignment_manager');
  await rejected('/tickets','POST',{...payload,assignmentGroupId:finance,subgroupId:null,assignedTo:wholeManager},'admin');
  await db.query('UPDATE users SET is_active=FALSE WHERE id=$1',[wholeManager]);
  await rejected('/tickets/'+shared.id,'PUT',{assignedTo:wholeManager,workNote:'Inactive manager'},'admin');
@@ -564,6 +566,88 @@ async function main(){
  const recentDepartment=(await ok('/dashboard')).recentTickets.find(t=>t.id===uploadTicket.id);assert(recentDepartment);assert.equal(recentDepartment.department_name,'HR');assert.equal(recentDepartment.sub_department_name,'AIA');
  const personalDepartment=(await ok('/dashboard?personal=true','GET',undefined,'subdepartment_export')).recentTickets.find(t=>t.ticket_number==='EXPORT_PARENT');assert(personalDepartment);assert.equal(personalDepartment.department_name,'HR');assert.equal(personalDepartment.sub_department_name,null);
  pass('Dashboard recent ticket tables return linked department/sub department names and preserve department-only values');
+ const routeUser=await employee('route_user');await ok('/users/'+routeUser,'PUT',{groupIds:[hr]});
+ const routeManager=await employee('route_manager');await ok('/users/'+routeManager,'PUT',{role:'manager',groupIds:[],managedGroupIds:[aia]});
+ const routeFinanceUser=await employee('route_finance');await ok('/users/'+routeFinanceUser,'PUT',{groupIds:[finance]});
+ const routeChild=(await ok('/departments','POST',{name:'Routing Accounts',parentId:finance,countryId:fr})).group.id;
+ const inactiveRoute=(await ok('/departments','POST',{name:'Inactive routing',regionId:europe})).group.id;await ok('/departments/'+inactiveRoute,'PUT',{name:'Inactive routing',regionId:europe,is_active:false});
+ for(const actor of ['route_user','route_manager','admin']){
+  const picker=await ok('/departments/routing','GET',undefined,actor);assert(picker.groups.some(g=>g.id===hr));assert(picker.groups.some(g=>g.id===finance));assert(picker.groups.some(g=>g.id===routeChild));assert(!picker.groups.some(g=>g.id===inactiveRoute));
+  assert(picker.groups.every(g=>!('members' in g)&&!('description' in g)&&!('user_ids' in g)));
+  const source=(await ok('/tickets','POST',{...payload,assignmentGroupId:hr,subgroupId:aia,assignedTo:routeUser},'admin')).ticket;
+  await ok('/tickets/'+source.id+'/comments','POST',{body:'Keep the original conversation'},'admin');
+  await rejected('/tickets/'+source.id,'PUT',{assignmentGroupId:finance,subgroupId:routeChild},actor);
+  const moved=await ok('/tickets/'+source.id,'PUT',{assignmentGroupId:finance,subgroupId:routeChild,workNote:'Misrouted HR issue; send to Finance Accounts'},actor);
+  assert.equal(moved.ticket.assignment_group_id,finance);assert.equal(moved.ticket.subgroup_id,routeChild);assert.equal(moved.ticket.assigned_to,null);assert.equal(moved.ticket.assignment_group,'Finance');assert.equal(moved.ticket.ticket_number,source.ticket_number);assert.equal(moved.ticket.created_by,source.created_by);
+  const receiving=await ok('/tickets/'+source.id,'GET',undefined,'route_finance');assert(receiving.comments.some(c=>c.body==='Keep the original conversation'));assert(receiving.comments.some(c=>c.body.includes('Misrouted HR')));
+  assert((await db.query("SELECT 1 FROM ticket_audit_logs WHERE ticket_id=$1 AND field_name='assignment_group_id' AND old_value=$2 AND new_value=$3",[source.id,hr,finance])).rowCount);
+  if(actor!=='admin'){await rejected('/tickets/'+source.id,'GET',undefined,actor);await rejected('/tickets/'+source.id,'PUT',{assignmentGroupId:hr,subgroupId:aia,workNote:'Attempt without source access'},actor)}
+ }
+ pass('Admin, Manager and User can route editable tickets to outside departments/sub departments; assignee is cleared, reason and audit are saved, and existing ticket identity/comments survive');
+ const parentMove=(await ok('/tickets','POST',{...payload,assignedTo:routeUser},'admin')).ticket;
+ await ok('/tickets/'+parentMove.id,'PUT',{subgroupId:kier,workNote:'Move to another HR sub department'},'route_user');
+ await ok('/tickets/'+parentMove.id,'PUT',{subgroupId:null,workNote:'Handle at department level'},'route_user');
+ assert.equal((await ok('/tickets/'+parentMove.id,'GET',undefined,'route_user')).ticket.subgroup_id,null);
+ await rejected('/tickets/'+parentMove.id,'PUT',{assignmentGroupId:finance,subgroupId:aia,workNote:'Invalid parent child'},'route_user');
+ await rejected('/tickets/'+parentMove.id,'PUT',{assignmentGroupId:inactiveRoute,subgroupId:null,workNote:'Inactive department'},'route_user');
+ assert.equal((await db.query('SELECT assignment_group_id FROM tickets WHERE id=$1',[parentMove.id])).rows[0].assignment_group_id,hr);
+ assert.equal((await db.query('SELECT 1 FROM user_groups WHERE user_id=$1 AND group_id=$2',[routeUser,finance])).rowCount,0);
+ await rejected('/departments/'+finance+'/members','GET',undefined,'route_user');
+ pass('Sub department-to-sub department and parent-level routing work; invalid/inactive destinations are rejected and routing never grants department membership or directory access');
+ const routedChildUser=await employee('routed_child_user');await ok('/users/'+routedChildUser,'PUT',{groupIds:[routeChild]});
+ const siblingFinance=(await ok('/departments','POST',{name:'Finance Other',parentId:finance,countryId:fr})).group.id;
+ const financeSiblingUser=await employee('finance_sibling_user');await ok('/users/'+financeSiblingUser,'PUT',{groupIds:[siblingFinance]});
+ const parentAssignees=await ok('/departments/assignees?departmentId='+finance,'GET',undefined,'route_user');assert(parentAssignees.users.some(u=>u.id===routedChildUser));assert(parentAssignees.users.some(u=>u.id===financeSiblingUser));assert(parentAssignees.users.some(u=>u.id===routeFinanceUser));assert(!parentAssignees.users.some(u=>u.id===routeUser));assert(parentAssignees.users.every(u=>!('email' in u)&&!('password_hash' in u)));
+ const childAssignees=await ok('/departments/assignees?departmentId='+finance+'&subgroupId='+routeChild,'GET',undefined,'route_user');assert(childAssignees.users.some(u=>u.id===routedChildUser));assert(childAssignees.users.some(u=>u.id===routeFinanceUser));assert(!childAssignees.users.some(u=>u.id===financeSiblingUser));
+ await rejected('/departments/assignees?departmentId='+finance+'&subgroupId='+aia,'GET',undefined,'route_user');
+ pass('Destination assignment picker includes parent and child teams, narrows to selected child plus inherited members, and returns only assignment identity fields');
+ for(const actor of ['route_user','route_manager','admin']){
+  const crossCreated=await ok('/tickets','POST',{...payload,assignmentGroupId:finance,subgroupId:routeChild,assignedTo:routedChildUser,workNote:'Created directly for Finance Accounts'},actor);
+  const assigned=await ok('/tickets/'+crossCreated.ticket.id,'GET',undefined,'routed_child_user');assert(assigned.comments.some(c=>c.body==='Created directly for Finance Accounts'));assert.equal(assigned.ticket.assigned_to,routedChildUser);
+  const formFile=new FormData();formFile.append('files',new Blob(['Cross-department creation file'],{type:'text/plain'}),'cross-created.txt');
+  const uploaded=await fetch(root+'/api/tickets/'+crossCreated.ticket.id+'/attachments',{method:'POST',headers:{'x-test-user':actor,'x-ticket-submission':crossCreated.submissionToken},body:formFile});assert.equal(uploaded.status,201);
+  if(actor!=='admin')await rejected('/tickets/'+crossCreated.ticket.id,'GET',undefined,actor);
+  const transferSource=(await ok('/tickets','POST',{...payload,assignedTo:routeUser},'admin')).ticket;
+  const crossAssigned=await ok('/tickets/'+transferSource.id,'PUT',{assignmentGroupId:finance,subgroupId:routeChild,assignedTo:routedChildUser,workNote:'Reroute and assign to receiving team'},actor);assert.equal(crossAssigned.ticket.assigned_to,routedChildUser);
+ }
+ pass('Admin, Manager and User create and reroute directly to another team with an eligible assignee; creation work notes and attachments persist without granting destination ticket visibility');
+ const scopedCreate=await ok('/tickets','POST',{...payload,assignmentGroupId:finance,subgroupId:null,assignedTo:financeSiblingUser},'route_user');assert.equal(scopedCreate.ticket.assigned_to,financeSiblingUser);
+ await rejected('/tickets','POST',{...payload,assignmentGroupId:finance,subgroupId:routeChild,assignedTo:financeSiblingUser},'route_user');
+ await rejected('/tickets','POST',{...payload,assignmentGroupId:finance,subgroupId:routeChild,assignedTo:routeUser},'route_user');
+ const lockedFile=new FormData();lockedFile.append('files',new Blob(['not allowed'],{type:'text/plain'}),'forged.txt');
+ const forged=await fetch(root+'/api/tickets/'+scopedCreate.ticket.id+'/attachments',{method:'POST',headers:{'x-test-user':'route_user','x-ticket-submission':scopedCreate.submissionToken+'x'},body:lockedFile});assert.equal(forged.status,403);
+ const stolenFile=new FormData();stolenFile.append('files',new Blob(['not allowed'],{type:'text/plain'}),'stolen.txt');
+ const stolen=await fetch(root+'/api/tickets/'+scopedCreate.ticket.id+'/attachments',{method:'POST',headers:{'x-test-user':'route_manager','x-ticket-submission':scopedCreate.submissionToken},body:stolenFile});assert.equal(stolen.status,403);
+ pass('Destination validation rejects wrong-team assignees; upload capability cannot be forged or reused by another user');
+ const findingText='Customer: Dell\nEmail: support@dell.example\nReference: DELL-4587\nStorage performance and names: Swathi / Saranya\n<script>alert("keep as plain text")</script>';
+ const hrFinding=await ok('/departments/'+hr+'/findings','POST',{content:findingText},'admin');assert.equal(hrFinding.finding.content,findingText);
+ const childFinding=await ok('/departments/'+aia+'/findings','POST',{content:'Payroll customer references\nname@example.test'},'route_manager');
+ assert((await ok('/departments/'+hr+'/findings','GET',undefined,'route_manager')).findings.some(f=>f.id===hrFinding.finding.id&&f.content===findingText));
+ assert((await ok('/departments/'+aia+'/findings','GET',undefined,'route_manager')).findings.some(f=>f.id===childFinding.finding.id));
+ pass('Admin saves department findings and scoped Manager saves child findings; arbitrary plain text, emails, references and line breaks round-trip unchanged');
+ await rejected('/departments/'+hr+'/findings','POST',{content:'Cannot change parent'},'route_manager');
+ await rejected('/departments/'+finance+'/findings','GET',undefined,'route_manager');
+ await rejected('/departments/'+finance+'/findings','POST',{content:'Outside team'},'route_manager');
+ await rejected('/departments/'+aia+'/findings','POST',{content:'Employee cannot edit'},'route_user');
+ await rejected('/departments/'+hr+'/findings','GET',undefined,'route_user');
+ await rejected('/departments/'+aia+'/findings/'+hrFinding.finding.id,'PUT',{content:'Wrong department ID'},'route_manager');
+ pass('Findings endpoints enforce Manager scope, block ordinary Users, and prevent cross-department finding-ID substitution');
+ await rejected('/departments/'+aia+'/findings','POST',{content:'   \n  '},'route_manager');
+ await rejected('/departments/'+aia+'/findings','POST',{content:'x'.repeat(20001)},'route_manager');
+ await ok('/departments/'+aia+'/findings/'+childFinding.finding.id,'PUT',{content:'Updated customer notes\nCustomer: Pure Storage'},'route_manager');
+ assert.equal((await ok('/departments/'+aia+'/findings','GET',undefined,'route_manager')).findings.find(f=>f.id===childFinding.finding.id).content,'Updated customer notes\nCustomer: Pure Storage');
+ await ok('/departments/'+aia+'/findings/'+childFinding.finding.id,'DELETE',undefined,'route_manager');
+ assert(!(await ok('/departments/'+aia+'/findings','GET',undefined,'route_manager')).findings.some(f=>f.id===childFinding.finding.id));assert((await db.query('SELECT deleted_at FROM department_findings WHERE id=$1',[childFinding.finding.id])).rows[0].deleted_at);
+ assert.equal((await db.query("SELECT COUNT(*)::int AS count FROM admin_audit_logs WHERE entity_id=$1 AND action LIKE 'DEPARTMENT_FINDING_%'",[childFinding.finding.id])).rows[0].count,3);
+ pass('Findings validate empty/oversized text, persist edits, soft-delete safely and record creation/edit/deletion audit history');
+ const findingOnlyDept=(await ok('/departments','POST',{name:'Findings retention',regionId:apac})).group.id;
+ await ok('/departments/'+findingOnlyDept+'/findings','POST',{content:'Keep this department while findings exist.'});const blockedFindingDelete=await rejected('/departments/'+findingOnlyDept,'DELETE',undefined,'admin');assert(blockedFindingDelete.data.message.includes('findings'));
+ const originalFindingConnect=pool.connect;pool.connect=async()=>({query:(sql,...args)=>{if(sql.includes('INSERT INTO admin_audit_logs')&&args[0]?.includes('DEPARTMENT_FINDING_CREATED'))throw Error('Simulated finding audit failure');return db.query(sql,...args)},release(){}});
+ try{const failed=await request('/departments/'+aia+'/findings','POST',{content:'Must roll back'},'route_manager');assert.equal(failed.status,500);assert.equal((await db.query("SELECT 1 FROM department_findings WHERE content='Must roll back'")).rowCount,0)}finally{pool.connect=originalFindingConnect}
+ pass('Departments with live findings cannot be deleted and failed finding saves roll back when audit persistence fails');
+
+
+
 
 
  }finally{if(server)await new Promise(r=>server.close(r));Object.assign(pool,original);await pool.end();await db.query('SET search_path TO public');await db.query('DROP SCHEMA '+schema+' CASCADE');await db.end()}

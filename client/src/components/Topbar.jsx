@@ -31,7 +31,7 @@ export default function Topbar({ onMenuClick }) {
   const { user, logout } = useAuth();
   const { branding } = useBranding();
   const navigate = useNavigate();
-  const { notifications, unread, markRead, markAllRead } = useNotifications();
+  const { notifications, unread, otherUnread, markRead, markAllRead } = useNotifications();
 
   // user dropdown
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -205,9 +205,9 @@ export default function Topbar({ onMenuClick }) {
             <div className="notif-dropdown">
               <div className="notif-header">
                 <span>Notifications</span>
-                {unread > 0 && (
+                {otherUnread > 0 && (
                   <button className="notif-mark-all" onClick={() => markAllRead()}>
-                    Mark all read
+                    Mark other alerts read
                   </button>
                 )}
               </div>
@@ -220,7 +220,7 @@ export default function Topbar({ onMenuClick }) {
                       key={n.id}
                       className={`notif-item ${!n.is_read ? 'notif-unread' : ''}`}
                       onClick={() => {
-                        markRead(n.id);
+                        if (!n.ticket_id) markRead(n.id);
                         if (n.ticket_id) {
                           setNotifOpen(false);
                           navigate(`/tickets/${n.ticket_id}`);

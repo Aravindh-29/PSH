@@ -173,9 +173,10 @@ async function getRetention(req, res, next) {
 
 async function updateRetention(req, res, next) {
   try {
-    const { enabled, retention_days } = req.body;
-    if (retention_days !== undefined && (isNaN(retention_days) || retention_days < 1)) {
-      return res.status(400).json({ success: false, message: 'retention_days must be at least 1' });
+    const { enabled, retention_days, ai_enabled, ai_retention_days } = req.body;
+    if ([retention_days,ai_retention_days].some(v=>v!==undefined&&(!Number.isInteger(v)||v<1||v>3650)) ||
+        [enabled,ai_enabled].some(v=>v!==undefined&&typeof v!=='boolean')) {
+      return res.status(400).json({ success: false, message: 'Retention periods must be whole numbers from 1 to 3650 days; toggles must be true or false.' });
     }
     const row = await pool.query(
       `UPDATE audit_retention_settings
@@ -183,10 +184,11 @@ async function updateRetention(req, res, next) {
            retention_days = COALESCE($2, retention_days),
            updated_at     = NOW(),
            updated_by     = $3
+           ,ai_enabled = COALESCE($4, ai_enabled), ai_retention_days = COALESCE($5, ai_retention_days)
        WHERE id = 1 RETURNING *`,
-      [enabled ?? null, retention_days ?? null, req.session.userId]
+      [enabled ?? null, retention_days ?? null, req.session.userId, ai_enabled ?? null, ai_retention_days ?? null]
     );
-    logAdminAudit(req.session?.userId, 'RETENTION_UPDATED', 'retention_settings', '1', 'Audit Retention Policy', { enabled, retention_days }, req.ip);
+    logAdminAudit(req.session?.userId, 'RETENTION_UPDATED', 'retention_settings', '1', 'Audit Retention Policy', { enabled, retention_days, ai_enabled, ai_retention_days }, req.ip);
     res.json({ success: true, settings: row.rows[0] });
   } catch (err) { next(err); }
 }

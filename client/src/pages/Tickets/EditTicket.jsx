@@ -1,3 +1,4 @@
+import useTicketAssignees from '../../hooks/useTicketAssignees';
 import useAccess from '../../hooks/useAccess';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
@@ -9,6 +10,7 @@ import { useNotifications } from '../../context/NotificationContext';
 import { fmt } from '../../utils/dateUtils';
 import SearchSelect from '../../components/SearchSelect';
 import TicketOrganization from '../../components/TicketOrganization';
+import TicketCompleteness from '../../components/TicketCompleteness';
 import { useTicketTemplate, TemplateSelector, TemplateFields } from '../../components/TicketTemplate';
 import toast from 'react-hot-toast';
 import './TicketDetail.css';
@@ -57,9 +59,10 @@ export default function EditTicket() {
   const navigate = useNavigate();
   const templateState = useTicketTemplate();
   const { user: currentUser } = useAuth();
-  const { refetch: refetchNotifications } = useNotifications();
+  const { refetch: refetchNotifications,markTicketOpened } = useNotifications();
   const [accessTicket,setAccessTicket]=useState(null);
   const isAdmin = record('tickets.owner',accessTicket);
+  useEffect(()=>{if(accessTicket?.id===id&&accessTicket.inbox_revision)markTicketOpened(id,accessTicket.inbox_revision);},[id,accessTicket?.id,accessTicket?.inbox_revision,markTicketOpened]);
 
   const [fields, setFields]           = useState([]);
   const [categories, setCategories]   = useState([]);
@@ -105,9 +108,9 @@ export default function EditTicket() {
         shortDescription:  ticket.short_description  || '',
         description:       ticket.description        || '',
         status:            ticket.status             || 'NEW',
-        priority:          ticket.priority           || 'MEDIUM',
-        impact:            ticket.impact             || 'MEDIUM',
-        urgency:           ticket.urgency            || 'MEDIUM',
+        priority:          ticket.priority           || (ticket.source==='EMAIL'?'':'MEDIUM'),
+        impact:            ticket.impact             || (ticket.source==='EMAIL'?'':'MEDIUM'),
+        urgency:           ticket.urgency            || (ticket.source==='EMAIL'?'':'MEDIUM'),
         ticketOwner:       ticket.ticket_owner       ? String(ticket.ticket_owner) : '',
         assignedTo:        ticket.assigned_to        ? String(ticket.assigned_to) : '',
         typeId:            ticket.type_id            ? String(ticket.type_id) : '',
@@ -154,17 +157,18 @@ export default function EditTicket() {
 
   const assigneeChanged = (form?.assignedTo || '') !== originalAssignedTo;
   const statusChanged   = (form?.status     || '') !== originalStatus;
-  const noteRequired    = assigneeChanged || statusChanged;
+  const organizationChanged=!!form&&!!accessTicket&&((form.assignmentGroupId||'')!==(accessTicket.assignment_group_id||'')||(form.subgroupId||'')!==(accessTicket.subgroup_id||''));
+  const noteRequired    = assigneeChanged || statusChanged || organizationChanged;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if(attachmentUploadActive.current)return toast.error('Wait for attachments to finish uploading before saving.');
     if (!templateState.validate()) return;
     if (noteRequired && !saveNote.trim()) {
-      toast.error('A work note is required when changing status or reassigning.');
+      toast.error('A work note is required when changing status, reassigning or transferring departments.');
       return;
     }
-    if (subcategories.length > 0 && !form.subcategoryId) {
+    if (accessTicket?.source!=='EMAIL'&&subcategories.length > 0 && !form.subcategoryId) {
       toast.error('Please select a subcategory'); return;
     }
     setLoading(true);
@@ -188,7 +192,7 @@ export default function EditTicket() {
       toast.success(pendingDeletes.size ? 'Ticket saved and selected attachments permanently removed' : 'Ticket updated');
       setPendingDeletes(new Set());
       refetchNotifications();
-      navigate(isAdmin ? `/tickets/${id}` : '/tickets');
+      navigate(organizationChanged ? '/tickets' : isAdmin ? `/tickets/${id}` : '/tickets');
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Update failed');
     } finally {
@@ -243,6 +247,8 @@ export default function EditTicket() {
 
   const fmtBytes = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KB` : `${(n/1048576).toFixed(1)} MB`;
 
+  const assignees=useTicketAssignees(form?.assignmentGroupId,form?.subgroupId);
+
   if (!form) return <div style={{ padding: 32, color: '#64748b' }}>Loading...</div>;
 
   const customFields = fields.filter(f => !SYSTEM_KEYS.includes(f.field_key));
@@ -266,9 +272,7 @@ export default function EditTicket() {
   const categoryOpts    = categories.map(c => ({ value: String(c.id), label: c.name }));
   const typeOpts        = ticketTypes.map(t => ({ value: String(t.id), label: t.name }));
   const classOpts       = CLASSIFICATIONS.filter(Boolean).map(c => ({ value: c, label: c }));
-  const userOpts        = users
-    .filter(u => !groupMemberIds || groupMemberIds.has(String(u.id)))
-    .map(u => ({ value: String(u.id), label: u.full_name, sublabel: `@${u.username} · ${u.email}`, searchExtra: `${u.username} ${u.email}` }));
+  const userOpts = assignees.options;
 
   const customPairs = [];
   for (let i = 0; i < customFields.length; i += 2) {
@@ -295,6 +299,7 @@ export default function EditTicket() {
 
   return (
     <div className="ip-page">
+      <TicketCompleteness ticket={accessTicket}/>
 
       {/* ── Header ── */}
       <div className="ip-header">
@@ -479,19 +484,21 @@ export default function EditTicket() {
                   </span>
                 </div>
               </div>
-              <TicketOrganization form={form} setForm={setForm} disabled={!can('tickets.assign')}/>
+              <TicketOrganization form={form} setForm={setForm} disabled={!can('tickets.assign')} allowOtherDepartments required={accessTicket?.source!=='EMAIL'}/>
               <div className="ip-row">
                 <div className="ip-pair ip-assignee-right">
                   <span className="ip-lc">Assign to</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
-                      disabled={!can('tickets.assign')}
+                      disabled={!can('tickets.assign')||assignees.loading||!form.assignmentGroupId}
                       value={form.assignedTo}
                       onChange={v => set('assignedTo', v)}
                       options={[{ value: '', label: 'Unassigned' }, ...userOpts]}
                       placeholder="Unassigned"
                       searchPlaceholder="Search user..."
                     />
+                    {assignees.loading&&<small role="status">Loading assignees…</small>}
+                    {assignees.error&&<small role="alert" style={{color:"#b91c1c"}}>{assignees.error}</small>}
                   </span>
                 </div>
                 {isAdmin ? (
@@ -501,7 +508,7 @@ export default function EditTicket() {
                       <SearchSelect
                         value={form.ticketOwner}
                         onChange={v => set('ticketOwner', v)}
-                        options={[{ value: '', label: 'Select owner' }, ...userOpts]}
+                        options={[{ value: '', label: 'Select owner' }, ...users.map(u=>({value:String(u.id),label:u.full_name,sublabel:`@${u.username} · ${u.email}`}))]}
                         placeholder="Select owner"
                       />
                     </span>

@@ -45,7 +45,7 @@ function SortIcon({ field, sort }) {
 }
 
 export default function TicketList({ myTickets }) {
-  const {can,record}=useAccess();
+  const {can,record,user}=useAccess();
   const [urlParams, setUrlParams] = useSearchParams();
 
   // Initialise from URL params so dashboard Quick Access links auto-filter
@@ -115,6 +115,7 @@ export default function TicketList({ myTickets }) {
         if (search)           params.set('search', search);
         if (filters.status)   params.set('status', filters.status);
         if (filters.priority) params.set('priority', filters.priority);
+        if(urlParams.get('needsRouting')==='true')params.set('needsRouting','true');
         if(filters.departmentId)params.set('departmentId',filters.departmentId);
         if(filters.subgroupId)params.set('subgroupId',filters.subgroupId);
         if (myTickets && activeTab === 'group') params.set('groupView', 'true');
@@ -137,7 +138,7 @@ export default function TicketList({ myTickets }) {
     run();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, sort.field, sort.dir, search, filters.status, filters.priority, filters.departmentId, filters.subgroupId, myTickets, activeTab, dateRange]);
+  }, [page, sort.field, sort.dir, search, filters.status, filters.priority, filters.departmentId, filters.subgroupId, myTickets, activeTab, dateRange,urlParams]);
 
   const toggleSort = (field) => {
     const next = sort.field === field
@@ -185,6 +186,7 @@ export default function TicketList({ myTickets }) {
         </Link>}
       </div>
 
+      {user?.role==='admin'&&!myTickets&&<div className="tl-tabs"><button className={`tl-tab${urlParams.get('needsRouting')!=='true'?' tl-tab-active':''}`} onClick={()=>{setPage(1);setUrlParams({});}}>All tickets</button><button className={`tl-tab${urlParams.get('needsRouting')==='true'?' tl-tab-active':''}`} onClick={()=>{setPage(1);setFilters({status:'',priority:'',departmentId:'',subgroupId:''});setUrlParams({needsRouting:'true'});}}>Needs routing</button></div>}
       {myTickets && hasGroups && can('tickets.group_view') && (
         <div className="tl-tabs">
           <button
@@ -292,8 +294,8 @@ export default function TicketList({ myTickets }) {
             )}
             {tickets.map(t => (
               <tr key={t.id}>
-                <td><Link to={`/tickets/${t.id}`} className="ticket-id-link">{t.ticket_number}</Link></td>
-                <td className="td-department">{[t.department_name,t.sub_department_name].filter(Boolean).join(' / ') || '—'}</td>
+                <td><Link to={`/tickets/${t.id}`} className="ticket-id-link">{t.ticket_number}</Link>{t.details_incomplete&&<small style={{display:'block',color:'#92400e',marginTop:4}}>Details incomplete</small>}</td>
+                <td className="td-department">{[t.department_name,t.sub_department_name].filter(Boolean).join(' / ') || (t.routing_needs_review?'Needs routing':'—')}</td>
                 <td>{t.customer_name}</td>
                 <td><PriorityBadge priority={t.priority} /></td>
                 <td><StatusBadge status={t.status} /></td>

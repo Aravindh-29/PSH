@@ -12,13 +12,7 @@ function fireEmail(fn) {
 const VALID_STATUSES = ['NEW','OPEN','ASSIGNED','IN_PROGRESS','WORK_IN_PROGRESS','PENDING','ON_HOLD','RESOLVED','CLOSED','REOPENED','CANCELLED'];
 const VALID_PRIORITIES = ['LOW','MEDIUM','HIGH','CRITICAL'];
 
-async function logAudit(client, ticketId, userId, action, fieldName, oldValue, newValue, ipAddress) {
-  await client.query(
-    `INSERT INTO ticket_audit_logs (ticket_id, user_id, action, field_name, old_value, new_value, ip_address)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-    [ticketId, userId, action, fieldName || null, oldValue ? String(oldValue) : null, newValue ? String(newValue) : null, ipAddress || null]
-  );
-}
+const logAudit=require('../services/ticketAudit');
 
 async function list(req, res, next) {
   try {
@@ -27,6 +21,8 @@ async function list(req, res, next) {
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     const conditions = ['t.deleted_at IS NULL'];
+    if(req.query.needsRouting==='true'){if(!req.access.admin)return res.status(403).json({message:'Only Admin can access unrouted email tickets.'});conditions.push("t.source='EMAIL' AND t.assignment_group_id IS NULL");}
+    if(req.query.incomplete==='true')conditions.push("t.source='EMAIL' AND jsonb_array_length(servit_email_missing_details(t))>0");
     const params = [];
 
     if(userTickets){
@@ -67,7 +63,8 @@ async function list(req, res, next) {
     params.push(offset);
 
     const dataResult = await pool.query(`
-      SELECT t.id, t.created_by, t.assigned_to, t.ticket_owner, t.assignment_group_id, t.subgroup_id, t.ticket_number, t.short_description, t.customer_name, t.status, t.priority,
+      SELECT t.id, t.created_by, t.assigned_to, t.ticket_owner, t.assignment_group_id, t.subgroup_id, t.ticket_number, t.short_description, t.customer_name, t.status, t.priority,t.source,t.routing_needs_review,
+             CASE WHEN t.source='EMAIL' THEN jsonb_array_length(servit_email_missing_details(t))>0 ELSE FALSE END AS details_incomplete,
              t.created_at, t.updated_at,
              COALESCE(t.module_text, m.name) AS module_name, c.name AS category_name,
              COALESCE(department.name,t.assignment_group) AS department_name, sub_department.name AS sub_department_name,
@@ -102,115 +99,8 @@ async function create(req, res, next) {
   try {
     await client.query('BEGIN');
     const isAdmin = req.session.role === 'admin' || !!req.authorizedTicket;
-    const {
-      customerName, moduleText, categoryId, subcategoryId = null, shortDescription, description,
-      priority = 'MEDIUM', impact = 'MEDIUM', urgency = 'MEDIUM',
-      customData = {},
-      assignmentGroup = null,
-      assignmentGroupId = null, subgroupId = null,
-      typeId = null,
-      classification = null,
-    } = req.body;
-
-    // Employees always create as NEW; admins can set any valid status
-    const rawStatus = req.body.status || 'NEW';
-    const status = (!isAdmin || !VALID_STATUSES.includes(rawStatus)) ? 'NEW' : rawStatus;
-
-    // assignedTo → assigned_to column; ticket_owner is always the creating user
-    const rawAssigned = req.body.assignedTo || null;
-
-    if (!customerName || !shortDescription || !description || !moduleText || !categoryId) {
-      return res.status(400).json({ success: false, message: 'Missing required fields' });
-    }
-    if (!VALID_PRIORITIES.includes(priority)) {
-      return res.status(400).json({ success: false, message: 'Invalid priority' });
-    }
-
-    const template = await resolveTicketTemplate(client, req.body);
-
-    let ticketNumber;
-    if (typeId) {
-      const typeRow = await client.query('SELECT prefix FROM ticket_types WHERE id = $1', [typeId]);
-      const prefix = typeRow.rows[0]?.prefix || 'TKT';
-      // Single atomic upsert — safe under any level of concurrency; no advisory lock needed
-      const ctrRes = await client.query(
-        `INSERT INTO ticket_type_counters (type_id, counter) VALUES ($1, 1)
-         ON CONFLICT (type_id) DO UPDATE SET counter = ticket_type_counters.counter + 1
-         RETURNING counter`,
-        [typeId]
-      );
-      ticketNumber = `${prefix}${String(ctrRes.rows[0].counter).padStart(6, '0')}`;
-    } else {
-      const seqResult = await client.query(`SELECT nextval('ticket_number_seq') AS seq`);
-      ticketNumber = `PSH${String(seqResult.rows[0].seq).padStart(6, '0')}`;
-    }
-
-    // Resolve assignment group name from assignmentGroupId if provided
-    let resolvedGroupName = assignmentGroup || null;
-    if (assignmentGroupId) {
-      const gr = await client.query('SELECT name FROM assignment_groups WHERE id = $1', [assignmentGroupId]);
-      if (gr.rows[0]) resolvedGroupName = gr.rows[0].name;
-    }
-
-    const result = await client.query(`
-      INSERT INTO tickets (ticket_number, customer_name, module_text, category_id, subcategory_id,
-        short_description, description, status, priority, impact, urgency, assigned_to,
-        assignment_group, assignment_group_id, ticket_owner, created_by, updated_by,
-        type_id, classification, custom_data, template_id, template_snapshot, template_values, subgroup_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15,$15,$16,$17,$18,$19,$20,$21,$22)
-      RETURNING *
-    `, [ticketNumber, customerName, moduleText, categoryId, subcategoryId || null,
-        shortDescription, description,
-        status, priority, impact, urgency,
-        rawAssigned || null,
-        resolvedGroupName || null,
-        assignmentGroupId || null,
-        req.session.userId,
-        typeId || null, classification || null,
-        JSON.stringify(customData), template.id, JSON.stringify(template.snapshot), JSON.stringify(template.values), subgroupId || null]);
-
-    const ticket = result.rows[0];
-    await logAudit(client, ticket.id, req.session.userId, 'CREATED', null, null, ticketNumber, req.ip);
-
-    // Log each initial field value so the audit trail shows what the ticket was created with
-    const initialFields = [
-      { field: 'status',           value: status },
-      { field: 'priority',         value: priority },
-      { field: 'impact',           value: impact },
-      { field: 'urgency',          value: urgency },
-      { field: 'customer_name',    value: customerName },
-      { field: 'module_text',      value: moduleText },
-      { field: 'short_description',value: shortDescription },
-      ...(rawAssigned      ? [{ field: 'assigned_to',      value: rawAssigned }]      : []),
-      ...(assignmentGroup  ? [{ field: 'assignment_group', value: assignmentGroup }]  : []),
-      ...(classification   ? [{ field: 'classification',   value: classification }]   : []),
-      ...(typeId           ? [{ field: 'type_id',          value: typeId }]           : []),
-    ];
-    for (const { field, value } of initialFields) {
-      await logAudit(client, ticket.id, req.session.userId, 'CREATED', field, null, value, req.ip);
-    }
-
-    if (template.id) await logAudit(client, ticket.id, req.session.userId, 'CREATED', 'template', null, JSON.stringify({ ...template.snapshot, values: template.values }), req.ip);
-
-    // Trigger SLA for initial status (treat creation as transitioning from null → status)
-    await slaService.onStatusChange(client, ticket.id, null, status);
-
-    // Notify the assignee when a ticket is created with an immediate assignment
-    if (rawAssigned && rawAssigned !== req.session.userId) {
-      const creatorRow = await client.query('SELECT full_name FROM users WHERE id = $1', [req.session.userId]);
-      const creatorName = creatorRow.rows[0]?.full_name || 'Someone';
-      await client.query(
-        `INSERT INTO notifications (user_id, type, title, message, ticket_id, ticket_number)
-         VALUES ($1, 'TICKET_ASSIGNED', $2, $3, $4, $5)`,
-        [
-          rawAssigned,
-          `Ticket assigned to you`,
-          `${creatorName} assigned ${ticketNumber} to you — ${shortDescription || ''}`,
-          ticket.id,
-          ticketNumber,
-        ]
-      );
-    }
+    const ticket=await require('../services/ticketWrites').createTicketInTransaction(client,req.body,req.session.userId,{isAdmin,ip:req.ip});
+    const rawAssigned=req.body.assignedTo||null,ticketNumber=ticket.ticket_number;
 
     await client.query('COMMIT');
 
@@ -232,7 +122,7 @@ async function create(req, res, next) {
     }
 
     logger.info(`Ticket created: ${ticketNumber} by ${req.session.username}`);
-    res.status(201).json({ success: true, ticket });
+    res.status(201).json({ success: true, ticket, submissionToken:require('../access/ticketSubmission').issue(ticket.id,req.session.userId) });
   } catch (err) {
     await client.query('ROLLBACK');
     if (err.status === 400) return res.status(400).json({ success: false, message: err.message });
@@ -246,7 +136,8 @@ async function getOne(req, res, next) {
   try {
     const { id } = req.params;
     const result = await pool.query(`
-      SELECT t.*,
+      SELECT t.*,CASE WHEN t.source='EMAIL' THEN servit_email_missing_details(t) ELSE '[]'::jsonb END AS missing_details,
+             CASE WHEN t.source='EMAIL' THEN jsonb_array_length(servit_email_missing_details(t))>0 ELSE FALSE END AS details_incomplete,
              COALESCE(t.module_text, m.name) AS module_name, c.name AS category_name,
              sc.name AS subcategory_name, ag.name AS assignment_group_name, sg.name AS subgroup_name,
              tt.name AS type_name,
@@ -292,8 +183,8 @@ async function getOne(req, res, next) {
 
     const [attachments, comments, auditRaw] = await Promise.all([
       pool.query('SELECT id, file_name, mime_type, file_size, uploaded_by, uploaded_at, (SELECT full_name FROM users WHERE id = uploaded_by) AS uploader_name FROM ticket_attachments WHERE ticket_id = $1 ORDER BY uploaded_at DESC', [id]),
-      pool.query('SELECT tc.*, u.full_name AS author_name, u.role AS author_role, (SELECT name FROM access_roles WHERE key=u.role) AS author_role_name FROM ticket_comments tc JOIN users u ON tc.user_id = u.id WHERE tc.ticket_id = $1 ORDER BY tc.created_at ASC', [id]),
-      pool.query('SELECT tal.*, u.full_name AS user_name, u.username AS user_username FROM ticket_audit_logs tal LEFT JOIN users u ON tal.user_id = u.id WHERE tal.ticket_id = $1 ORDER BY tal.created_at ASC', [id]),
+      pool.query("SELECT tc.*, u.full_name AS author_name, u.role AS author_role, CASE WHEN u.is_system THEN 'System' ELSE (SELECT name FROM access_roles WHERE key=u.role) END AS author_role_name, em.sender AS email_sender,em.received_at AS email_received_at,em.thread_id AS email_thread_id,box.address AS email_mailbox FROM ticket_comments tc JOIN users u ON tc.user_id = u.id LEFT JOIN incoming_email_messages em ON em.comment_id=tc.id AND em.status='processed' LEFT JOIN email_automation_mailboxes box ON box.id=em.mailbox_id WHERE tc.ticket_id = $1 ORDER BY tc.created_at ASC", [id]),
+      pool.query(`SELECT tal.*, COALESCE(tal.user_id::text,'system')||':'||tal.created_at::text AS activity_group, to_char(tal.created_at AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS.US') AS activity_order, u.full_name AS user_name, u.username AS user_username FROM ticket_audit_logs tal LEFT JOIN users u ON tal.user_id = u.id WHERE tal.ticket_id = $1 ORDER BY tal.created_at ASC`, [id]),
     ]);
 
     // Resolve UUID values in audit log to human-readable names
@@ -334,7 +225,7 @@ async function getOne(req, res, next) {
       success: true,
       ticket,
       attachments: ['attachments.preview','attachments.download','attachments.upload'].some(key=>recordCan(req,key,ticket)) ? attachments.rows : [],
-      comments: recordCan(req,'comments.view',ticket) ? comments.rows : [],
+      comments: recordCan(req,'comments.view',ticket) ? comments.rows.map(c=>({...c,...(c.email_mailbox?{email_gmail_url:require('../services/emailProcessing').gmailUrl({address:c.email_mailbox},c.email_thread_id)}:{})})) : [],
       audit: recordCan(req,'tickets.history',ticket) || recordCan(req,'audit.view',ticket) ? audit : [],
     });
   } catch (err) {
@@ -353,6 +244,12 @@ async function update(req, res, next) {
       return res.status(404).json({ success: false, message: 'Ticket not found' });
     }
     const ticket = existing.rows[0];
+    if(ticket.source==='EMAIL'){
+      const body=req.body,customData={...ticket.custom_data,...body.customData};
+      const value=(key,column)=>body[key]!==undefined?body[key]:ticket[column];
+      const error=await require('../services/emailProcessing').fieldsError(client,{customerName:value('customerName','customer_name'),moduleText:value('moduleText','module_text'),categoryId:value('categoryId','category_id'),subcategoryId:value('subcategoryId','subcategory_id'),typeId:value('typeId','type_id'),priority:value('priority','priority'),impact:value('impact','impact'),urgency:value('urgency','urgency'),assignmentGroupId:value('assignmentGroupId','assignment_group_id'),status:value('status','status'),shortDescription:value('shortDescription','short_description'),description:value('description','description'),customData},{allowMissing:true});
+      if(error)throw Object.assign(new Error(error),{status:400});
+    }
     const isAdmin = req.session.role === 'admin' || !!req.authorizedTicket;
     if (!isAdmin && ticket.created_by !== req.session.userId && ticket.assigned_to !== req.session.userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
@@ -392,10 +289,10 @@ async function update(req, res, next) {
     for (const [bodyKey, dbCol] of Object.entries(fieldMap)) {
       if (req.body[bodyKey] !== undefined) {
         if (dbCol === 'status' && !VALID_STATUSES.includes(req.body[bodyKey])) continue;
-        if (dbCol === 'priority' && !VALID_PRIORITIES.includes(req.body[bodyKey])) continue;
+        if (dbCol === 'priority' && !VALID_PRIORITIES.includes(req.body[bodyKey]) && !(ticket.source==='EMAIL'&&[null,''].includes(req.body[bodyKey]))) continue;
         // Normalize empty string → null for UUID columns to avoid cast errors
         const raw = req.body[bodyKey];
-        const newVal = (UUID_COLS.has(dbCol) && (raw === '' || raw === undefined)) ? null : raw;
+        const newVal = ((UUID_COLS.has(dbCol) && (raw === '' || raw === undefined)) || (ticket.source==='EMAIL'&&['customer_name','module_text','priority','impact','urgency'].includes(dbCol)&&raw==='')) ? null : raw;
         const oldVal = ticket[dbCol] ?? null;
         if (oldVal !== newVal) {
           params.push(newVal);
@@ -501,7 +398,7 @@ async function update(req, res, next) {
       if(capturedWorkNote) {
         const ids=[...new Set([capturedTicket.created_by,capturedTicket.assigned_to].filter(uid=>uid&&uid!==actorId))];
         if(ids.length) {
-          const recipients=await pool.query('SELECT email FROM users WHERE id=ANY($1)',[ids]);
+          const recipients=await pool.query('SELECT email FROM users WHERE id=ANY($1) AND NOT is_system',[ids]);
           await emailService.notifyCommentAdded(capturedTicket,capturedWorkNote,actorName,'WORK_NOTE',recipients.rows.map(row=>row.email));
         }
       }
@@ -509,7 +406,7 @@ async function update(req, res, next) {
       const statusChange = capturedChanges.find(c => c.field === 'status');
       if (statusChange) {
         const recipientIds = [capturedTicket.created_by, capturedTicket.assigned_to].filter(Boolean);
-        const emailsRow = await pool.query('SELECT email FROM users WHERE id = ANY($1)', [recipientIds]);
+        const emailsRow = await pool.query('SELECT email FROM users WHERE id = ANY($1) AND NOT is_system', [recipientIds]);
         const emails = emailsRow.rows.map(r => r.email);
         if (statusChange.new === 'RESOLVED' || statusChange.new === 'CLOSED') {
           await emailService.notifyTicketResolved({ ...capturedTicket, status: statusChange.new }, actorName, emails);
@@ -594,7 +491,7 @@ async function addComment(req, res, next) {
       const actorName = actorRow.rows[0]?.full_name || 'Someone';
       const recipientIds = [tk.created_by, tk.assigned_to].filter(Boolean).filter(uid => uid !== actorId);
       if (recipientIds.length) {
-        const emailsRow = await pool.query('SELECT email FROM users WHERE id = ANY($1)', [recipientIds]);
+        const emailsRow = await pool.query('SELECT email FROM users WHERE id = ANY($1) AND NOT is_system', [recipientIds]);
         await emailService.notifyCommentAdded(tk, capturedBody, actorName, capturedType, emailsRow.rows.map(r => r.email));
       }
     });

@@ -22,6 +22,7 @@ import AdminModules from './pages/Admin/AdminModules';
 import Departments from './pages/Admin/Departments';
 import SSOConfig from './pages/Admin/SSOConfig';
 import EmailConfig from './pages/Admin/EmailConfig';
+import MCPConfig from './pages/Admin/MCPConfig';
 import AuditLogs from './pages/Audit/AuditLogs';
 import Reports from './pages/Reports/Reports';
 import MyQuery from './pages/MyQuery/MyQuery';
@@ -78,6 +79,7 @@ function AppRoutes() {
         <Route path="audit-logs" element={<RequirePermission permission={'audit.view'}><AuditLogs /></RequirePermission>} />
         <Route path="admin/sso" element={<RequirePermission permission={'sso.view'}><SSOConfig /></RequirePermission>} />
         <Route path="admin/email" element={<RequirePermission permission={'email.view'}><EmailConfig /></RequirePermission>} />
+        <Route path="admin/mcp" element={user?.role==='admin'?<MCPConfig/>:<AccessDenied/>} />
         <Route path="reports" element={<RequirePermission permission="reports.view"><Reports /></RequirePermission>} />
         <Route path="my-query" element={<RequirePermission permission="query.view"><MyQuery /></RequirePermission>} />
         <Route path="knowledge-base" element={<RequirePermission permission="kb.view"><KnowledgeBase /></RequirePermission>} />

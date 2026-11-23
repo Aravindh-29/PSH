@@ -1,3 +1,4 @@
+import useTicketAssignees from '../../hooks/useTicketAssignees';
 import useAccess from '../../hooks/useAccess';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -118,6 +119,8 @@ export default function CreateTicket() {
     setForm(p => ({ ...p, subcategoryId: '' }));
   }, [form.categoryId]);
 
+  const assignees=useTicketAssignees(form.assignmentGroupId,form.subgroupId);
+
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const handleFileSelect = (e) => {
@@ -167,24 +170,22 @@ export default function CreateTicket() {
         subgroupId: form.subgroupId || null,
         subcategoryId: form.subcategoryId || undefined,
         customData,
+        workNote:workNote.trim(),
         ...templateState.payload,
       };
       const res = await api.post('/tickets', payload);
       const { id: ticketId, ticket_number } = res.data.ticket;
-      if (workNote.trim()) {
-        await api.post(`/tickets/${ticketId}/comments`, { body: workNote.trim(), type: 'WORK_NOTE' });
-      }
       if (pendingFiles.length > 0) {
         const initQ = pendingFiles.map((f, i) => ({ id: i, name: f.name, progress: 0, status: 'uploading' }));
         setUploadProgress(initQ);
-        const result=await uploadTicketFiles(ticketId,pendingFiles,(index,update)=>setUploadProgress(prev=>prev.map(q=>q.id===index?{...q,...update}:q)));
+        const result=await uploadTicketFiles(ticketId,pendingFiles,(index,update)=>setUploadProgress(prev=>prev.map(q=>q.id===index?{...q,...update}:q)),res.data.submissionToken);
         toast.success(`Ticket ${ticket_number} created. ${result.attachments.length} file(s) uploaded.`);
         result.errors.forEach(message=>toast.error(message));
-        if(result.errors.length)toast.error('Retry failed files from the ticket Edit page.');
-        setTimeout(()=>navigate(`/tickets/${ticketId}${result.errors.length?'/edit':''}`),1200);
+        if(result.errors.length)toast.error(form.routingOutside?'Ask the receiving team to attach any failed files.':'Retry failed files from the ticket Edit page.');
+        setTimeout(()=>navigate(form.routingOutside?'/tickets':`/tickets/${ticketId}${result.errors.length?'/edit':''}`),1200);
       } else {
         toast.success(`Ticket ${ticket_number} created!`);
-        navigate(`/tickets/${ticketId}`);
+        navigate(form.routingOutside?'/tickets':`/tickets/${ticketId}`);
       }
       refetchNotifications();
     } catch (err) {
@@ -208,9 +209,7 @@ export default function CreateTicket() {
 
   const selectedGroup = form.assignmentGroupId ? groups.find(g => g.id === (form.subgroupId || form.assignmentGroupId)) : null;
   const groupMemberIds = selectedGroup ? new Set((selectedGroup.members || []).map(m => String(m.id))) : null;
-  const userOpts = users
-    .filter(u => !groupMemberIds || groupMemberIds.has(String(u.id)))
-    .map(u => ({ value: String(u.id), label: u.full_name, sublabel: `@${u.username} · ${u.email}`, searchExtra: `${u.username} ${u.email}` }));
+  const userOpts = assignees.options;
 
   const categoryOpts = categories.map(c => ({ value: String(c.id), label: c.name }));
   const typeOpts     = ticketTypes.map(t => ({ value: String(t.id), label: t.name }));
@@ -410,20 +409,22 @@ export default function CreateTicket() {
                   </span>
                 </div>
               </div>
-              <TicketOrganization form={form} setForm={setForm}/>
+              <TicketOrganization form={form} setForm={setForm} allowOtherDepartments/>
               <div className="ip-row">
                 <div className="ip-pair" />
                 <div className="ip-pair">
                   <span className="ip-lc">Assign to</span>
                   <span className="ip-vc ip-input-cell">
                     <SearchSelect
-                      disabled={!can('tickets.assign')}
+                      disabled={!can('tickets.assign')||assignees.loading||!form.assignmentGroupId}
                       value={form.assignedTo}
                       onChange={v => set('assignedTo', v)}
                       options={[{ value: '', label: 'Unassigned' }, ...userOpts]}
                       placeholder="Unassigned"
                       searchPlaceholder="Search user..."
                     />
+                    {assignees.loading&&<small role="status">Loading assignees…</small>}
+                    {assignees.error&&<small role="alert" style={{color:"#b91c1c"}}>{assignees.error}</small>}
                   </span>
                 </div>
               </div>

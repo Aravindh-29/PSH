@@ -4,6 +4,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const SEED_ARTICLES = [
   [
+    "Connect Gmail to SERVIT MCP - Complete Google Cloud Setup Guide",
+    "How-To Guide",
+    "12-gmail-mcp-connection-setup.md",
+    "gmail-mcp-connection-setup"
+  ],
+  [
     "Gmail Ticket Automation - Message ID and Thread ID Matching",
     "How-To Guide",
     "11-gmail-ticket-matching.md",

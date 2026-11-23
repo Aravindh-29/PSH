@@ -12,13 +12,13 @@ export function selectAttachments(files,existing=[]){
 }
 
 // One file per request stays within the deployed 30 MB proxy limit and isolates failures.
-export async function uploadTicketFiles(ticketId,files,onProgress=()=>{}){
+export async function uploadTicketFiles(ticketId,files,onProgress=()=>{},submissionToken){
  const attachments=[],errors=[];
  for(const [index,file] of files.entries()){
   try{
    if(file.size>MAX_ATTACHMENT_SIZE)throw new Error('Too large (max 25 MB)');
    const body=new FormData();body.append('files',file);
-   const {data}=await api.post(`/tickets/${ticketId}/attachments`,body,{onUploadProgress:event=>{
+   const {data}=await api.post(`/tickets/${ticketId}/attachments`,body,{...(submissionToken?{headers:{'X-Ticket-Submission':submissionToken}}:{}),onUploadProgress:event=>{
     if(event.total){const progress=Math.round(event.loaded*100/event.total);onProgress(index,{progress,status:progress<100?'uploading':'processing'});}
    }});
    if(!data.success||!data.attachments?.length||data.errors?.length)throw new Error(data.errors?.join('; ')||data.message||'The file was not saved.');

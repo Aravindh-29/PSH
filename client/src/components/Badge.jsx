@@ -18,5 +18,5 @@ export function StatusBadge({ status }) {
 
 export function PriorityBadge({ priority }) {
   const color = PRIORITY_COLORS[priority] || 'gray';
-  return <span className={`badge badge-priority badge-${color}`}>{priority}</span>;
+  return <span className={`badge badge-priority badge-${color}`}>{priority||'Not set'}</span>;
 }

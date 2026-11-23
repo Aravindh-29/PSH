@@ -6,18 +6,26 @@ CREATE TABLE IF NOT EXISTS ticket_inbox_receipts (
  opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
  PRIMARY KEY(user_id,ticket_id)
 );
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS inbox_event TEXT NOT NULL DEFAULT 'ARRIVED';
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS inbox_event_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 CREATE OR REPLACE FUNCTION servit_ticket_inbox_revision() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
  IF (NEW.assigned_to,NEW.assignment_group_id,NEW.subgroup_id) IS DISTINCT FROM
     (OLD.assigned_to,OLD.assignment_group_id,OLD.subgroup_id) THEN
   NEW.inbox_revision:=OLD.inbox_revision+1;
+  NEW.inbox_event:=CASE WHEN NEW.assigned_to IS NULL THEN 'ROUTED' ELSE 'ASSIGNED' END;
+  NEW.inbox_event_at:=NOW();
+ ELSIF OLD.status='CLOSED' AND NEW.status IN ('IN_PROGRESS','REOPENED') THEN
+  NEW.inbox_revision:=OLD.inbox_revision+1;
+  NEW.inbox_event:='REOPENED';
+  NEW.inbox_event_at:=NOW();
  ELSE
   NEW.inbox_revision:=OLD.inbox_revision;
  END IF;
  RETURN NEW;
 END $$;
 DROP TRIGGER IF EXISTS ticket_inbox_revision ON tickets;
-CREATE TRIGGER ticket_inbox_revision BEFORE UPDATE OF assigned_to,assignment_group_id,subgroup_id
+CREATE TRIGGER ticket_inbox_revision BEFORE UPDATE OF assigned_to,assignment_group_id,subgroup_id,status
  ON tickets FOR EACH ROW EXECUTE FUNCTION servit_ticket_inbox_revision();
 CREATE INDEX IF NOT EXISTS tickets_inbox_assignee ON tickets(assigned_to,updated_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS tickets_inbox_unassigned ON tickets(assignment_group_id,subgroup_id,updated_at DESC)

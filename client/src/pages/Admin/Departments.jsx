@@ -1,3 +1,4 @@
+import DepartmentFindings from '../../components/DepartmentFindings';
 import React,{useEffect,useState} from 'react';
 import {Link,useNavigate,useParams} from 'react-router-dom';
 import {Plus,Users,Building2,ArrowLeft,ArrowRight,MapPin,Edit2,Trash2,Save,Search,X,AlertCircle,CheckCircle2} from 'lucide-react';
@@ -71,7 +72,7 @@ export default function Departments(){
    </Link>)}{!visibleDepartments.length&&<div className="org-members-empty"><Building2 size={28}/><h3>{departments.length?'No matching departments':'No departments available'}</h3><p>{departments.length?'Try another department name or region.':admin?'Create a department to get started.':'Ask Admin to assign management access to you.'}</p></div>}</div>
  </section>:!error&&current&&<>
  <div className="rbac-stats">{[['Region',current.region_name||'Not configured'],[current.parent_id?'Country':'Sub Departments',current.country_name||children.length],['Members',members.length],['Status',current.is_active?'Active':'Inactive']].map(([label,value])=><div className="rbac-stat" key={label}><div><span>{label}</span><strong className="org-stat-value">{value}</strong></div></div>)}</div>
- <div className="rbac-tabs" role="tablist">{['overview',...!current.parent_id?['subgroups']:[],'members'].map(t=><button role="tab" aria-selected={tab===t} className={tab===t?'selected':''} key={t} onClick={()=>setTab(t)}>{t==='subgroups'?'Sub Departments':t[0].toUpperCase()+t.slice(1)}</button>)}</div>
+ <div className="rbac-tabs" role="tablist">{['overview',...!current.parent_id?['subgroups']:[],'members','findings'].map(t=><button role="tab" aria-selected={tab===t} className={tab===t?'selected':''} key={t} onClick={()=>setTab(t)}>{t==='subgroups'?'Sub Departments':t==='findings'?'Department Findings':t[0].toUpperCase()+t.slice(1)}</button>)}</div>
  {tab==='overview'&&<><div className="rbac-card"><h3>{current.name}</h3><p>{current.description||'No description provided.'}</p><p>{current.parent_id?'Sub Department access covers only this sub department.':'Whole-department membership and management include all current and future sub departments.'}</p>{!current.region_id&&<p className="rbac-note">Admin must select a Region before sub departments can be created.</p>}</div>
  <section className="rbac-card org-managers-panel" aria-label="Department managers">
    <div className="org-members-toolbar"><div><h3>Managers <span className="org-member-count">{(detail.managers||[]).length}</span></h3><p>See who manages this {current.parent_id?'sub department':'department'} and their responsibility.</p></div></div>
@@ -96,6 +97,8 @@ export default function Departments(){
      <span className="org-subgroup-open">Open<ArrowRight size={14}/></span>
    </Link>)}{!visibleSubgroups.length&&<div className="org-members-empty"><Users size={28}/><h3>{children.length?'No matching sub departments':'No sub departments yet'}</h3><p>{children.length?'Try another sub department name or country.':'Create a sub department to organize teams within this department.'}</p></div>}</div>
  </section>}
+
+ {tab==='findings'&&<DepartmentFindings key={current.id} department={current} canEdit={admin||current.full_control&&can('departments.view')}/> }
 
  {tab==='members'&&<section className="rbac-card org-members-panel" aria-label="Department members">
    <div className="org-members-toolbar">

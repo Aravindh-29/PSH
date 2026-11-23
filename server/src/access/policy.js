@@ -1,5 +1,5 @@
 const { uuid, scopePredicate } = require('./context');
-const {eligibleAssigneeSQL}=require('./ticketAssignment');
+const {eligibleAssigneeSQL,assignmentScopeSQL}=require('./ticketAssignment');
 const forbidden = () => Object.assign(new Error("You don't have permission to perform this action."), { status: 403, code: 'PERMISSION_DENIED' });
 const can = (access, key) => !!(access.admin || access.permissions[key]);
 function need(req, key) { if (!can(req.access,key)) throw forbidden(); }
@@ -54,6 +54,7 @@ function routePermission(req) {
   if (area === 'notifications') return read ? 'notifications.view' : 'notifications.read';
   if (area === 'subcategories') return read ? null : method === 'POST' ? 'subcategories.create' : method === 'DELETE' ? 'subcategories.delete' : 'subcategories.edit';
   if (area === 'config') {
+    if(p==='/admin/mcp'||p.startsWith('/admin/mcp/')){if(!req.access.admin)throw forbidden();return null;}
     if(method==='PUT' && p.startsWith('/admin/')) return null;
     if (!p.startsWith('/admin/')) return null; // Ticket form lookups; not management endpoints.
     const name = p.split('/')[2], group = { 'ticket-types':'types', 'reset-fields':'fields', templates:'templates' }[name] || name;
@@ -104,6 +105,7 @@ async function authorize(req, pool) {
     const result = await pool.rawQuery('SELECT * FROM tickets WHERE id=$1 AND deleted_at IS NULL',[ticketId]);
     if (!result.rows[0]) throw Object.assign(new Error('Ticket not found'),{status:404});
     const ticket = result.rows[0]; req.authorizedTicket = ticket;
+    if(area==='tickets'&&req.method==='POST'&&p.endsWith('/attachments')&&ticket.created_by===access.userId&&require('./ticketSubmission').valid(req.headers['x-ticket-submission'],ticketId,access.userId))access.submissionTicketId=ticketId;
     const requireRecord = async key => {
       need(req,key);
       const result = await pool.rawQuery(`SELECT 1 FROM tickets t WHERE t.id=$1 AND (${scopePredicate(access,key)}) AND (${scopePredicate(access,'tickets.view')})`,[ticketId]);
@@ -111,6 +113,13 @@ async function authorize(req, pool) {
     };
     await requireRecord(permission || 'tickets.view');
     if (area === 'tickets' && req.method === 'PUT') {
+      await requireRecord('tickets.edit');
+      const rerouted=['assignmentGroupId','subgroupId'].some(key=>req.body[key]!==undefined&&changed(req.body[key],ticket[columns[key]]));
+      if(rerouted){
+        if(!req.body.workNote?.trim())throw Object.assign(new Error('A work note is required when transferring a ticket to another department or sub department.'),{status:400});
+        // A destination selection clears the old assignee unless a new one was explicitly chosen.
+        if(req.body.assignedTo===undefined)req.body.assignedTo=null;
+      }
       if(req.body.workNote?.trim()) await requireRecord('comments.work_note');
       if((req.body.status!==undefined&&changed(req.body.status,ticket.status)||req.body.assignedTo!==undefined&&changed(req.body.assignedTo,ticket.assigned_to))&&!req.body.workNote?.trim()) throw Object.assign(new Error('A work note is required when changing status or assignment.'),{status:400});
       for (const [bodyKey,column] of Object.entries(columns)) if (req.body[bodyKey] !== undefined && changed(req.body[bodyKey],ticket[column])) await requireRecord(`tickets.${actionFor[bodyKey] || 'edit'}`);
@@ -120,6 +129,7 @@ async function authorize(req, pool) {
   }
   if (area === 'tickets' && req.method === 'POST' && p === '/') {
     if (req.body.templateId) need(req,'tickets.template');
+    if(req.body.workNote?.trim())need(req,'comments.work_note');
     if (req.body.assignedTo) need(req,'tickets.assign');
     if (req.body.ticketOwner && req.body.ticketOwner !== access.userId) throw forbidden();
     if (req.body.status && req.body.status !== 'NEW') need(req,'tickets.status');
@@ -135,13 +145,12 @@ async function authorize(req, pool) {
       if(!uuid(destination))throw Object.assign(new Error('Select a department.'),{status:400});
       const rows=await pool.rawQuery(`SELECT g.id FROM assignment_groups g LEFT JOIN assignment_groups s ON s.id=$2 AND s.parent_id=g.id AND s.is_active WHERE g.id=$1 AND g.parent_id IS NULL AND g.is_active AND ($2::uuid IS NULL OR s.id IS NOT NULL)`,[destination,subgroup||null]);
       if(!rows.rowCount)throw Object.assign(new Error('Select an active department and a valid sub department.'),{status:400});
-      if(!access.admin){
-        const eligible=[destination,...subgroup?[subgroup]:[]];
-        const scopes=[...(access.memberGroups||[]),...access.managedGroups];
-        if(!eligible.some(id=>scopes.includes(id)))throw forbidden();
+      if(current&&moved){
+        const destinationName=await pool.rawQuery('SELECT name FROM assignment_groups WHERE id=$1',[destination]);
+        req.body.assignmentGroup=destinationName.rows[0].name;
       }
       if(assignee){
-        const member=await pool.rawQuery(`SELECT 1 FROM users u WHERE u.id=$1 AND (${eligibleAssigneeSQL('u','$2::uuid[]')})`,[assignee,[destination,...subgroup?[subgroup]:[]]]);
+        const member=await pool.rawQuery(`SELECT 1 FROM users u WHERE u.id=$1 AND (${eligibleAssigneeSQL('u',assignmentScopeSQL('$2::uuid','$3::uuid'))})`,[assignee,destination,subgroup||null]);
         if(!member.rowCount)throw Object.assign(new Error('Assign an active member or Manager responsible for this department or sub department.'),{status:400});
       }
     }

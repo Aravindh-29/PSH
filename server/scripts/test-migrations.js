@@ -33,9 +33,20 @@ async function main() {
     await fresh.query(sql);
     check('Standalone schema includes fixed-role application permissions', Object.keys((await fresh.query("SELECT permissions FROM access_roles WHERE key='admin'")).rows[0].permissions).length === catalog.filter(p=>!p.key.startsWith('roles.')).length);
     await migrate(fresh); await migrate(fresh);
-    for (const table of ['ticket_inbox_receipts', 'ticket_templates', 'organization_branding', 'access_roles', 'user_managed_groups', 'access_role_history', 'access_migrations', 'email_outbox', 'kb_articles', 'session', 'organization_regions', 'organization_countries', 'organization_settings']) {
+    for (const table of ['ticket_inbox_receipts', 'ticket_templates', 'organization_branding', 'access_roles', 'user_managed_groups', 'access_role_history', 'access_migrations', 'email_outbox', 'kb_articles', 'session', 'organization_regions', 'organization_countries', 'organization_settings', 'department_findings', 'email_automation_mailboxes', 'incoming_email_messages', 'incoming_email_threads']) {
       check('Fresh install contains ' + table, !!(await fresh.query('SELECT to_regclass($1) AS name', [table])).rows[0].name);
     }
+    const systemId=(await fresh.query("INSERT INTO users(username,email,full_name,password_hash,role,is_active,is_system) VALUES('system','system@example.test','System','disabled','employee',FALSE,TRUE) RETURNING id")).rows[0].id;
+    const readers=(await fresh.query("INSERT INTO users(username,email,full_name,role) VALUES('reader_before','before@example.test','Before','employee'),('reader_after','after@example.test','After','employee') RETURNING id")).rows;
+    const inboxDept=(await fresh.query("INSERT INTO assignment_groups(name) VALUES('Inbox migration team') RETURNING id")).rows[0].id;
+    const repairedTicket=(await fresh.query("INSERT INTO tickets(ticket_number,customer_name,short_description,description,created_by,assigned_to,assignment_group_id,status,source) VALUES('EMAIL_REPAIR','Example','Email repair','Details',$1,$2,$3,'IN_PROGRESS','EMAIL') RETURNING id",[systemId,readers[0].id,inboxDept])).rows[0].id;
+    await fresh.query("INSERT INTO ticket_audit_logs(ticket_id,user_id,action,field_name,old_value,new_value,created_at) VALUES($1,$2,'REOPENED','status','CLOSED','IN_PROGRESS',NOW()-interval '10 minutes')",[repairedTicket,systemId]);
+    await fresh.query("INSERT INTO ticket_inbox_receipts(user_id,ticket_id,seen_revision,opened_at) VALUES($1,$3,1,NOW()-interval '20 minutes'),($2,$3,1,NOW())",[readers[0].id,readers[1].id,repairedTicket]);
+    await fresh.query("DELETE FROM access_migrations WHERE key='email-reopening-inbox-event-v1'");await migrate(fresh);
+    const repaired=(await fresh.query('SELECT inbox_revision,inbox_event FROM tickets WHERE id=$1',[repairedTicket])).rows[0];
+    const repairedReceipts=(await fresh.query('SELECT user_id,seen_revision FROM ticket_inbox_receipts WHERE ticket_id=$1',[repairedTicket])).rows;
+    check('Email reopening repair restores an unread event while preserving users who already opened the reply',repaired.inbox_event==='EMAIL_REOPENED'&&repaired.inbox_revision==='2'&&repairedReceipts.find(r=>r.user_id===readers[0].id).seen_revision==='1'&&repairedReceipts.find(r=>r.user_id===readers[1].id).seen_revision==='2');
+    await migrate(fresh);check('Repeated migrations do not repeat repaired email alerts',(await fresh.query('SELECT inbox_revision FROM tickets WHERE id=$1',[repairedTicket])).rows[0].inbox_revision==='2');
     const { client: upgraded, name } = await isolated();
     await upgraded.query(legacy);
     const user = (await upgraded.query("INSERT INTO users(username,email,full_name,password_hash,role,is_active) VALUES('admin','example@example.test','Existing admin','unchanged-password-hash','admin',false) RETURNING id")).rows[0].id;

@@ -99,3 +99,16 @@ UPDATE ticket_fields SET label='Department' WHERE field_key='assignment_group' A
 UPDATE kb_articles SET title='Roles, Permissions, Departments and Managed Departments - Manager Example'
  WHERE title='Roles, Permissions, Groups and Managed Groups - Manager Example'
  AND NOT EXISTS(SELECT 1 FROM kb_articles WHERE title='Roles, Permissions, Departments and Managed Departments - Manager Example');
+
+-- Free-text routing references for departments and sub departments.
+CREATE TABLE IF NOT EXISTS department_findings (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ department_id UUID NOT NULL REFERENCES assignment_groups(id) ON DELETE CASCADE,
+ content TEXT NOT NULL CHECK(length(btrim(content))>0 AND length(content)<=20000),
+ created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+ updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ deleted_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS department_findings_department ON department_findings(department_id,updated_at DESC) WHERE deleted_at IS NULL;

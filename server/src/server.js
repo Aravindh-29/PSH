@@ -21,6 +21,7 @@ app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:5173',
   credentials: true,
 }));
+app.use('/api/mcp',require('./mcp/router').createRouter());
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
@@ -87,7 +88,7 @@ async function runSLABreachChecker() {
           `SELECT t.*, u1.email AS assignee_email, u2.email AS creator_email
            FROM tickets t
            LEFT JOIN users u1 ON t.assigned_to = u1.id
-           LEFT JOIN users u2 ON t.created_by = u2.id
+           LEFT JOIN users u2 ON t.created_by = u2.id AND NOT u2.is_system
            WHERE t.id = $1 AND t.deleted_at IS NULL`, [inst.ticket_id]
         );
         if (!ticketRow.rows.length) return;
@@ -125,6 +126,8 @@ async function runSLABreachChecker() {
 
 async function runRetentionCleanup() {
   try {
+    const aiResult = await require('./services/aiLogs').cleanup();
+    if (aiResult.rowCount) logger.info(`AI retention: deleted ${aiResult.rowCount} expired process logs`);
     const { rows } = await pool.query('SELECT enabled, retention_days FROM audit_retention_settings WHERE id = 1');
     const cfg = rows[0];
     if (!cfg?.enabled || !cfg.retention_days) return;
@@ -146,6 +149,8 @@ async function start() {
     await require('./controllers/kbController').initTable();
     logger.info('Database ready');
     require('./services/emailDelivery').start();
+    require('./services/gmailIngestion').start();
+    require('./services/emailAI').startRecovery();
     app.listen(PORT, () => logger.info(`Server running on port ${PORT}`));
 
     // Run retention cleanup once at startup, then every 24 hours

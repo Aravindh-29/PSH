@@ -7,6 +7,7 @@ function scopePredicate(access, permission, alias = 't') {
   if (access.admin) return 'TRUE';
   const scope = access.permissions[permission];
   if (!scope) return 'FALSE';
+  if(access.submissionTicketId&&['tickets.view','attachments.upload'].includes(permission))return `(${alias}.id=${literal(access.submissionTicketId)})`;
   if (scope === 'all') return 'TRUE';
   const user=literal(access.userId);
   const own = `(${alias}.created_by=${user} OR ${alias}.ticket_owner=${user} OR ${alias}.assigned_to=${user})`;

@@ -1,5 +1,6 @@
 const pool=require('../db/pool');
 const org=require('../access/organization');
+const {eligibleAssigneeSQL,assignmentScopeSQL}=require('../access/ticketAssignment');
 const {logAdminAudit}=require('./adminAuditController');
 const allow=(req,key)=>{if(!req.access.admin&&!req.access.permissions[key])org.deny()};
 const admin=req=>{if(!req.access.admin)org.deny()};
@@ -15,6 +16,27 @@ async function tree(req,res,next){try{
  const selected=req.query.ticket==='true'?(req.access.permissions['tickets.view']==='all'&&req.query.routing!=='true'?all.map(g=>g.id):[...req.access.managedGroups,...req.access.memberGroups]):req.access.admin?all.map(g=>g.id):req.access.managedGroups;
  const groups=all.filter(g=>req.access.admin||selected.includes(g.id)||selected.includes(g.parent_id)||!g.parent_id&&all.some(child=>child.parent_id===g.id&&selected.includes(child.id))).map(g=>({...g,full_control:org.covers(req.access,g),can_select:req.access.admin||selected.includes(g.id)||selected.includes(g.parent_id),label:(g.department_name?g.department_name+' / ':'')+g.name+(g.country_name?' — '+g.country_name:g.region_name?' ('+g.region_name+')':'' )}));
  const settings=(await pool.query('SELECT * FROM organization_settings WHERE id=1')).rows[0];res.json({success:true,groups,settings});
+}catch(e){next(e)}}
+// Routing exposes destination names only, never membership or ticket records.
+async function routing(req,res,next){try{
+ if(!req.access.admin&&!req.access.permissions['tickets.create']&&!req.access.permissions['tickets.edit'])org.deny();
+ const rows=(await pool.rawQuery(`SELECT g.id,g.name,g.parent_id,g.is_active,r.name AS region_name,c.name AS country_name
+ FROM assignment_groups g LEFT JOIN assignment_groups p ON p.id=g.parent_id
+ LEFT JOIN organization_regions r ON r.id=g.region_id LEFT JOIN organization_countries c ON c.id=g.country_id
+ WHERE g.is_active AND (g.parent_id IS NULL OR p.is_active)
+ ORDER BY LOWER(COALESCE(p.name,g.name)),g.parent_id NULLS FIRST,LOWER(g.name)`)).rows;
+ const scopes=[...req.access.memberGroups,...req.access.managedGroups];
+ res.json({success:true,groups:rows.map(g=>({...g,can_select:req.access.admin||scopes.includes(g.id)||scopes.includes(g.parent_id),label:g.name+(g.country_name?' — '+g.country_name:g.region_name?' ('+g.region_name+')':'')}))});
+}catch(e){next(e)}}
+async function assignees(req,res,next){try{
+ if(!req.access.admin&&(!req.access.permissions['tickets.assign']||!req.access.permissions['tickets.create']&&!req.access.permissions['tickets.edit']))org.deny();
+ const {departmentId,subgroupId}=req.query;
+ const {uuid}=require('../access/context');
+ if(!uuid(departmentId)||subgroupId&&!uuid(subgroupId))org.fail('Select a valid department and sub department.');
+ const valid=await pool.rawQuery(`SELECT 1 FROM assignment_groups g LEFT JOIN assignment_groups s ON s.id=$2 AND s.parent_id=g.id AND s.is_active WHERE g.id=$1 AND g.is_active AND g.parent_id IS NULL AND ($2::uuid IS NULL OR s.id IS NOT NULL)`,[departmentId,subgroupId||null]);
+ if(!valid.rowCount)org.fail('Select an active department and a valid sub department.');
+ const users=(await pool.rawQuery(`SELECT u.id,u.full_name,u.username FROM users u WHERE (${eligibleAssigneeSQL('u',assignmentScopeSQL('$1::uuid','$2::uuid'))}) ORDER BY LOWER(u.full_name),u.id`,[departmentId,subgroupId||null])).rows;
+ res.json({success:true,users});
 }catch(e){next(e)}}
 async function geography(req,res,next){try{allow(req,'departments.view');const regions=(await pool.query('SELECT * FROM organization_regions ORDER BY name')).rows,countries=(await pool.query('SELECT * FROM organization_countries ORDER BY name')).rows;res.json({success:true,regions,countries})}catch(e){next(e)}}
 async function saveGeography(req,res,next){return transaction(req,res,next,async c=>{
@@ -71,7 +93,8 @@ async function remove(req,res,next){return transaction(req,res,next,async c=>{
   (SELECT COUNT(*)::int FROM assignment_groups WHERE parent_id=$1) AS subgroups,
   (SELECT COUNT(*)::int FROM user_groups WHERE group_id=$1) AS memberships,
   (SELECT COUNT(*)::int FROM user_managed_groups WHERE group_id=$1) AS management_assignments,
-  (SELECT COUNT(*)::int FROM tickets WHERE assignment_group_id=$1 OR subgroup_id=$1) AS tickets`,[g.id])).rows[0];
+  (SELECT COUNT(*)::int FROM tickets WHERE assignment_group_id=$1 OR subgroup_id=$1) AS tickets,
+  (SELECT COUNT(*)::int FROM department_findings WHERE department_id=$1 AND deleted_at IS NULL) AS findings`,[g.id])).rows[0];
  const linked=Object.entries(used).filter(([,count])=>count>0).map(([kind,count])=>count+' '+(kind==='subgroups'?'sub departments':kind.replaceAll('_',' ')));
  if(linked.length)org.fail('Cannot delete "'+g.name+'": linked to '+linked.join(', ')+'. Remove or reassign these links first, or deactivate this '+(g.parent_id?'sub department':'department')+'.');
  await c.query('DELETE FROM assignment_groups WHERE id=$1',[g.id]);return{};
@@ -101,4 +124,4 @@ async function removeMember(req,res,next){return transaction(req,res,next,async 
  const prior=(await c.query('SELECT group_id FROM user_groups WHERE user_id=$1 AND group_id<>$2',[req.params.userId,g.id])).rows.map(r=>r.group_id);
  await org.validateMembership(c,prior);await c.query('DELETE FROM user_groups WHERE user_id=$1 AND group_id=$2',[req.params.userId,g.id]);return{};
 })}
-module.exports={tree,geography,saveGeography,settings,detail,save,remove,candidates,add,members,removeMember};
+module.exports={tree,routing,assignees,geography,saveGeography,settings,detail,save,remove,candidates,add,members,removeMember};

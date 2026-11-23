@@ -1,8 +1,11 @@
+import TicketActivityHistory from '../../components/TicketActivityHistory';
+import EmailCommentBody from '../../components/EmailCommentBody';
+import TicketCompleteness from '../../components/TicketCompleteness';
 import useAccess from '../../hooks/useAccess';
 import AccessDenied from '../../components/AccessDenied';
 import { TemplateFields } from '../../components/TicketTemplate';
 import React, { useEffect, useRef, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { Pencil, Download, X, Clock, Paperclip, ShieldAlert, ArrowLeft } from 'lucide-react';
 import { StatusBadge, PriorityBadge } from '../../components/Badge';
 import {useNotifications} from '../../context/NotificationContext';
@@ -16,6 +19,7 @@ import './IncidentPage.css';
 
 export default function TicketDetail() {
   const { id } = useParams();
+  const location=useLocation();
   const {markTicketOpened}=useNotifications();
   const [openReceiptError,setOpenReceiptError]=useState(false);
   const {can,record}=useAccess();
@@ -59,7 +63,7 @@ export default function TicketDetail() {
       })
       .finally(() => {if(request===loadRequest.current)setLoading(false)});
   };
-  useEffect(() => {setDenied(false);setData(null);setOpenReceiptError(false);load();return()=>{loadRequest.current++}}, [id]);
+  useEffect(() => {setDenied(false);setData(null);setOpenReceiptError(false);load();return()=>{loadRequest.current++}}, [id,location.key]);
   useEffect(()=>{let active=true;if(data?.ticket?.id===id&&data.ticket.inbox_revision)markTicketOpened(data.ticket.id,data.ticket.inbox_revision).then(ok=>{if(active)setOpenReceiptError(!ok)});return()=>{active=false}},[id,data?.ticket?.id,data?.ticket?.inbox_revision,markTicketOpened]);
 
 
@@ -83,28 +87,6 @@ export default function TicketDetail() {
     document.body.removeChild(a);
   };
 
-  const FIELD_LABELS = {
-    ticket_owner: 'Ticket Owner', assigned_to: 'Assigned To',
-    category_id: 'Category', type_id: 'Type',
-    status: 'Status', priority: 'Priority', impact: 'Impact', urgency: 'Urgency',
-    short_description: 'Short Description', description: 'Description',
-    customer_name: 'Customer', module_text: 'Module',
-    assignment_group: 'Department', classification: 'Classification',
-    attachment: 'Attachment', template: 'Template', template_id: 'Template', template_snapshot: 'Template Definition', template_values: 'Template Fields',
-  };
-
-  const auditActionLabel = (a) => {
-    if (a.action === 'CREATED') return 'CREATED';
-    if (a.action === 'DELETED') return 'DELETED';
-    if (a.action === 'ATTACHMENT_ADDED') return 'ATTACHMENT ADDED';
-    if (a.action === 'ATTACHMENT_DELETED') return 'ATTACHMENT DELETED';
-    if (a.action === 'UPDATED' && a.field_name) {
-      const label = FIELD_LABELS[a.field_name] || a.field_name.replace(/_/g, ' ').toUpperCase();
-      return `${label} UPDATED`;
-    }
-    return a.action.replace(/_/g, ' ');
-  };
-
   const customVisible = customFieldDefs.filter(f => {
     const raw = (ticket.custom_data || {})[f.field_key];
     return raw !== undefined && raw !== null && raw !== '';
@@ -125,6 +107,7 @@ export default function TicketDetail() {
 
   return (
     <div className="ip-page ip-ticket-view">{openReceiptError&&<p role="alert">Could not update your unopened ticket count. <button type="button" onClick={()=>markTicketOpened(ticket.id,ticket.inbox_revision).then(ok=>setOpenReceiptError(!ok))}>Retry</button></p>}
+      <TicketCompleteness ticket={ticket}/>
 
       {/* ── Header ── */}
       <div className="ip-header">
@@ -342,7 +325,7 @@ export default function TicketDetail() {
                               </span>
                               <div className="ct-timestamp"><Clock size={11} /><span>{fmt(c.created_at)}</span></div>
                             </div>
-                            <div className="ct-body">{c.body}</div>
+                            {c.email_sender?<EmailCommentBody comment={c}/>:<div className="ct-body">{c.body}</div>}
                           </div>
                         </div>
                       );
@@ -357,37 +340,7 @@ export default function TicketDetail() {
               <span>Activity History</span>
             </div>
             <div className="ip-activity-inner">
-              {audit.length === 0
-                ? <p className="ip-empty-msg">No activity yet</p>
-                : (
-                  <div className="audit-list" style={{ maxHeight: 'unset' }}>
-                    {audit.map(a => (
-                      <div key={a.id} className="audit-item">
-                        <div className="audit-dot" />
-                        <div className="audit-content">
-                          <div className="audit-action">{auditActionLabel(a)}</div>
-                          {a.field_name && (a.old_value || a.new_value) && (
-                            <div className="audit-change">
-                              {a.field_name.replace(/_/g, ' ')}:{' '}
-                              {a.old_value && <span className="audit-old">{a.old_value}</span>}
-                              {a.old_value && a.new_value && ' → '}
-                              {a.new_value && <span className="audit-new">{a.new_value}</span>}
-                            </div>
-                          )}
-                          {a.action === 'ATTACHMENT_ADDED' && a.new_value && (
-                            <div className="audit-change">
-                              <a href={`/api/attachments/${a.new_value}/download?preview=true`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--orange)' }}>{a.new_value}</a>
-                            </div>
-                          )}
-                          <div className="audit-meta">
-                            {a.user_name}{a.user_username ? <span style={{ color: '#94A3B8', marginLeft: 3 }}>@{a.user_username}</span> : ''} · {fmt(a.created_at)}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )
-              }
+              <TicketActivityHistory entries={audit}/>
             </div>
           </div>
         </div>

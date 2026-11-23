@@ -40,6 +40,7 @@ const ADMIN_NAV = [
   { to: '/admin/modules',        icon: Settings,    label: 'Configuration'  },
   { to: '/admin/sso',            icon: KeyRound,    label: 'SSO'            },
   { to: '/admin/email',          icon: Mail,        label: 'Email Config'   },
+  { to: '/admin/mcp',            icon: Settings,    label: 'MCP Server'     },
   { to: '/audit-logs',           icon: ShieldCheck, label: 'Audit Logs'     },
 ];
 
@@ -66,7 +67,7 @@ export default function Sidebar({ collapsed, onToggle }) {
   const {queryUnopened}=useNotifications();
   const navPermissions={'/':'dashboard.view','/admin/my-dashboard':'dashboard.view','/admin/user-tickets':'users.tickets','/my-tickets':'tickets.view','/my-query':'query.view','/users':'users.directory_view','/tickets/new':'tickets.create','/knowledge-base':'kb.view','/reports':'reports.view','/admin/users':'users.view','/departments':'departments.view','/team-dashboard':'dashboard.team','/admin/sso':'sso.view','/admin/email':'email.view','/audit-logs':'audit.view'};
   const configAllowed=any(['fields.view','categories.view','types.view','templates.view','branding.view','sla_config.view']);
-  const visible=item=>item.to==='/users'?(user?.roleKind==='user'||user?.role==='employee')&&can('users.directory_view'):item.to==='/admin/modules'?configAllowed:item.to==='/admin/users'?any(['users.view','users.team_view']):can(navPermissions[item.to]);
+  const visible=item=>item.to==='/admin/mcp'?user?.role==='admin':item.to==='/users'?(user?.roleKind==='user'||user?.role==='employee')&&can('users.directory_view'):item.to==='/admin/modules'?configAllowed:item.to==='/admin/users'?any(['users.view','users.team_view']):can(navPermissions[item.to]);
   const isAdmin = user?.role === 'admin';
 
   const handleLogout = async () => {

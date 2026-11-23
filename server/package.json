@@ -4,9 +4,15 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "test:mcp": "node scripts/test-email-mcp.js",
+    "test:mcp-config": "node scripts/test-mcp-config.js",
+    "test:gmail": "node scripts/test-gmail.js",
+    "test:email-bulk": "node scripts/test-email-bulk.js",
+    "test:email-ai": "node scripts/test-email-ai.js"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
     "archiver": "^8.0.0",
     "argon2": "^0.31.2",
     "compression": "^1.8.2",
@@ -18,13 +24,16 @@
     "express-session": "^1.18.0",
     "express-validator": "^7.1.0",
     "helmet": "^7.1.0",
+    "html-to-text": "10.0.1",
+    "mailparser": "3.15.0",
     "multer": "^2.5.0",
     "nodemailer": "^10.3.1",
     "openid-client": "^5.7.1",
     "otplib": "^12.0.1",
     "pg": "^8.12.0",
     "qrcode": "^1.5.4",
-    "winston": "^3.13.0"
+    "winston": "^3.13.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"

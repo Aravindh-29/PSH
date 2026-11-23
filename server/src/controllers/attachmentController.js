@@ -179,4 +179,4 @@ async function downloadZip(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { upload, download, remove, downloadZip };
+module.exports = { upload, download, remove, downloadZip, ALLOWED_MIME_TYPES, MAX_FILE_SIZE };

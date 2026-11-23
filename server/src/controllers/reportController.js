@@ -165,7 +165,7 @@ async function getReport(req, res, next) {
         Resolved: parseInt(r.resolved),
       })),
       byStatus:   statusResult.rows.map(r => ({ name: r.name.replace(/_/g, ' '), value: parseInt(r.value) })),
-      byPriority: priorityResult.rows.map(r => ({ name: r.name, value: parseInt(r.value) })),
+      byPriority: priorityResult.rows.map(r => ({ name: r.name||'Not set', value: parseInt(r.value) })),
       allTickets: allTicketsResult.rows,
     });
   } catch (err) {
@@ -325,7 +325,7 @@ async function getGlobalReport(req, res, next) {
       monthly:    monthlyRes.rows.map(r => ({ label: r.label, Created: parseInt(r.created), Resolved: parseInt(r.resolved), Closed: parseInt(r.closed) })),
       weekly:     weeklyRes.rows.map(r => ({ label: r.label, Created: parseInt(r.created), Resolved: parseInt(r.resolved) })),
       byStatus:   statusRes.rows.map(r => ({ name: r.name.replace(/_/g, ' '), value: parseInt(r.value) })),
-      byPriority: priorityRes.rows.map(r => ({ name: r.name, value: parseInt(r.value) })),
+      byPriority: priorityRes.rows.map(r => ({ name: r.name||'Not set', value: parseInt(r.value) })),
       employees:  employeeRes.rows.map(r => ({
         id: r.id, fullName: r.full_name, email: r.email, username: r.username,
         role: r.role_name||r.role, isActive: r.is_active,
